@@ -1,6 +1,14 @@
+import 'reflect-metadata';
+
 import {join} from 'node:path';
 
+import {NestFactory} from '@nestjs/core';
 import {app, BrowserWindow} from 'electron';
+
+import {SettingsHandler} from './application/ipc/handlers/settings-handler';
+import {ShellHandler} from './application/ipc/handlers/shell-handler';
+import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
+import {IpcModule} from './application/ipc/ipc-module';
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -27,7 +35,17 @@ function createWindow(): void {
   }
 }
 
-void app.whenReady().then(() => {
+let context: Awaited<
+  ReturnType<typeof NestFactory.createApplicationContext>
+> | null = null;
+
+void app.whenReady().then(async () => {
+  context = await NestFactory.createApplicationContext(IpcModule, {
+    logger: ['error', 'warn'],
+  });
+  context.get(WorkspaceHandler).register();
+  context.get(SettingsHandler).register();
+  context.get(ShellHandler).register();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -36,4 +54,8 @@ void app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  void context?.close();
 });
