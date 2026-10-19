@@ -26,3 +26,12 @@ a {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
 }
+
+.fly-worktree-action {
+  opacity: 0;
+}
+
+.fly-worktree:hover .fly-worktree-action,
+.fly-worktree:focus-within .fly-worktree-action {
+  opacity: 1;
+}
