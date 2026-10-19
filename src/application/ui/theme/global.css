@@ -1,0 +1,28 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--fontBody);
+  font-size: 13px;
+  transition:
+    background var(--motionBase) var(--easing),
+    color var(--motionBase) var(--easing);
+}
+
+a {
+  color: var(--accentText);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
