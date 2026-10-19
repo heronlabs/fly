@@ -1,0 +1,161 @@
+{
+  "forbidden": [
+    {
+      "comment": "Circular dependencies make code unpredictable and hard to test.",
+      "from": {},
+      "name": "no-circular",
+      "severity": "error",
+      "to": {
+        "circular": true
+      }
+    },
+    {
+      "comment": "core/ must not know how it is triggered (no commands, no modules). Invert the dependency or move shared shapes to core/.",
+      "from": {
+        "path": "^src/core/"
+      },
+      "name": "core-no-application",
+      "severity": "error",
+      "to": {
+        "path": "^src/application/"
+      }
+    },
+    {
+      "comment": "Application layer must not reach into infrastructure adapters. The IPC module is the composition root.",
+      "from": {
+        "path": "^src/application/",
+        "pathNot": "^src/application/ipc/ipc-module\\.ts$"
+      },
+      "name": "app-no-infrastructure",
+      "severity": "error",
+      "to": {
+        "path": "^src/infrastructure/"
+      }
+    },
+    {
+      "comment": "infrastructure/ adapters must not import application/ or core/services \u2014 they may implement core/interfaces and return core/domain types.",
+      "from": {
+        "path": "^src/infrastructure/"
+      },
+      "name": "infrastructure-no-upward-deps",
+      "severity": "error",
+      "to": {
+        "path": "^src/(application|core/services)/"
+      }
+    },
+    {
+      "comment": "Every module in src must be reachable from the entry point (dead-code guard).",
+      "from": {
+        "path": "^src/(main|preload)\\.ts$|^src/application/ui/main\\.tsx$"
+      },
+      "name": "no-unreachable-from-entry",
+      "severity": "error",
+      "to": {
+        "path": "^src",
+        "pathNot": "^src/(main|preload)\\.ts$|^src/application/ui/main\\.tsx$",
+        "reachable": false
+      }
+    },
+    {
+      "comment": "Orphan modules are dead-code candidates (allow type declarations and entry points).",
+      "from": {
+        "orphan": true,
+        "pathNot": [
+          "\\.d\\.ts$",
+          "^src/(main|preload)\\.ts$",
+          "^src/application/ui/main\\.tsx$"
+        ]
+      },
+      "name": "no-orphans",
+      "severity": "error",
+      "to": {}
+    },
+    {
+      "comment": "Production code must not import devDependencies (type-only imports are compiled away and allowed).",
+      "from": {
+        "path": "^src"
+      },
+      "name": "not-to-dev-dep",
+      "severity": "error",
+      "to": {
+        "dependencyTypes": ["npm-dev"],
+        "dependencyTypesNot": ["type-only"],
+        "pathNot": ["node_modules/@types/"]
+      }
+    },
+    {
+      "comment": "Every import from src must resolve to a dependency declared in package.json.",
+      "from": {
+        "path": "^src"
+      },
+      "name": "no-non-package-json",
+      "severity": "error",
+      "to": {
+        "dependencyTypes": ["npm-no-pkg", "npm-unknown"]
+      }
+    },
+    {
+      "comment": "The renderer talks to the main process only through window.fly.",
+      "from": {
+        "path": "^src/application/ui/"
+      },
+      "name": "no-ui-to-main",
+      "severity": "error",
+      "to": {
+        "path": "^src/(core/(services|interfaces)|infrastructure|application/ipc)/|^src/(main|preload)\\.ts$"
+      }
+    },
+    {
+      "comment": "The renderer may import core/domain as types only.",
+      "from": {
+        "path": "^src/application/ui/"
+      },
+      "name": "ui-domain-type-only",
+      "severity": "error",
+      "to": {
+        "dependencyTypesNot": ["type-only"],
+        "path": "^src/core/domain/"
+      }
+    },
+    {
+      "comment": "preload.ts may import only core/domain.",
+      "from": {
+        "path": "^src/preload\\.ts$"
+      },
+      "name": "preload-domain-only",
+      "severity": "error",
+      "to": {
+        "path": "^src/",
+        "pathNot": "^src/core/domain/"
+      }
+    },
+    {
+      "comment": "infrastructure may import core/interfaces and core/domain, never core/services.",
+      "from": {
+        "path": "^src/infrastructure/"
+      },
+      "name": "no-infra-to-core-services",
+      "severity": "error",
+      "to": {
+        "path": "^src/core/services/"
+      }
+    }
+  ],
+  "options": {
+    "doNotFollow": {
+      "path": "node_modules"
+    },
+    "reporterOptions": {
+      "archi": {
+        "collapsePattern": "^(src/application|src/core|src/infrastructure)/[^/]+"
+      },
+      "dot": {
+        "collapsePattern": "node_modules/[^/]+"
+      }
+    },
+    "tsConfig": {
+      "fileName": "tsconfig.json"
+    },
+    "tsPreCompilationDeps": true
+  }
+}

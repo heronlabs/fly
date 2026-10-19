@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {"lib": ["ES2022"]},
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/main.ts",
+    "src/preload.ts",
+    "src/application/ipc",
+    "src/core",
+    "src/infrastructure",
+    "tests/unit",
+    "tests/integration",
+    "tests/vitest-globals.d.ts"
+  ]
+}

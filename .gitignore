@@ -1,0 +1,9 @@
+node_modules/
+out/
+dist/
+reports/
+.supera/
+.worktrees/
+.superpowers/
+*.tsbuildinfo
+.DS_Store

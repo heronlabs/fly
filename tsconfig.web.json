@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest/globals"]
+  },
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/application/ui",
+    "src/core/domain",
+    "tests/ui",
+    "tests/vitest-globals.d.ts"
+  ]
+}
