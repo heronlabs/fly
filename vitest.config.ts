@@ -1,6 +1,10 @@
 import {defineConfig} from 'vitest/config';
 
 export default defineConfig({
+  // Tests build services by hand (no Nest DI), so decorator metadata is not
+  // needed; emitting it adds uncoverable `typeof X === 'undefined'` branches.
+  // The electron-vite build keeps emitting it via swcPlugin.
+  oxc: {decorator: {legacy: true, emitDecoratorMetadata: false}},
   test: {
     globals: true,
     clearMocks: true,

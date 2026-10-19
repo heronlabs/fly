@@ -3,6 +3,7 @@ import '@fontsource/jetbrains-mono/500.css';
 import '@fontsource/nunito-sans/400.css';
 import '@fontsource/nunito-sans/600.css';
 import '@fontsource/museomoderno/600.css';
+import './theme/global.css';
 
 import {createRoot} from 'react-dom/client';
 

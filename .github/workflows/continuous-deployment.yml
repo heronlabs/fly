@@ -1,0 +1,42 @@
+name: 'Continuous Deployment'
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      semantic:
+        description: The SEMVER specification.
+        required: true
+        type: choice
+        default: patch
+        options:
+          - 'major'
+          - 'minor'
+          - 'patch'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: heronlabs/action-tag-release-build@v7
+        id: version
+        with:
+          ghToken: ${{ github.token }}
+          semantic: ${{ inputs.semantic }}
+          bumpNpm: true
+
+  # TODO(fly M6): macos-latest job running pnpm dist and uploading the dmg to the release
