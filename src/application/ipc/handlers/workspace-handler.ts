@@ -32,8 +32,21 @@ export class WorkspaceHandler {
   }
 
   private async open(root: string): Promise<Workspace> {
-    await this.settings.rememberRoot(root);
-    return this.load(root);
+    let workspace: Workspace;
+    try {
+      workspace = await this.load(root);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Não foi possível abrir ${root}: ${message}`);
+    }
+    try {
+      await this.settings.rememberRoot(root);
+    } catch (error) {
+      this.logger.error(
+        `Falha ao lembrar ${root}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return workspace;
   }
 
   private async refresh(): Promise<Workspace> {

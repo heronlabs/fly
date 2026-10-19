@@ -88,11 +88,43 @@ describe('WorkspaceHandler', () => {
     );
   });
 
-  it('propagates discovery errors from open', async () => {
+  it('Should wrap discovery errors from open in a pt-BR message and not remember the root', async () => {
     discover.mockRejectedValue(new Error('sem acesso'));
     await expect(invoke(channels.workspaceOpen, '/root')).rejects.toThrow(
-      'sem acesso',
+      'Não foi possível abrir /root: sem acesso',
     );
+    expect(rememberRoot).not.toHaveBeenCalled();
+    expect(watch).not.toHaveBeenCalled();
+  });
+
+  it('Should stringify non-Error discovery rejections from open', async () => {
+    discover.mockRejectedValue('texto');
+    await expect(invoke(channels.workspaceOpen, '/root')).rejects.toThrow(
+      'Não foi possível abrir /root: texto',
+    );
+  });
+
+  it('Should log a remember failure and still return the workspace', async () => {
+    const error = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    rememberRoot.mockRejectedValue(new Error('disco cheio'));
+
+    const result = await invoke(channels.workspaceOpen, '/root');
+
+    expect(result).toEqual(makeWorkspace('/root'));
+    expect(String(error.mock.calls[0]?.[0])).toContain('disco cheio');
+  });
+
+  it('Should log non-Error remember failures', async () => {
+    const error = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    rememberRoot.mockRejectedValue('quebrou');
+
+    await invoke(channels.workspaceOpen, '/root');
+
+    expect(String(error.mock.calls[0]?.[0])).toContain('quebrou');
   });
 
   it('disposes the previous watcher on a second open', async () => {
