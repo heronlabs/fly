@@ -21,6 +21,39 @@
       }
     },
     {
+      "comment": "core/ may reach infrastructure only through core/interfaces ports; concrete adapters are injected.",
+      "from": {
+        "path": "^src/core/"
+      },
+      "name": "core-no-infrastructure",
+      "severity": "error",
+      "to": {
+        "path": "^src/infrastructure/"
+      }
+    },
+    {
+      "comment": "Nothing from main may reach the renderer bundle: the electron package is main/preload only.",
+      "from": {
+        "path": "^src/application/ui/"
+      },
+      "name": "ui-no-electron",
+      "severity": "error",
+      "to": {
+        "path": "node_modules/electron/"
+      }
+    },
+    {
+      "comment": "Nothing from main may reach the renderer bundle: Node built-in modules are unavailable in the renderer.",
+      "from": {
+        "path": "^src/application/ui/"
+      },
+      "name": "ui-no-node-builtins",
+      "severity": "error",
+      "to": {
+        "dependencyTypes": ["core"]
+      }
+    },
+    {
       "comment": "Application layer must not reach into infrastructure adapters. The IPC module is the composition root.",
       "from": {
         "path": "^src/application/",
