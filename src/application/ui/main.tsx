@@ -8,7 +8,5 @@ import './theme/global.css';
 import {createRoot} from 'react-dom/client';
 
 import {App} from './app';
-import {applyTheme} from './theme/theme';
 
-applyTheme('dark', document.documentElement);
 createRoot(document.getElementById('root')!).render(<App />);
