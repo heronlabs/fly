@@ -8,6 +8,7 @@ type Block = {
   branch: string | null;
   bare: boolean;
   locked: boolean;
+  prunable: boolean;
 };
 
 export const parseWorktreePorcelain = (stdout: string): WorktreeInfo[] => {
@@ -22,6 +23,7 @@ export const parseWorktreePorcelain = (stdout: string): WorktreeInfo[] => {
         branch: null,
         bare: false,
         locked: false,
+        prunable: false,
       };
       blocks.push(current);
     } else if (current && line.startsWith('HEAD ')) {
@@ -32,12 +34,17 @@ export const parseWorktreePorcelain = (stdout: string): WorktreeInfo[] => {
       current.bare = true;
     } else if (current && (line === 'locked' || line.startsWith('locked '))) {
       current.locked = true;
+    } else if (
+      current &&
+      (line === 'prunable' || line.startsWith('prunable '))
+    ) {
+      current.prunable = true;
     }
   }
 
   return blocks
     .map((block, index) => ({block, isMain: index === 0}))
-    .filter(({block}) => !block.bare)
+    .filter(({block}) => !block.bare && !block.prunable)
     .map(({block, isMain}) => ({
       path: block.path,
       head: block.head,

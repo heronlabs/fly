@@ -58,7 +58,7 @@ describe('parseWorktreePorcelain', () => {
     expect(parseWorktreePorcelain(out)[0]?.path).toBe('/tmp/ação do bob/repo');
   });
 
-  it('Should treat a locked line with a reason as locked and ignore unknown lines', () => {
+  it('Should treat a locked line with a reason as locked and accept a reason', () => {
     const out = [
       'worktree /r',
       `HEAD ${sha1}`,
@@ -68,12 +68,39 @@ describe('parseWorktreePorcelain', () => {
       `HEAD ${sha2}`,
       'branch refs/heads/w',
       'locked some reason',
-      'prunable gitdir file points to non-existent location',
     ].join('\n');
 
     expect(parseWorktreePorcelain(out)).toEqual([
       {path: '/r', head: sha1, branch: 'main', isMain: true, locked: false},
       {path: '/r/w', head: sha2, branch: 'w', isMain: false, locked: true},
+    ]);
+  });
+
+  it('Should drop prunable blocks and keep the others', () => {
+    const out = [
+      'worktree /r',
+      `HEAD ${sha1}`,
+      'branch refs/heads/main',
+      '',
+      'worktree /r/gone',
+      `HEAD ${sha2}`,
+      'branch refs/heads/gone',
+      'prunable gitdir file points to non-existent location',
+      '',
+      'worktree /r/bare-reason',
+      `HEAD ${sha2}`,
+      'detached',
+      'prunable',
+      '',
+      'worktree /r/w',
+      `HEAD ${sha3}`,
+      'branch refs/heads/w',
+      '',
+    ].join('\n');
+
+    expect(parseWorktreePorcelain(out)).toEqual([
+      {path: '/r', head: sha1, branch: 'main', isMain: true, locked: false},
+      {path: '/r/w', head: sha3, branch: 'w', isMain: false, locked: false},
     ]);
   });
 
