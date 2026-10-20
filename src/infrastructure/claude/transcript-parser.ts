@@ -59,6 +59,7 @@ const readContent = (record: Json): unknown =>
 /** The string content, or the content's text blocks joined by newlines. */
 const readText = (content: unknown): string => {
   if (typeof content === 'string') return content;
+  // Stryker disable next-line StringLiteral: any non-JSON fallback text parses to the same 'no JSON receipt' as ''
   if (!Array.isArray(content)) return '';
   return content
     .filter(isRecord)
