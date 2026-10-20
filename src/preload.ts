@@ -43,6 +43,36 @@ const api: FlyApi = {
   tasks: {
     create: input => ipcRenderer.invoke(channels.taskCreate, input),
   },
+  terminal: {
+    attach: (sessionName, size) =>
+      ipcRenderer.invoke(channels.terminalAttach, sessionName, size),
+    detach: terminalId =>
+      ipcRenderer.invoke(channels.terminalDetach, terminalId),
+    write: (terminalId, data) =>
+      ipcRenderer.send(channels.terminalInput, terminalId, data),
+    resize: (terminalId, size) =>
+      ipcRenderer.send(channels.terminalResize, terminalId, size),
+    onData: listener => {
+      const handler = (
+        _event: unknown,
+        payload: {terminalId: string; data: string},
+      ) => listener(payload.terminalId, payload.data);
+      ipcRenderer.on(channels.terminalData, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.terminalData, handler);
+      };
+    },
+    onExit: listener => {
+      const handler = (
+        _event: unknown,
+        payload: {terminalId: string; exitCode: number},
+      ) => listener(payload.terminalId, payload.exitCode);
+      ipcRenderer.on(channels.terminalExit, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.terminalExit, handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('fly', api);

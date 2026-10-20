@@ -9,8 +9,10 @@ import {app, BrowserWindow} from 'electron';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
+import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
+import {TerminalService} from './core/services/terminal-service';
 import {
   LoginShellEnvService,
   mergePath,
@@ -34,7 +36,8 @@ function isAppUrl(
   }
 }
 
-function createWindow(): void {
+// onReset runs when the renderer reloads or the window closes.
+function createWindow(onReset: () => void): void {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -59,6 +62,8 @@ function createWindow(): void {
     if (!isAppUrl(url, rendererUrl, indexFile)) event.preventDefault();
   });
   window.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
+  window.webContents.on('did-start-loading', onReset);
+  window.on('closed', onReset);
 
   if (rendererUrl) {
     void window.loadURL(rendererUrl);
@@ -87,9 +92,12 @@ app
     context.get(SettingsHandler).register();
     context.get(ShellHandler).register();
     context.get(SessionHandler).register();
-    createWindow();
+    context.get(TerminalHandler).register();
+    const terminals = context.get(TerminalService);
+    const onReset = () => terminals.detachAll();
+    createWindow(onReset);
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(onReset);
     });
   })
   .catch((error: unknown) => {

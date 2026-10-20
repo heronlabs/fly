@@ -14,6 +14,7 @@ vi.mock('electron', () => ({
 import {SessionHandler} from '../../src/application/ipc/handlers/session-handler';
 import {SettingsHandler} from '../../src/application/ipc/handlers/settings-handler';
 import {ShellHandler} from '../../src/application/ipc/handlers/shell-handler';
+import {TerminalHandler} from '../../src/application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from '../../src/application/ipc/handlers/workspace-handler';
 import {IpcModule} from '../../src/application/ipc/ipc-module';
 
@@ -31,6 +32,8 @@ describe('IpcModule (real Nest DI)', () => {
     const sessions = context.get(SessionHandler);
     expect(() => sessions.register()).not.toThrow();
     sessions.stop();
+
+    expect(() => context.get(TerminalHandler).register()).not.toThrow();
 
     await context.close();
   });

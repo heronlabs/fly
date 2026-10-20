@@ -19,6 +19,14 @@ const fly: FlyApi = {
     onChanged: vi.fn(),
   },
   tasks: {create: vi.fn()},
+  terminal: {
+    attach: vi.fn(),
+    detach: vi.fn(),
+    write: vi.fn(),
+    resize: vi.fn(),
+    onData: vi.fn(),
+    onExit: vi.fn(),
+  },
 };
 
 Object.defineProperty(window, 'fly', {value: fly, configurable: true});

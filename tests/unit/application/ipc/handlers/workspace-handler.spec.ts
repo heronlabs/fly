@@ -25,6 +25,7 @@ const makeWorkspace = (root: string): Workspace => ({
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
+  on: vi.fn(),
 };
 const send = vi.fn();
 const broadcaster: Broadcaster = {send};

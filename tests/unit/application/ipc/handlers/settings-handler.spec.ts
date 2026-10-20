@@ -6,6 +6,7 @@ import {SettingsService} from '../../../../../src/core/services/settings-service
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
+  on: vi.fn(),
 };
 const get = vi.fn();
 const update = vi.fn();
