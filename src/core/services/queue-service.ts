@@ -156,8 +156,11 @@ export class QueueService {
         now,
       });
       if (found === null) return null;
-      // Stryker disable next-line ConditionalExpression,StringLiteral: classifyActivity('ambiguous') also yields 'unknown' (no phase, wakeupAt undefined), so the guard only makes the intent explicit.
-      return found === 'ambiguous' ? 'unknown' : classifyActivity(found, now);
+      // Stryker disable next-line ConditionalExpression,StringLiteral,BlockStatement: classifyActivity('ambiguous') also yields 'unknown' (no phase, wakeupAt undefined), so the guard only makes the intent explicit.
+      if (found === 'ambiguous') {
+        return 'unknown';
+      }
+      return classifyActivity(found, now);
     } catch {
       return 'unknown';
     }

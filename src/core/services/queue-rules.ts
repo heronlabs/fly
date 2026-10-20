@@ -81,7 +81,9 @@ export const worktreeStatus = (input: {
     if (activity === 'waiting') candidates.add('waiting');
     else if (activity === 'running') candidates.add('engineer');
     else if (activity === 'scheduled') {
-      // Beside an open PR, the PR's own status already stands for it.
+      // Beside an open PR, the PR's own status already stands for it: every status
+      // pullRequestStatus returns for an open PR (failed, ready, waiting, ci) ranks
+      // at or above ci in PRECEDENCE, so a ci candidate would never change the result.
       if (!prOpen) candidates.add('engineer');
     } else candidates.add(input.hasPlan ? 'engineer' : 'unknown');
   }

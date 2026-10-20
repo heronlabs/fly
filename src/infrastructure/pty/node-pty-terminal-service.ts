@@ -30,7 +30,7 @@ const ptyEnv = (): Record<string, string> => {
 export class NodePtyTerminalService extends TerminalSpawner {
   spawn(file: string, args: string[], size: TerminalSize): TerminalProcess {
     const pty = spawn(file, args, {
-      // node-pty exports this name as TERM in the child environment.
+      // node-pty's Unix backend exports this name as TERM in the child environment.
       name: 'xterm-256color',
       cols: size.cols,
       rows: size.rows,
