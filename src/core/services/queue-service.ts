@@ -187,10 +187,9 @@ export class QueueService {
     worktree: Worktree,
   ): PullRequest | null {
     if (!hasBranch(worktree)) return null;
-    const listed = workspace.repos
-      .filter(r => r.id === worktree.repoId)
-      // Stryker disable next-line ArrayDeclaration: a non-PR element never matches worktree.branch, so any fallback list behaves like [].
-      .flatMap(r => this.pullRequests.get(r.path) ?? []);
+    const inRepo = workspace.repos.filter(r => r.id === worktree.repoId);
+    // Stryker disable next-line ArrayDeclaration: a non-PR element never matches worktree.branch, so any fallback list behaves like [].
+    const listed = inRepo.flatMap(r => this.pullRequests.get(r.path) ?? []);
     const own = listed.filter(pr => pr.branch === worktree.branch);
     const merged = own
       .filter(pr => pr.state === 'merged')

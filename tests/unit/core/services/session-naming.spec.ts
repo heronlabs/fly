@@ -17,6 +17,8 @@ describe('session naming', () => {
     ['.hidden/.also-hidden', ''],
     ['Ação Bob/x:y', 'ação-bob-x-y'],
     ['../outside/wt', 'outside-wt'],
+    ['/workloads//sub/', 'workloads-sub'],
+    ['a::b  c..d', 'a-b-c-d'],
   ])('Should derive prefix of %s as %s', (path, prefix) =>
     expect(sessionPrefix(path)).toBe(prefix),
   );

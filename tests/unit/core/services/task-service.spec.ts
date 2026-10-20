@@ -104,6 +104,26 @@ describe('TaskService', () => {
       });
     });
 
+    it("Should record only the repo's own worktrees as the baseline", async () => {
+      const kite = '/r/kite';
+      currentWorkspace.mockReturnValue({
+        ...workspace,
+        repos: [
+          ...workspace.repos,
+          {id: 'kite', name: 'kite', group: '', path: kite},
+        ],
+        worktrees: [
+          ...workspace.worktrees,
+          {...wt(kite, true), repoId: 'kite'},
+          {...wt('/r/kite/.worktrees/k'), repoId: 'kite'},
+        ],
+      });
+      await service.create({repoId: 'talon', description: 'x'});
+      expect(start.mock.calls[0]?.[0].options['@fly_task_baseline']).toBe(
+        baseline,
+      );
+    });
+
     it('Should turn control characters in the prompt into spaces', async () => {
       await service.create({repoId: 'talon', description: 'x\x03rm -rf ~ #'});
       expect(start.mock.calls[0]?.[0].env).toEqual({
@@ -380,8 +400,19 @@ describe('TaskService', () => {
       expect(setOption).not.toHaveBeenCalled();
     });
 
+    it('Should not count a task that is already bound toward the fallback', async () => {
+      currentWorkspace.mockReturnValue(withNew(x));
+      list.mockResolvedValue([
+        pending('done', 1, {'@fly_worktree': '/r/talon/.worktrees/old'}),
+        pending('a', 2),
+      ]);
+      await service.bind();
+      expect(setOption.mock.calls).toEqual([['a', '@fly_worktree', x]]);
+    });
+
     it.each([
       ['malformed JSON', '{nope'],
+      ['a mix of a path and null', '["/r/talon/.worktrees/old", null]'],
       ['a non-array', '{"a":1}'],
       ['non-string entries', '[1,2]'],
       ['a missing baseline', undefined],
