@@ -1,0 +1,3 @@
+{"type":"assistant","uuid":"a11","parentUuid":"u12","isApiErrorMessage":true,"error":"rate_limit","apiErrorStatus":429,"message":{"id":"msg_e","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"API Error: rate limited"}],"stop_reason":"stop_sequence"}}
+{"type":"system","subtype":"stop_hook_summary","uuid":"s12","parentUuid":"a11"}
+{"type":"system","subtype":"turn_duration","uuid":"s13","parentUuid":"s12","durationMs":200,"messageCount":2}

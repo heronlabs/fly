@@ -1,18 +1,9 @@
 import {create} from 'zustand';
 
+import type {QueueSnapshot, QueueStatus} from '../../../core/domain/queue';
 import type {SessionsSnapshot} from '../../../core/domain/session';
 import type {AppConfig, ThemeMode} from '../../../core/domain/settings';
 import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
-
-export type WorktreeStatus =
-  | 'idle'
-  | 'engineer'
-  | 'ci'
-  | 'failed'
-  | 'ready'
-  | 'review'
-  | 'merged'
-  | 'unknown';
 
 export type FlyState = {
   workspace: Workspace | null;
@@ -23,6 +14,7 @@ export type FlyState = {
   sessions: SessionsSnapshot;
   activeSessionName: string | null;
   startingSession: boolean;
+  queue: QueueSnapshot;
   bootstrap(): Promise<void>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
@@ -32,6 +24,8 @@ export type FlyState = {
   applyWorkspace(workspace: Workspace): void;
   loadSessions(): Promise<void>;
   applySessions(snapshot: SessionsSnapshot): void;
+  loadQueue(): Promise<void>;
+  applyQueue(snapshot: QueueSnapshot): void;
   startSession(worktreeId: string): Promise<void>;
   killSession(name: string): Promise<void>;
   createTask(input: {repoId: string; description: string}): Promise<boolean>;
@@ -62,6 +56,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   sessions: {tmux: 'ok', message: null, sessions: []},
   activeSessionName: null,
   startingSession: false,
+  queue: {github: 'ok', message: null, worktrees: []},
 
   async bootstrap() {
     try {
@@ -92,6 +87,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       get().applyWorkspace(await window.fly.workspace.open(root));
       set({loading: false});
       await get().loadSessions();
+      await get().loadQueue();
     } catch (error) {
       set({loading: false, error: errorMessage(error)});
     }
@@ -153,6 +149,18 @@ export const useFlyStore = create<FlyState>((set, get) => ({
           : state.selectedWorktreeId,
       };
     });
+  },
+
+  async loadQueue() {
+    try {
+      get().applyQueue(await window.fly.queue.list());
+    } catch (error) {
+      set({error: errorMessage(error)});
+    }
+  },
+
+  applyQueue(snapshot) {
+    set({queue: snapshot});
   },
 
   async startSession(worktreeId) {
@@ -219,3 +227,23 @@ export const groupsOf = (
     .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)))
     .map(([group, repos]) => ({group, repos}));
 };
+
+export const queueCounts = (
+  snapshot: QueueSnapshot,
+): {ready: number; working: number; ci: number; failed: number} => {
+  const counts = {ready: 0, working: 0, ci: 0, failed: 0};
+  for (const {status} of snapshot.worktrees) {
+    if (status === 'waiting' || status === 'ready') counts.ready += 1;
+    else if (status === 'engineer') counts.working += 1;
+    else if (status === 'ci') counts.ci += 1;
+    else if (status === 'failed') counts.failed += 1;
+  }
+  return counts;
+};
+
+export const statusesOf = (
+  snapshot: QueueSnapshot,
+): Record<string, QueueStatus> =>
+  Object.fromEntries(
+    snapshot.worktrees.map(item => [item.worktreeId, item.status]),
+  );

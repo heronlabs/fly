@@ -12,7 +12,7 @@ import {claudeCommand, sessionName, sessionPrefix} from './session-naming';
 export const TMUX_MISSING =
   'tmux não encontrado — instale com: brew install tmux';
 
-const isMissing = (error: unknown): boolean =>
+export const isMissing = (error: unknown): boolean =>
   (error as {code?: unknown} | null)?.code === 'ENOENT';
 
 // Turns a raw `spawn tmux ENOENT` into the install hint; anything else as is.
@@ -20,7 +20,7 @@ export const rethrowMissing = (error: unknown): never => {
   throw isMissing(error) ? new Error(TMUX_MISSING) : error;
 };
 
-const errorMessage = (error: unknown): string =>
+export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 const findWorktree = (
@@ -38,6 +38,12 @@ const findWorktree = (
         session.cwd.startsWith(`${worktree.path}/`),
     )
     .sort((a, b) => b.path.length - a.path.length)[0];
+};
+
+export type MappedSessions = {
+  tmux: SessionsSnapshot['tmux'];
+  message: string | null;
+  items: {session: MultiplexerSession; worktreeId: string}[];
 };
 
 const bySessionOrder = (a: Session, b: Session): number =>
@@ -61,30 +67,35 @@ export class SessionService {
     return this.workspace;
   }
 
-  async snapshot(): Promise<SessionsSnapshot> {
+  // Every tmux session that belongs to a worktree of the open workspace.
+  async mapped(): Promise<MappedSessions> {
     let listed: MultiplexerSession[];
     try {
       listed = await this.launcher.list();
     } catch (error) {
       return isMissing(error)
-        ? {tmux: 'missing', message: TMUX_MISSING, sessions: []}
-        : {tmux: 'error', message: errorMessage(error), sessions: []};
+        ? {tmux: 'missing', message: TMUX_MISSING, items: []}
+        : {tmux: 'error', message: errorMessage(error), items: []};
     }
     const worktrees = this.workspace?.worktrees ?? [];
-    const sessions: Session[] = [];
-    for (const item of listed) {
-      const worktree = findWorktree(worktrees, item);
-      if (!worktree) continue;
-      sessions.push({
-        name: item.name,
-        worktreeId: worktree.id,
-        createdAt: item.createdAt,
-        attachedClients: item.attachedClients,
-        origin: item.options['@fly_session_id'] ? 'fly' : 'external',
-        task: item.options['@fly_task'] ?? null,
-      });
-    }
-    return {tmux: 'ok', message: null, sessions: sessions.sort(bySessionOrder)};
+    const items = listed.flatMap(session => {
+      const worktree = findWorktree(worktrees, session);
+      return worktree ? [{session, worktreeId: worktree.id}] : [];
+    });
+    return {tmux: 'ok', message: null, items};
+  }
+
+  async snapshot(): Promise<SessionsSnapshot> {
+    const {tmux, message, items} = await this.mapped();
+    const sessions = items.map(({session, worktreeId}): Session => ({
+      name: session.name,
+      worktreeId,
+      createdAt: session.createdAt,
+      attachedClients: session.attachedClients,
+      origin: session.options['@fly_session_id'] ? 'fly' : 'external',
+      task: session.options['@fly_task'] ?? null,
+    }));
+    return {tmux, message, sessions: sessions.sort(bySessionOrder)};
   }
 
   async start(worktreeId: string): Promise<string> {

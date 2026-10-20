@@ -1,3 +1,4 @@
+import type {QueueSnapshot} from './queue';
 import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
 import type {Workspace} from './workspace';
@@ -14,6 +15,8 @@ export const channels = {
   sessionStart: 'session:start',
   sessionKill: 'session:kill',
   sessionChanged: 'session:changed',
+  queueList: 'queue:list',
+  queueChanged: 'queue:changed',
   taskCreate: 'task:create',
   terminalAttach: 'terminal:attach',
   terminalDetach: 'terminal:detach',
@@ -42,6 +45,10 @@ export type FlyApi = {
     start(worktreeId: string): Promise<string>;
     kill(name: string): Promise<void>;
     onChanged(listener: (snapshot: SessionsSnapshot) => void): () => void;
+  };
+  queue: {
+    list(): Promise<QueueSnapshot>;
+    onChanged(listener: (snapshot: QueueSnapshot) => void): () => void;
   };
   tasks: {
     create(input: {repoId: string; description: string}): Promise<string>;

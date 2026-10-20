@@ -1,8 +1,11 @@
 import {
   errorMessage,
   groupsOf,
+  queueCounts,
+  statusesOf,
   useFlyStore,
 } from '../../../src/application/ui/state/fly-store';
+import type {QueueSnapshot, QueueStatus} from '../../../src/core/domain/queue';
 import type {SessionsSnapshot} from '../../../src/core/domain/session';
 import type {Workspace} from '../../../src/core/domain/workspace';
 
@@ -27,6 +30,11 @@ beforeEach(() => {
     tmux: 'ok',
     message: null,
     sessions: [],
+  });
+  vi.mocked(window.fly.queue.list).mockResolvedValue({
+    github: 'ok',
+    message: null,
+    worktrees: [],
   });
 });
 
@@ -385,6 +393,80 @@ describe('errorMessage', () => {
     it('Should set the active session explicitly', () => {
       useFlyStore.getState().setActiveSession('x');
       expect(useFlyStore.getState().activeSessionName).toBe('x');
+    });
+  });
+
+  describe('queue', () => {
+    const snapshotOf = (statuses: QueueStatus[]): QueueSnapshot => ({
+      github: 'ok',
+      message: null,
+      worktrees: statuses.map((status, index) => ({
+        worktreeId: `w${index}`,
+        status,
+        pullRequest: null,
+        receipt: null,
+      })),
+    });
+
+    it('Should start with an empty queue', () => {
+      expect(useFlyStore.getState().queue).toEqual({
+        github: 'ok',
+        message: null,
+        worktrees: [],
+      });
+    });
+
+    it('Should store the listed queue', async () => {
+      const snapshot = snapshotOf(['ready']);
+      vi.mocked(window.fly.queue.list).mockResolvedValue(snapshot);
+      await useFlyStore.getState().loadQueue();
+      expect(useFlyStore.getState().queue).toBe(snapshot);
+    });
+
+    it('Should set error when loadQueue rejects', async () => {
+      vi.mocked(window.fly.queue.list).mockRejectedValue(new Error('fila'));
+      await useFlyStore.getState().loadQueue();
+      expect(useFlyStore.getState().error).toBe('fila');
+    });
+
+    it('Should apply a pushed queue', () => {
+      const snapshot = snapshotOf(['ci']);
+      useFlyStore.getState().applyQueue(snapshot);
+      expect(useFlyStore.getState().queue).toBe(snapshot);
+    });
+
+    it('Should load the queue when opening a root', async () => {
+      const snapshot = snapshotOf(['failed']);
+      vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
+      vi.mocked(window.fly.queue.list).mockResolvedValue(snapshot);
+      await useFlyStore.getState().openRoot('/r');
+      expect(useFlyStore.getState().queue).toBe(snapshot);
+    });
+
+    it('Should count waiting and ready as ready, engineer as working', () => {
+      const all: QueueStatus[] = [
+        'idle',
+        'engineer',
+        'waiting',
+        'ci',
+        'failed',
+        'ready',
+        'merged',
+        'unknown',
+      ];
+      expect(queueCounts(snapshotOf(all))).toEqual({
+        ready: 2,
+        working: 1,
+        ci: 1,
+        failed: 1,
+      });
+    });
+
+    it('Should map worktree ids to statuses', () => {
+      expect(statusesOf(snapshotOf(['ready', 'ci']))).toEqual({
+        w0: 'ready',
+        w1: 'ci',
+      });
     });
   });
 });

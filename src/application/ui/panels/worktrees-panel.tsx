@@ -1,8 +1,9 @@
 import {CodeOutlined} from '@ant-design/icons';
 import type {KeyboardEvent} from 'react';
 
+import type {QueueStatus} from '../../../core/domain/queue';
 import type {Workspace} from '../../../core/domain/workspace';
-import {StatusDot} from '../components/status-dot';
+import {StatusBadge, StatusDot} from '../components/status-dot';
 import {groupsOf} from '../state/fly-store';
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   onSelect(id: string): void;
   onOpenInEditor(path: string): void;
   sessionCounts: Record<string, number>;
+  statuses: Record<string, QueueStatus>;
 };
 
 export const WorktreesPanel = ({
@@ -19,6 +21,7 @@ export const WorktreesPanel = ({
   onSelect,
   onOpenInEditor,
   sessionCounts,
+  statuses,
 }: Props) => {
   const activate = (event: KeyboardEvent, id: string) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -73,6 +76,7 @@ export const WorktreesPanel = ({
               <div role="listbox" aria-label={repo.name}>
                 {worktrees.map(worktree => {
                   const selected = worktree.id === selectedId;
+                  const status = statuses[worktree.id] ?? 'idle';
                   return (
                     <div
                       key={worktree.id}
@@ -102,7 +106,7 @@ export const WorktreesPanel = ({
                           fontFamily: 'var(--fontMono)',
                         }}
                       >
-                        <StatusDot status="unknown" />
+                        <StatusDot status={status} />
                         <span
                           style={{
                             overflow: 'hidden',
@@ -126,6 +130,7 @@ export const WorktreesPanel = ({
                             }}
                           />
                         )}
+                        <StatusBadge status={status} />
                       </div>
                       <button
                         type="button"

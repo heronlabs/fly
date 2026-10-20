@@ -1,0 +1,2 @@
+{"type":"assistant","uuid":"a6","parentUuid":"u5","message":{"id":"msg_6","role":"assistant","content":[{"type":"text","text":"Still pending."}],"stop_reason":"end_turn"}}
+{"type":"system","subtype":"turn_duration","uuid":"s6","parentUuid":"a6","timestamp":"2026-10-20T10:20:30.000Z","durationMs":25000,"messageCount":4}

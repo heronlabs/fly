@@ -2,6 +2,7 @@ import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {WorktreesPanel} from '../../../src/application/ui/panels/worktrees-panel';
+import type {QueueStatus} from '../../../src/core/domain/queue';
 import type {Workspace} from '../../../src/core/domain/workspace';
 
 const workspace: Workspace = {
@@ -47,6 +48,7 @@ const workspace: Workspace = {
 const setup = (
   selectedId: string | null = null,
   sessionCounts: Record<string, number> = {},
+  statuses: Record<string, QueueStatus> = {},
 ) => {
   const onSelect = vi.fn();
   const onOpenInEditor = vi.fn();
@@ -57,6 +59,7 @@ const setup = (
       onSelect={onSelect}
       onOpenInEditor={onOpenInEditor}
       sessionCounts={sessionCounts}
+      statuses={statuses}
     />,
   );
   return {onSelect, onOpenInEditor};
@@ -132,5 +135,23 @@ describe('WorktreesPanel', () => {
   it('Should not show the session dot without sessions', () => {
     setup();
     expect(screen.queryByLabelText('Sessão ativa')).not.toBeInTheDocument();
+  });
+
+  it('Should show the status badge only on the worktree that has a status', () => {
+    setup(null, {}, {'one-feat': 'ready'});
+    expect(screen.getAllByLabelText('Pronto para merge')).toHaveLength(1);
+    expect(screen.getByText('merge')).toBeInTheDocument();
+    expect(screen.getByRole('option', {name: /feat-x/})).toContainElement(
+      screen.getByText('merge'),
+    );
+    expect(screen.getByRole('option', {name: /main/})).not.toHaveTextContent(
+      'merge',
+    );
+  });
+
+  it('Should render no badge for a worktree without status', () => {
+    setup();
+    expect(screen.queryByText('merge')).not.toBeInTheDocument();
+    expect(screen.queryByText('?')).not.toBeInTheDocument();
   });
 });

@@ -1,0 +1,2 @@
+{"type":"system","subtype":"stop_hook_summary","uuid":"s16","parentUuid":"a16","preventedContinuation":false,"hookCount":1}
+{"type":"user","uuid":"u17","parentUuid":"s16","message":{"role":"user","content":"Stop hook feedback: continue"}}

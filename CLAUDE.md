@@ -20,6 +20,10 @@ Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`.
 
 Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill that server afterwards. Never the default tmux server: production sessions live there, so bare `tmux ls` / `tmux attach -t <name>` from Termius sees them.
 
+Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token (the DI test points `CLAUDE_CONFIG_DIR` at a temp dir). Never the real `~/.claude`.
+
+`gh` is always mocked in tests, through `CommandRunner` or `PrGateway`. Never the real `gh`.
+
 ## Layout and layer rules
 
 `src/{application,core,infrastructure}` plus `src/main.ts` and `src/preload.ts`; the renderer lives under `src/application/ui`. Kebab-case files with `-service.ts` / `-handler.ts` / `-module.ts` suffixes.

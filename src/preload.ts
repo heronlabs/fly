@@ -40,6 +40,19 @@ const api: FlyApi = {
       };
     },
   },
+  queue: {
+    list: () => ipcRenderer.invoke(channels.queueList),
+    onChanged: listener => {
+      const handler = (
+        _event: unknown,
+        snapshot: Parameters<typeof listener>[0],
+      ) => listener(snapshot);
+      ipcRenderer.on(channels.queueChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.queueChanged, handler);
+      };
+    },
+  },
   tasks: {
     create: input => ipcRenderer.invoke(channels.taskCreate, input),
   },

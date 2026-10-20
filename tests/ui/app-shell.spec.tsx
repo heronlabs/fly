@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import {AppShell} from '../../src/application/ui/app-shell';
 import {useFlyStore} from '../../src/application/ui/state/fly-store';
+import type {QueueSnapshot} from '../../src/core/domain/queue';
 import type {SessionsSnapshot} from '../../src/core/domain/session';
 import type {AppConfig} from '../../src/core/domain/settings';
 import type {Workspace} from '../../src/core/domain/workspace';
@@ -39,13 +40,18 @@ const emptySessions: SessionsSnapshot = {
   sessions: [],
 };
 
+const emptyQueue: QueueSnapshot = {github: 'ok', message: null, worktrees: []};
+
 const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   vi.mocked(window.fly.settings.get).mockResolvedValue(config('dark'));
   vi.mocked(window.fly.workspace.onChanged).mockReturnValue(vi.fn());
   vi.mocked(window.fly.sessions.onChanged).mockReturnValue(vi.fn());
   vi.mocked(window.fly.sessions.list).mockResolvedValue(emptySessions);
+  vi.mocked(window.fly.queue.onChanged).mockReturnValue(vi.fn());
+  vi.mocked(window.fly.queue.list).mockResolvedValue(emptyQueue);
   useFlyStore.setState({
     sessions: emptySessions,
+    queue: emptyQueue,
     activeSessionName: null,
     startingSession: false,
     workspace: null,
@@ -194,6 +200,39 @@ describe('AppShell', () => {
     await act(async () => {});
     view.unmount();
     expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('Should unsubscribe from queue pushes on unmount', async () => {
+    seed({workspace});
+    const unsubscribe = vi.fn();
+    vi.mocked(window.fly.queue.onChanged).mockReturnValue(unsubscribe);
+    const view = render(<AppShell />);
+    await act(async () => {});
+    expect(window.fly.queue.onChanged).toHaveBeenCalled();
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('Should apply queue pushes to the footer and the badges', async () => {
+    seed({workspace});
+    await renderShell();
+    expect(screen.queryByText('merge')).not.toBeInTheDocument();
+    const listener = vi.mocked(window.fly.queue.onChanged).mock
+      .calls[0]?.[0] as (snapshot: QueueSnapshot) => void;
+    act(() =>
+      listener({
+        github: 'missing',
+        message: 'gh não encontrado — instale com: brew install gh',
+        worktrees: [
+          {worktreeId: 'w1', status: 'ready', pullRequest: null, receipt: null},
+        ],
+      }),
+    );
+    expect(screen.getByText('merge')).toBeVisible();
+    expect(
+      screen.getByText('Esperando você').previousSibling,
+    ).toHaveTextContent('1');
+    expect(screen.getByRole('status')).toHaveTextContent('gh não encontrado');
   });
 
   it('Should apply session pushes and render the terminal for the selected worktree', async () => {

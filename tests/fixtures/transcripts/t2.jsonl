@@ -1,0 +1,2 @@
+{"type":"assistant","uuid":"a2","parentUuid":"u1","message":{"id":"msg_2","role":"assistant","content":[{"type":"tool_use","id":"toolu_ask1","name":"AskUserQuestion","input":{"questions":[{"question":"Which base?","header":"Base","multiSelect":false,"options":[{"label":"main","description":"default"},{"label":"dev","description":"other"}]}]}}],"stop_reason":"tool_use"}}
+{"type":"last-prompt","lastPrompt":"x","leafUuid":"a2","sessionId":"S"}

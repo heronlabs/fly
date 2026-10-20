@@ -7,10 +7,13 @@ import {SessionPanel} from './panels/session-panel';
 import {TopBar} from './panels/top-bar';
 import {WelcomePanel} from './panels/welcome-panel';
 import {WorktreesPanel} from './panels/worktrees-panel';
-import {errorMessage, useFlyStore} from './state/fly-store';
+import {
+  errorMessage,
+  queueCounts,
+  statusesOf,
+  useFlyStore,
+} from './state/fly-store';
 import {useTheme} from './theme/use-theme';
-
-const counts = {ready: 0, working: 0, ci: 0, failed: 0};
 
 export const AppShell = () => {
   const {
@@ -27,6 +30,8 @@ export const AppShell = () => {
     sessions,
     activeSessionName,
     applySessions,
+    queue,
+    applyQueue,
     startSession,
     killSession,
     createTask,
@@ -51,6 +56,8 @@ export const AppShell = () => {
     [applySessions],
   );
 
+  useEffect(() => window.fly.queue.onChanged(applyQueue), [applyQueue]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey && event.key === 'n' && canCreateTask) {
@@ -69,6 +76,9 @@ export const AppShell = () => {
     }
     return result;
   }, [sessions]);
+
+  const counts = useMemo(() => queueCounts(queue), [queue]);
+  const statuses = useMemo(() => statusesOf(queue), [queue]);
 
   const openTask = () => {
     useFlyStore.setState({error: null});
@@ -152,6 +162,7 @@ export const AppShell = () => {
               onSelect={select}
               onOpenInEditor={path => void openInEditor(path)}
               sessionCounts={sessionCounts}
+              statuses={statuses}
             />
           )}
           <SessionPanel
@@ -166,7 +177,7 @@ export const AppShell = () => {
           <PlaceholderPanel title="Diff / PR" hint="Marco 4" />
         </div>
       </div>
-      <FooterBar counts={counts} />
+      <FooterBar counts={counts} message={queue.message} />
       <NewTaskDialog
         open={taskOpen}
         repos={workspace.repos}

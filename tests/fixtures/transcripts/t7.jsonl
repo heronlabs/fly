@@ -1,0 +1,3 @@
+{"type":"assistant","uuid":"a7","parentUuid":"u6","message":{"id":"msg_7","role":"assistant","content":[{"type":"tool_use","id":"toolu_w2","name":"ScheduleWakeup","input":{"stop":true}}],"stop_reason":"tool_use"}}
+{"type":"user","uuid":"u7","parentUuid":"a7","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_w2","content":"Loop stopped — cancelled 1 pending wakeup(s)."}]},"toolUseResult":{"stopped":true,"cancelledWakeups":1,"scheduledFor":0,"clampedDelaySeconds":0,"wasClamped":false}}
+{"type":"system","subtype":"turn_duration","uuid":"s7","parentUuid":"u7","durationMs":800,"messageCount":2}

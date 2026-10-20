@@ -1,0 +1,1 @@
+{"type":"assistant","uuid":"a3","parentUuid":"u2","message":{"id":"msg_3","role":"assistant","content":[{"type":"tool_use","id":"toolu_b1","name":"Bash","input":{"command":"pnpm test"}}],"stop_reason":"tool_use"}}
