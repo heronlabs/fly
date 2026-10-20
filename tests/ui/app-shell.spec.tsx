@@ -3,8 +3,15 @@ import userEvent from '@testing-library/user-event';
 
 import {AppShell} from '../../src/application/ui/app-shell';
 import {useFlyStore} from '../../src/application/ui/state/fly-store';
+import type {SessionsSnapshot} from '../../src/core/domain/session';
 import type {AppConfig} from '../../src/core/domain/settings';
 import type {Workspace} from '../../src/core/domain/workspace';
+
+vi.mock('../../src/application/ui/terminal/terminal-view', () => ({
+  TerminalView: ({sessionName}: {sessionName: string}) => (
+    <div data-testid="terminal">{sessionName}</div>
+  ),
+}));
 
 const workspace: Workspace = {
   root: '/tmp/x',
@@ -26,10 +33,20 @@ const config = (theme: AppConfig['theme']): AppConfig => ({
   theme,
 });
 
+const emptySessions: SessionsSnapshot = {
+  tmux: 'ok',
+  message: null,
+  sessions: [],
+};
+
 const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   vi.mocked(window.fly.settings.get).mockResolvedValue(config('dark'));
   vi.mocked(window.fly.workspace.onChanged).mockReturnValue(vi.fn());
+  vi.mocked(window.fly.sessions.onChanged).mockReturnValue(vi.fn());
+  vi.mocked(window.fly.sessions.list).mockResolvedValue(emptySessions);
   useFlyStore.setState({
+    sessions: emptySessions,
+    activeSessionName: null,
     workspace: null,
     config: config('dark'),
     selectedWorktreeId: null,
@@ -80,22 +97,21 @@ describe('AppShell', () => {
     const listener = vi.mocked(window.fly.workspace.onChanged).mock
       .calls[0]?.[0] as (ws: Workspace) => void;
     act(() => listener(workspace));
-    expect(screen.getByText('Sessão')).toBeVisible();
+    expect(screen.getByText('Selecione um worktree')).toBeVisible();
   });
 
   it('renders panels, placeholders and footer with a workspace', async () => {
     seed({workspace});
     await renderShell();
     expect(screen.getByRole('navigation', {name: 'Worktrees'})).toBeVisible();
-    expect(screen.getByText('Sessão')).toBeVisible();
-    expect(screen.getByText('Terminal chega no marco 2')).toBeVisible();
+    expect(screen.getByText('Selecione um worktree')).toBeVisible();
     expect(screen.getByText('Diff / PR')).toBeVisible();
     expect(screen.getByText('Marco 4')).toBeVisible();
     expect(screen.getByText('Esperando você')).toBeVisible();
     expect(screen.getByText('Agente rodando')).toBeVisible();
     expect(screen.getByText('CI')).toBeVisible();
     expect(screen.getByText('Falhou')).toBeVisible();
-    expect(screen.getByRole('button', {name: /Nova tarefa/})).toBeDisabled();
+    expect(screen.getByRole('button', {name: /Nova tarefa/})).toBeEnabled();
   });
 
   it('shows the empty-root state and reopens the picker', async () => {
@@ -167,5 +183,164 @@ describe('AppShell', () => {
     const rows = screen.getAllByRole('button', {name: 'Abrir no VSCode'});
     await userEvent.setup().click(rows[rows.length - 1] as HTMLElement);
     expect(await screen.findByRole('alert')).toHaveTextContent('sem code');
+  });
+
+  it('Should unsubscribe from session pushes on unmount', async () => {
+    seed({workspace});
+    const unsubscribe = vi.fn();
+    vi.mocked(window.fly.sessions.onChanged).mockReturnValue(unsubscribe);
+    const view = render(<AppShell />);
+    await act(async () => {});
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('Should apply session pushes and render the terminal for the selected worktree', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    await renderShell();
+    expect(screen.getByRole('button', {name: 'Iniciar sessão'})).toBeVisible();
+    const listener = vi.mocked(window.fly.sessions.onChanged).mock
+      .calls[0]?.[0] as (snapshot: SessionsSnapshot) => void;
+    act(() =>
+      listener({
+        tmux: 'ok',
+        message: null,
+        sessions: [
+          {
+            name: 'repo-a-abc123',
+            worktreeId: 'w1',
+            createdAt: 1,
+            attachedClients: 0,
+            origin: 'fly',
+            task: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByTestId('terminal')).toHaveTextContent('repo-a-abc123');
+  });
+
+  it('Should start a session for the selected worktree', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.sessions.start).mockResolvedValue('repo-a-abc123');
+    await renderShell();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', {name: 'Iniciar sessão'}));
+    expect(window.fly.sessions.start).toHaveBeenCalledWith('w1');
+  });
+
+  it('Should kill a session after confirmation', async () => {
+    const user = userEvent.setup();
+    seed({
+      workspace,
+      selectedWorktreeId: 'w1',
+      sessions: {
+        tmux: 'ok',
+        message: null,
+        sessions: [
+          {
+            name: 'repo-a-abc123',
+            worktreeId: 'w1',
+            createdAt: 1,
+            attachedClients: 0,
+            origin: 'fly',
+            task: null,
+          },
+          {
+            name: 'repo-a-def456',
+            worktreeId: 'w1',
+            createdAt: 2,
+            attachedClients: 0,
+            origin: 'fly',
+            task: null,
+          },
+        ],
+      },
+    });
+    vi.mocked(window.fly.sessions.list).mockResolvedValue(emptySessions);
+    vi.mocked(window.fly.sessions.kill).mockResolvedValue();
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: 'repo-a-def456'}));
+    expect(screen.getByTestId('terminal')).toHaveTextContent('repo-a-def456');
+    await user.click(screen.getByRole('button', {name: 'Encerrar sessão'}));
+    await user.click(screen.getByRole('button', {name: 'Confirmar'}));
+    expect(window.fly.sessions.kill).toHaveBeenCalledWith('repo-a-def456');
+  });
+
+  it('Should open the dialog from the button, defaulting to the selected repo', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    await renderShell();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', {name: /Nova tarefa/}));
+    expect(screen.getByRole('dialog', {name: 'Nova tarefa'})).toBeVisible();
+    expect(screen.getByLabelText('Repositório')).toHaveValue('repo-a');
+  });
+
+  it('Should open the dialog with Cmd+N and ignore it without repos', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    await renderShell();
+    await user.keyboard('{Meta>}n{/Meta}');
+    expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('Should not open the dialog with Cmd+N when the workspace has no repos', async () => {
+    const user = userEvent.setup();
+    seed({workspace: {root: '/tmp/x', repos: [], worktrees: []}});
+    await renderShell();
+    await user.keyboard('{Meta>}n{/Meta}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /Nova tarefa/})).toBeDisabled();
+  });
+
+  it('Should ignore other Cmd shortcuts', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    await renderShell();
+    await user.keyboard('{Meta>}m{/Meta}n');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Should create the task and close the dialog', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    vi.mocked(window.fly.tasks.create).mockResolvedValue('repo-a-abc123');
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
+    await user.type(screen.getByLabelText('Descrição'), 'corrigir bug');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    expect(window.fly.tasks.create).toHaveBeenCalledWith({
+      repoId: 'repo-a',
+      description: 'corrigir bug',
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Should keep the dialog open and show the error when creating fails', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    vi.mocked(window.fly.tasks.create).mockRejectedValue(
+      new Error('Repositório não encontrado'),
+    );
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
+    await user.type(screen.getByLabelText('Descrição'), 'x');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    const dialog = screen.getByRole('dialog');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Repositório não encontrado',
+    );
+    expect(dialog).toContainElement(screen.getByRole('alert'));
+  });
+
+  it('Should cancel the dialog', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
