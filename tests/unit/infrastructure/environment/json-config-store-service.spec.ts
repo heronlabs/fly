@@ -11,6 +11,7 @@ const readText = vi.fn();
 const writeText = vi.fn();
 const fileStore: FileStore = {
   readDir: vi.fn(),
+  realPath: vi.fn(),
   exists,
   readText,
   writeText,

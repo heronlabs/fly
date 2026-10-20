@@ -1,4 +1,11 @@
-import {access, mkdir, readdir, readFile, writeFile} from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  writeFile,
+} from 'node:fs/promises';
 import {dirname} from 'node:path';
 
 import {Injectable} from '@nestjs/common';
@@ -14,6 +21,10 @@ export class NodeFileStoreService extends FileStore {
       isDirectory: entry.isDirectory(),
       isFile: entry.isFile(),
     }));
+  }
+
+  realPath(path: string): Promise<string> {
+    return realpath(path);
   }
 
   async exists(path: string): Promise<boolean> {

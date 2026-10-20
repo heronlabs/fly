@@ -25,7 +25,7 @@ export class WorkspaceService {
   ) {}
 
   async discover(root: string): Promise<Workspace> {
-    const base = resolve(root);
+    const base = await this.fileStore.realPath(resolve(root));
     const repos = (await this.findRepos(base)).sort(byId);
     const perRepo = await Promise.all(
       repos.map(repo => this.loadWorktrees(base, repo)),

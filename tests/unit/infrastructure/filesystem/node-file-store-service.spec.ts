@@ -1,4 +1,5 @@
-import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {realpathSync} from 'node:fs';
+import {mkdir, mkdtemp, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -36,5 +37,13 @@ describe('NodeFileStoreService', () => {
     const path = join(dir, 'a', 'b', 'c.json');
     await store.writeText(path, '{"k":1}');
     expect(await store.readText(path)).toBe('{"k":1}');
+  });
+
+  it('Should resolve a symlinked directory to its real path', async () => {
+    await mkdir(join(dir, 'real'));
+    await symlink(join(dir, 'real'), join(dir, 'link'));
+    expect(await store.realPath(join(dir, 'link'))).toBe(
+      realpathSync(join(dir, 'real')),
+    );
   });
 });
