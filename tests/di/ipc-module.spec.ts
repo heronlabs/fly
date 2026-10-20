@@ -20,13 +20,27 @@ import {ShellHandler} from '../../src/application/ipc/handlers/shell-handler';
 import {TerminalHandler} from '../../src/application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from '../../src/application/ipc/handlers/workspace-handler';
 import {IpcModule} from '../../src/application/ipc/ipc-module';
+import {CLAUDE_PROJECTS_DIR} from '../../src/infrastructure/claude/tokens';
 
 describe('IpcModule (real Nest DI)', () => {
+  // Transcripts resolve under this dir, never the real ~/.claude.
+  let claudeConfigDir = '';
+  let previousConfigDir: string | undefined;
+
   beforeAll(() => {
     userData.path = mkdtempSync(join(tmpdir(), 'fly-di-'));
+    claudeConfigDir = mkdtempSync(join(tmpdir(), 'fly-di-claude-'));
+    previousConfigDir = process.env['CLAUDE_CONFIG_DIR'];
+    process.env['CLAUDE_CONFIG_DIR'] = claudeConfigDir;
   });
 
   afterAll(() => {
+    if (previousConfigDir === undefined) {
+      delete process.env['CLAUDE_CONFIG_DIR'];
+    } else {
+      process.env['CLAUDE_CONFIG_DIR'] = previousConfigDir;
+    }
+    rmSync(claudeConfigDir, {recursive: true, force: true});
     rmSync(userData.path, {recursive: true, force: true});
   });
 
@@ -37,6 +51,9 @@ describe('IpcModule (real Nest DI)', () => {
     });
 
     try {
+      expect(context.get(CLAUDE_PROJECTS_DIR)).toBe(
+        join(claudeConfigDir, 'projects'),
+      );
       expect(() => context.get(WorkspaceHandler).register()).not.toThrow();
       expect(() => context.get(SettingsHandler).register()).not.toThrow();
       expect(() => context.get(ShellHandler).register()).not.toThrow();

@@ -5,6 +5,7 @@ import {
   MultiplexerSession,
   SessionLauncher,
 } from '../interfaces/session-launcher';
+import {TranscriptSource} from '../interfaces/transcript-source';
 import {
   claudeCommand,
   normalizePrompt,
@@ -41,6 +42,7 @@ export class TaskService {
     private readonly sessions: SessionService,
     private readonly launcher: SessionLauncher,
     private readonly ids: IdGenerator,
+    private readonly transcripts: TranscriptSource,
   ) {}
 
   async create(input: {repoId: string; description: string}): Promise<string> {
@@ -98,21 +100,48 @@ export class TaskService {
       const repo = workspace.repos.find(
         r => r.path === session.options['@fly_task_repo'],
       );
-      const baseline = parseBaseline(session.options['@fly_task_baseline']);
-      if (!repo || !baseline) continue;
-      const candidate = workspace.worktrees
-        .filter(
-          w =>
-            w.repoId === repo.id &&
-            !w.isMain &&
-            !baseline.includes(w.path) &&
-            !taken.has(w.path),
-        )
-        .map(w => w.path)
-        .sort()[0];
-      if (!candidate) continue;
-      taken.add(candidate);
-      await this.launcher.setOption(session.name, '@fly_worktree', candidate);
+      if (!repo) continue;
+      const open = workspace.worktrees
+        .filter(w => w.repoId === repo.id && !w.isMain && !taken.has(w.path))
+        .map(w => w.path);
+      const entered = await this.enteredWorktree(repo.path, session);
+      // A named worktree is waited for, never overruled by the fallback (P8).
+      const target = entered
+        ? open.find(path => path === entered)
+        : this.fallback(session, repo.path, open, pending);
+      if (!target) continue;
+      taken.add(target);
+      await this.launcher.setOption(session.name, '@fly_worktree', target);
     }
+  }
+
+  // A missing session id or a failed read is no evidence.
+  private async enteredWorktree(
+    launchCwd: string,
+    session: MultiplexerSession,
+  ): Promise<string | null> {
+    const sessionId = session.options['@fly_session_id'];
+    if (!sessionId) return null;
+    const summary = await this.transcripts
+      .forSession({launchCwd, sessionId})
+      .catch(() => null);
+    return summary?.worktreePath ?? null;
+  }
+
+  // Only a repo's lone pending task takes the repo's lone new worktree. Counted
+  // over the start-of-pass list, so no task falls back in a pass another bound.
+  private fallback(
+    session: MultiplexerSession,
+    repoPath: string,
+    open: string[],
+    pending: MultiplexerSession[],
+  ): string | undefined {
+    const baseline = parseBaseline(session.options['@fly_task_baseline']);
+    const inRepo = pending.filter(
+      s => s.options['@fly_task_repo'] === repoPath,
+    );
+    if (inRepo.length !== 1 || !baseline) return undefined;
+    const fresh = open.filter(path => !baseline.includes(path));
+    return fresh.length === 1 ? fresh[0] : undefined;
   }
 }
