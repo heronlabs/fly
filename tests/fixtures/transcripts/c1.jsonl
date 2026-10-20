@@ -1,0 +1,2 @@
+{"type":"attachment","uuid":"c1","parentUuid":null,"sessionId":"22222222-2222-4222-8222-222222222222","attachment":{"type":"hook_success","hookEvent":"SessionStart","hookName":"SessionStart:clear"}}
+{"type":"attachment","uuid":"c2","parentUuid":"c1","sessionId":"22222222-2222-4222-8222-222222222222","session_id":"11111111-1111-4111-8111-111111111111","attachment":{"type":"date"}}

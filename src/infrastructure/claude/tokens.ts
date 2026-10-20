@@ -1,0 +1,1 @@
+export const CLAUDE_PROJECTS_DIR = Symbol('CLAUDE_PROJECTS_DIR');
