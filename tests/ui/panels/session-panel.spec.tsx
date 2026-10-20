@@ -174,6 +174,26 @@ describe('SessionPanel', () => {
       expect(screen.getByTestId('terminal')).toHaveTextContent('c');
     });
 
+    it('Should give way to a session started elsewhere for the same worktree', () => {
+      const props = setup({snapshot: snapshot([session('a')])});
+      exit('a');
+      props.rerender({snapshot: snapshot([])});
+      expect(screen.getByTestId('terminal')).toHaveTextContent('a');
+
+      props.rerender({
+        snapshot: snapshot([session('b')]),
+        activeSessionName: 'b',
+      });
+      expect(screen.getByTestId('terminal')).toHaveTextContent('b');
+      expect(screen.queryByText('Outras sessões')).not.toBeInTheDocument();
+
+      props.rerender({snapshot: snapshot([]), activeSessionName: null});
+      expect(screen.queryByTestId('terminal')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', {name: 'Iniciar sessão'}),
+      ).toBeVisible();
+    });
+
     it('Should forget the exited terminal when another worktree is selected', () => {
       const props = setup({snapshot: snapshot([session('a')])});
       exit('a');

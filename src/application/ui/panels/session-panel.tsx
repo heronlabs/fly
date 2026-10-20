@@ -157,7 +157,18 @@ export const SessionPanel = ({
     name: string;
     worktreeId: string;
   } | null>(null);
-  if (ended && (ended.worktreeId !== worktree?.id || snapshot.tmux !== 'ok')) {
+  const names = snapshot.sessions
+    .filter(session => session.worktreeId === worktree?.id)
+    .map(session => session.name);
+  // A session started or selected elsewhere (e.g. Nova tarefa) replaces it.
+  const replaced =
+    activeSessionName !== null &&
+    activeSessionName !== ended?.name &&
+    names.includes(activeSessionName);
+  if (
+    ended &&
+    (ended.worktreeId !== worktree?.id || snapshot.tmux !== 'ok' || replaced)
+  ) {
     setEnded(null);
   }
 
@@ -177,9 +188,6 @@ export const SessionPanel = ({
       </section>
     );
   }
-  const names = snapshot.sessions
-    .filter(session => session.worktreeId === worktree.id)
-    .map(session => session.name);
   const start = () => {
     setEnded(null);
     onStart(worktree.id);
