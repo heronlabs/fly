@@ -231,4 +231,63 @@ describe('TerminalView', () => {
     expect(terminal().detach).not.toHaveBeenCalled();
     expect((h.terms[0]?.options['theme'] as {red: string}).red).toBe('#dc2626');
   });
+
+  it('Should show the overlay without onExit when attach rejects', async () => {
+    const onExit = vi.fn();
+    vi.mocked(terminal().attach).mockRejectedValue(new Error('gone'));
+    render(<TerminalView sessionName="s1" theme="dark" onExit={onExit} />);
+    await flush();
+    expect(screen.getByRole('status')).toHaveTextContent('Sessão encerrada');
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('Should do nothing when attach rejects after unmount', async () => {
+    let reject!: (e: Error) => void;
+    vi.mocked(terminal().attach).mockReturnValue(
+      new Promise<string>((_, r) => (reject = r)),
+    );
+    const {unmount} = render(<TerminalView sessionName="s1" theme="dark" />);
+    unmount();
+    reject(new Error('gone'));
+    await flush();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(terminal().detach).not.toHaveBeenCalled();
+  });
+
+  it('Should swallow a detach rejection on unmount', async () => {
+    vi.mocked(terminal().detach).mockRejectedValue(new Error('gone'));
+    const {unmount} = render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    unmount();
+    await flush();
+    expect(terminal().detach).toHaveBeenCalledWith('t1');
+  });
+
+  it('Should swallow a detach rejection after a late attach', async () => {
+    let resolve!: (id: string) => void;
+    vi.mocked(terminal().attach).mockReturnValue(
+      new Promise<string>(r => (resolve = r)),
+    );
+    vi.mocked(terminal().detach).mockRejectedValue(new Error('gone'));
+    const {unmount} = render(<TerminalView sessionName="s1" theme="dark" />);
+    unmount();
+    resolve('late');
+    await flush();
+    expect(terminal().detach).toHaveBeenCalledWith('late');
+  });
+
+  it('Should resize after attach when the size changed meanwhile', async () => {
+    let resolve!: (id: string) => void;
+    vi.mocked(terminal().attach).mockReturnValue(
+      new Promise<string>(r => (resolve = r)),
+    );
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    h.fitSize = {cols: 90, rows: 20};
+    observerCb();
+    expect(terminal().resize).not.toHaveBeenCalled();
+    resolve('t1');
+    await flush();
+    expect(terminal().resize).toHaveBeenCalledTimes(1);
+    expect(terminal().resize).toHaveBeenCalledWith('t1', {cols: 90, rows: 20});
+  });
 });

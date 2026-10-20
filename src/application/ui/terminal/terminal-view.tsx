@@ -93,18 +93,26 @@ export const TerminalView = ({
     });
     observer.observe(element);
 
-    void api.attach(sessionName, size).then(attached => {
-      if (disposed) {
-        void api.detach(attached);
-        return;
-      }
-      id = attached;
-      early.splice(0).forEach(run => run());
-      if (xterm.cols !== size.cols || xterm.rows !== size.rows) {
-        size = {cols: xterm.cols, rows: xterm.rows};
-        api.resize(attached, size);
-      }
-    });
+    api.attach(sessionName, size).then(
+      attached => {
+        if (disposed) {
+          api.detach(attached).catch(() => undefined);
+          return;
+        }
+        id = attached;
+        early.splice(0).forEach(run => run());
+        if (xterm.cols !== size.cols || xterm.rows !== size.rows) {
+          size = {cols: xterm.cols, rows: xterm.rows};
+          api.resize(attached, size);
+        }
+      },
+      () => {
+        if (!disposed) {
+          early.length = 0;
+          setExited(true);
+        }
+      },
+    );
 
     return () => {
       disposed = true;
@@ -113,7 +121,7 @@ export const TerminalView = ({
       input.dispose();
       observer.disconnect();
       if (id !== null) {
-        void api.detach(id);
+        api.detach(id).catch(() => undefined);
       }
       xterm.dispose();
       term.current = null;
