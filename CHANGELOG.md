@@ -1,3 +1,24 @@
+## v0.0.4 (2026-10-20)
+
+### Documentation
+
+* docs: document mutation testing and how to kill survivors (8c3db8a82fdec155b757ed56048e2277952c1c0f)
+
+### Miscellaneous Chores
+
+* other: tighten comments and the ambiguous-guard disable (aefa3468ecf47af14f6f3081d5f2aa6a7a684c99)
+* other(infrastructure): kill surviving mutants in the adapters (8ba10eb86b42ea0c817521b9c641f9e0d4a52e70)
+* other(infrastructure): drop equivalent-mutant shapes in the adapters (99ff600c178647281b90ae2d2adcf5c351bcdfc4)
+* other(core): read a worktree's pull requests without a fallback list (da389d1b47b4348750dd9010488203288ff0f2e5)
+* other(core): kill surviving mutants in the core services (b744513fb8104cbbff76f90c291628ee8de3a626)
+* other(core): drop equivalent-mutant shapes in the services (f3ba0ba1a367019f3ddfa815893cb27732bf53d4)
+* other(claude): observe read serialization through the public API (eda5136c90436d3ba85dac5c81aa6b8f00e838e8)
+* other(infra): kill surviving mutants in transcript reader and IPC handlers (d7f277538296727566178dd33e79bb64be4d760c)
+* other(ipc): drop redundant state that mutation testing found unobservable (8c3bfc0bb6c444f88feb6034409d1cd0b1f7618b)
+* other(parsers): kill surviving mutants in transcript and receipt parsers (221d266ede844288f74f0e6dcb390d6b912bb4df)
+* other(supera): drop unobservable initial fence state in receipt parser (2e798f5b630981abdee386f9c87f67bc15c257e8)
+* other: add Stryker mutation testing like roost (8b9a50dbfda1089f561d74b9297451476c61c403)
+
 ## v0.0.3 (2026-10-20)
 
 ### Features
