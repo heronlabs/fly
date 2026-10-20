@@ -172,6 +172,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   },
 
   async createTask(input) {
+    set({error: null});
     try {
       const name = await window.fly.tasks.create(input);
       const main = get().workspace?.worktrees.find(

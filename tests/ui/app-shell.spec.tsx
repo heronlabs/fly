@@ -278,7 +278,7 @@ describe('AppShell', () => {
     expect(screen.getByLabelText('Repositório')).toHaveValue('repo-a');
   });
 
-  it('Should open the dialog with Cmd+N and ignore it without repos', async () => {
+  it('Should open the dialog with Cmd+N', async () => {
     const user = userEvent.setup();
     seed({workspace});
     await renderShell();
@@ -342,5 +342,55 @@ describe('AppShell', () => {
     await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Should clear the error after a failed create is retried successfully', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    vi.mocked(window.fly.tasks.create)
+      .mockRejectedValueOnce(new Error('falhou'))
+      .mockResolvedValueOnce('repo-a-abc123');
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
+    await user.type(screen.getByLabelText('Descrição'), 'x');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('falhou');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('Should not leak a failed create error to the shell after cancelling', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    vi.mocked(window.fly.tasks.create).mockRejectedValue(new Error('falhou'));
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
+    await user.type(screen.getByLabelText('Descrição'), 'x');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    await screen.findByRole('alert');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('Should ignore repeated submits while the create is pending', async () => {
+    const user = userEvent.setup();
+    seed({workspace});
+    let settle: (error?: Error) => void = () => undefined;
+    vi.mocked(window.fly.tasks.create).mockReturnValue(
+      new Promise((resolve, reject) => {
+        settle = error => (error ? reject(error) : resolve('n'));
+      }),
+    );
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
+    await user.type(screen.getByLabelText('Descrição'), 'x');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    expect(screen.getByRole('button', {name: 'Iniciar'})).toBeDisabled();
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(window.fly.tasks.create).toHaveBeenCalledTimes(1);
+    await act(async () => settle(new Error('falhou')));
+    expect(screen.getByRole('button', {name: 'Iniciar'})).toBeEnabled();
   });
 });

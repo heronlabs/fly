@@ -7,6 +7,7 @@ type Props = {
   repos: Repo[];
   defaultRepoId: string | null;
   error?: string | null;
+  submitting?: boolean;
   onCancel(): void;
   onSubmit(input: {repoId: string; description: string}): void;
 };
@@ -33,6 +34,7 @@ const DialogBody = ({
   repos,
   defaultRepoId,
   error,
+  submitting = false,
   onCancel,
   onSubmit,
 }: Omit<Props, 'open'>) => {
@@ -41,7 +43,7 @@ const DialogBody = ({
   const trimmed = description.trim();
 
   const submit = () => {
-    if (trimmed) {
+    if (trimmed && !submitting) {
       onSubmit({repoId, description: trimmed});
     }
   };
@@ -124,9 +126,9 @@ const DialogBody = ({
           </button>
           <button
             type="button"
-            disabled={!trimmed}
+            disabled={!trimmed || submitting}
             onClick={submit}
-            style={{...buttonStyle, opacity: trimmed ? 1 : 0.5}}
+            style={{...buttonStyle, opacity: trimmed && !submitting ? 1 : 0.5}}
           >
             Iniciar
           </button>

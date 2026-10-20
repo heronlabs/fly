@@ -35,6 +35,7 @@ export const AppShell = () => {
   const theme = useTheme(config.theme);
   const bootstrapped = useRef(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const canCreateTask = (workspace?.repos.length ?? 0) > 0;
 
   useEffect(() => {
@@ -171,10 +172,17 @@ export const AppShell = () => {
         repos={workspace.repos}
         defaultRepoId={selected?.repoId ?? null}
         error={error}
-        onCancel={() => setTaskOpen(false)}
-        onSubmit={input =>
-          void createTask(input).then(ok => ok && setTaskOpen(false))
-        }
+        submitting={submitting}
+        onCancel={() => {
+          useFlyStore.setState({error: null});
+          setTaskOpen(false);
+        }}
+        onSubmit={input => {
+          setSubmitting(true);
+          void createTask(input)
+            .then(ok => ok && setTaskOpen(false))
+            .finally(() => setSubmitting(false));
+        }}
       />
     </div>
   );
