@@ -16,6 +16,10 @@ Electron desktop app (main process runs NestJS, renderer is React) for driving a
 
 Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`.
 
+## Testing and tmux
+
+Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill that server afterwards. Never the default tmux server: production sessions live there, so bare `tmux ls` / `tmux attach -t <name>` from Termius sees them.
+
 ## Layout and layer rules
 
 `src/{application,core,infrastructure}` plus `src/main.ts` and `src/preload.ts`; the renderer lives under `src/application/ui`. Kebab-case files with `-service.ts` / `-handler.ts` / `-module.ts` suffixes.
