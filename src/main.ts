@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {NestFactory} from '@nestjs/core';
 import {app, BrowserWindow} from 'electron';
 
+import {QueueHandler} from './application/ipc/handlers/queue-handler';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
@@ -91,6 +92,7 @@ app
     context.get(SettingsHandler).register();
     context.get(ShellHandler).register();
     context.get(SessionHandler).register();
+    context.get(QueueHandler).register();
     const terminalHandler = context.get(TerminalHandler);
     terminalHandler.register();
     const onReset = () => terminalHandler.reset();

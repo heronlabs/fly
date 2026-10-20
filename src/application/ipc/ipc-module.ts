@@ -9,11 +9,13 @@ import {ConfigStore} from '../../core/interfaces/config-store';
 import {EditorLauncher} from '../../core/interfaces/editor-launcher';
 import {FileStore} from '../../core/interfaces/file-store';
 import {IdGenerator} from '../../core/interfaces/id-generator';
+import {PrGateway} from '../../core/interfaces/pr-gateway';
 import {SessionLauncher} from '../../core/interfaces/session-launcher';
 import {TerminalSpawner} from '../../core/interfaces/terminal-spawner';
 import {TranscriptSource} from '../../core/interfaces/transcript-source';
 import {VcsGateway} from '../../core/interfaces/vcs-gateway';
 import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
+import {QueueService} from '../../core/services/queue-service';
 import {SessionService} from '../../core/services/session-service';
 import {SettingsService} from '../../core/services/settings-service';
 import {TaskService} from '../../core/services/task-service';
@@ -28,10 +30,12 @@ import {VscodeEditorLauncherService} from '../../infrastructure/environment/vsco
 import {GitDirWatcherService} from '../../infrastructure/filesystem/git-dir-watcher-service';
 import {NodeFileStoreService} from '../../infrastructure/filesystem/node-file-store-service';
 import {GitCliService} from '../../infrastructure/git/git-cli-service';
+import {GhCliService} from '../../infrastructure/github/gh-cli-service';
 import {ExecCommandRunnerService} from '../../infrastructure/process/exec-command-runner-service';
 import {NodePtyTerminalService} from '../../infrastructure/pty/node-pty-terminal-service';
 import {TmuxSessionService} from '../../infrastructure/tmux/tmux-session-service';
 import {TMUX_SOCKET} from '../../infrastructure/tmux/tokens';
+import {QueueHandler} from './handlers/queue-handler';
 import {SessionHandler} from './handlers/session-handler';
 import {SettingsHandler} from './handlers/settings-handler';
 import {ShellHandler} from './handlers/shell-handler';
@@ -45,6 +49,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST} from './ipc-types';
     {provide: CommandRunner, useClass: ExecCommandRunnerService},
     {provide: FileStore, useClass: NodeFileStoreService},
     {provide: VcsGateway, useClass: GitCliService},
+    {provide: PrGateway, useClass: GhCliService},
     {provide: ConfigStore, useClass: JsonConfigStoreService},
     {provide: EditorLauncher, useClass: VscodeEditorLauncherService},
     {provide: WorkspaceWatcher, useClass: GitDirWatcherService},
@@ -84,11 +89,13 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST} from './ipc-types';
     SettingsService,
     SessionService,
     TaskService,
+    QueueService,
     TerminalService,
     WorkspaceHandler,
     SettingsHandler,
     ShellHandler,
     SessionHandler,
+    QueueHandler,
     TerminalHandler,
   ],
 })

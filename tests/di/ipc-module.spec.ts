@@ -14,6 +14,7 @@ vi.mock('electron', () => ({
   ipcMain: {handle: vi.fn(), on: vi.fn()},
 }));
 
+import {QueueHandler} from '../../src/application/ipc/handlers/queue-handler';
 import {SessionHandler} from '../../src/application/ipc/handlers/session-handler';
 import {SettingsHandler} from '../../src/application/ipc/handlers/settings-handler';
 import {ShellHandler} from '../../src/application/ipc/handlers/shell-handler';
@@ -61,6 +62,10 @@ describe('IpcModule (real Nest DI)', () => {
       const sessions = context.get(SessionHandler);
       expect(() => sessions.register()).not.toThrow();
       sessions.stop();
+
+      const queue = context.get(QueueHandler);
+      expect(() => queue.register()).not.toThrow();
+      queue.stop();
 
       expect(() => context.get(TerminalHandler).register()).not.toThrow();
     } finally {
