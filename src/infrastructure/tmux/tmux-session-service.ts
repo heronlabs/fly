@@ -22,6 +22,9 @@ const LIST_FORMAT = [
 
 const NO_SERVER = /no server running|error connecting to/;
 
+// A hung tmux must not stall the session poll forever.
+const TMUX_TIMEOUT_MS = 5000;
+
 @Injectable()
 export class TmuxSessionService extends SessionLauncher {
   constructor(
@@ -171,7 +174,9 @@ export class TmuxSessionService extends SessionLauncher {
   }
 
   private tmux(args: string[]): Promise<CommandResult> {
-    return this.runner.run('tmux', [...this.socketArgs(), ...args]);
+    return this.runner.run('tmux', [...this.socketArgs(), ...args], {
+      timeoutMs: TMUX_TIMEOUT_MS,
+    });
   }
 
   private async checked(args: string[], subcommand: string): Promise<string> {

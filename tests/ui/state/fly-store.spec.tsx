@@ -292,6 +292,33 @@ describe('errorMessage', () => {
       expect(useFlyStore.getState().error).toBe('no');
     });
 
+    it('Should ignore a second startSession while one is in flight', async () => {
+      let finish: (name: string) => void = () => undefined;
+      vi.mocked(window.fly.sessions.start).mockReturnValueOnce(
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+      );
+      vi.mocked(window.fly.sessions.list).mockResolvedValue(
+        snapshot([{name: 'a-1', worktreeId: 'a#main'}]),
+      );
+      const first = useFlyStore.getState().startSession('a#main');
+      await useFlyStore.getState().startSession('a#main');
+      expect(window.fly.sessions.start).toHaveBeenCalledTimes(1);
+      finish('a-1');
+      await first;
+      expect(useFlyStore.getState().activeSessionName).toBe('a-1');
+    });
+
+    it('Should allow a new startSession once the previous one failed', async () => {
+      vi.mocked(window.fly.sessions.start)
+        .mockRejectedValueOnce(new Error('no'))
+        .mockResolvedValueOnce('a-2');
+      await useFlyStore.getState().startSession('a#main');
+      await useFlyStore.getState().startSession('a#main');
+      expect(window.fly.sessions.start).toHaveBeenCalledTimes(2);
+    });
+
     it('Should kill a session and reload', async () => {
       vi.mocked(window.fly.sessions.kill).mockResolvedValue(undefined);
       await useFlyStore.getState().killSession('a-1');

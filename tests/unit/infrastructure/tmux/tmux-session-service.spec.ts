@@ -2,6 +2,7 @@ import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {TmuxSessionService} from '../../../../src/infrastructure/tmux/tmux-session-service';
 
 const ok = (stdout = '') => ({code: 0, stdout, stderr: ''});
+const timeout = {timeoutMs: 5000};
 
 describe('TmuxSessionService', () => {
   const run = vi.fn();
@@ -27,7 +28,11 @@ describe('TmuxSessionService', () => {
 
       await plain().list();
 
-      expect(run).toHaveBeenCalledWith('tmux', ['list-sessions', '-F', format]);
+      expect(run).toHaveBeenCalledWith(
+        'tmux',
+        ['list-sessions', '-F', format],
+        timeout,
+      );
     });
 
     it('Should prefix -L when a socket is set', async () => {
@@ -35,13 +40,11 @@ describe('TmuxSessionService', () => {
 
       await onSocket().list();
 
-      expect(run).toHaveBeenCalledWith('tmux', [
-        '-L',
-        'sock',
-        'list-sessions',
-        '-F',
-        format,
-      ]);
+      expect(run).toHaveBeenCalledWith(
+        'tmux',
+        ['-L', 'sock', 'list-sessions', '-F', format],
+        timeout,
+      );
     });
 
     it('Should parse tab-separated lines and decode option values', async () => {
@@ -137,9 +140,8 @@ describe('TmuxSessionService', () => {
       });
 
       const t = ['-L', 'sock'];
-      expect(run.mock.calls).toEqual([
+      expect(run.mock.calls).toEqual(
         [
-          'tmux',
           [
             ...t,
             'new-session',
@@ -152,23 +154,11 @@ describe('TmuxSessionService', () => {
             '-F',
             '#{window_id}',
           ],
-        ],
-        ['tmux', [...t, 'set-option', '-t', '=n-abc123:', 'mouse', 'on']],
-        ['tmux', [...t, 'set-option', '-t', '=n-abc123:', 'status', 'off']],
-        [
-          'tmux',
+          [...t, 'set-option', '-t', '=n-abc123:', 'mouse', 'on'],
+          [...t, 'set-option', '-t', '=n-abc123:', 'status', 'off'],
           [...t, 'set-option', '-t', '=n-abc123:', 'history-limit', '10000'],
-        ],
-        [
-          'tmux',
           [...t, 'set-option', '-t', '=n-abc123:', '@fly_worktree', '%2Fw%20x'],
-        ],
-        [
-          'tmux',
           [...t, 'set-option', '-t', '=n-abc123:', '@fly_task', "x'y%20z"],
-        ],
-        [
-          'tmux',
           [
             ...t,
             'new-window',
@@ -185,11 +175,11 @@ describe('TmuxSessionService', () => {
             '-F',
             '#{window_id}',
           ],
-        ],
-        ['tmux', [...t, 'kill-window', '-t', '@1']],
-        ['tmux', [...t, 'send-keys', '-t', '@2', '-l', input.command]],
-        ['tmux', [...t, 'send-keys', '-t', '@2', 'Enter']],
-      ]);
+          [...t, 'kill-window', '-t', '@1'],
+          [...t, 'send-keys', '-t', '@2', '-l', input.command],
+          [...t, 'send-keys', '-t', '@2', 'Enter'],
+        ].map(args => ['tmux', args, timeout]),
+      );
     });
 
     it('Should skip fly options when none are given and omit -L without a socket', async () => {
@@ -267,15 +257,11 @@ describe('TmuxSessionService', () => {
 
       await onSocket().setOption('n-1', '@fly_task', 'a b');
 
-      expect(run).toHaveBeenCalledWith('tmux', [
-        '-L',
-        'sock',
-        'set-option',
-        '-t',
-        '=n-1:',
-        '@fly_task',
-        'a%20b',
-      ]);
+      expect(run).toHaveBeenCalledWith(
+        'tmux',
+        ['-L', 'sock', 'set-option', '-t', '=n-1:', '@fly_task', 'a%20b'],
+        timeout,
+      );
     });
   });
 
@@ -285,7 +271,11 @@ describe('TmuxSessionService', () => {
 
       await plain().kill('n-1');
 
-      expect(run).toHaveBeenCalledWith('tmux', ['kill-session', '-t', '=n-1']);
+      expect(run).toHaveBeenCalledWith(
+        'tmux',
+        ['kill-session', '-t', '=n-1'],
+        timeout,
+      );
     });
 
     it('Should throw on failure', async () => {

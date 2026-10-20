@@ -9,10 +9,16 @@ import {
 } from '../interfaces/session-launcher';
 import {claudeCommand, sessionName, sessionPrefix} from './session-naming';
 
-const TMUX_MISSING = 'tmux não encontrado — instale com: brew install tmux';
+export const TMUX_MISSING =
+  'tmux não encontrado — instale com: brew install tmux';
 
 const isMissing = (error: unknown): boolean =>
   (error as {code?: unknown} | null)?.code === 'ENOENT';
+
+// Turns a raw `spawn tmux ENOENT` into the install hint; anything else as is.
+export const rethrowMissing = (error: unknown): never => {
+  throw isMissing(error) ? new Error(TMUX_MISSING) : error;
+};
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -87,12 +93,16 @@ export class SessionService {
     if (!worktree) throw new Error('Worktree não encontrado');
     const uuid = this.ids.uuid();
     const name = sessionName(sessionPrefix(worktree.id), this.ids.hex(3));
-    await this.launcher.start({
-      name,
-      cwd: worktree.path,
-      command: claudeCommand({sessionId: uuid}),
-      options: {'@fly_session_id': uuid, '@fly_worktree': worktree.path},
-    });
+    try {
+      await this.launcher.start({
+        name,
+        cwd: worktree.path,
+        command: claudeCommand({sessionId: uuid}),
+        options: {'@fly_session_id': uuid, '@fly_worktree': worktree.path},
+      });
+    } catch (error) {
+      rethrowMissing(error);
+    }
     return name;
   }
 

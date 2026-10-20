@@ -22,6 +22,7 @@ export type FlyState = {
   error: string | null;
   sessions: SessionsSnapshot;
   activeSessionName: string | null;
+  startingSession: boolean;
   bootstrap(): Promise<void>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
@@ -60,6 +61,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   error: null,
   sessions: {tmux: 'ok', message: null, sessions: []},
   activeSessionName: null,
+  startingSession: false,
 
   async bootstrap() {
     try {
@@ -154,11 +156,16 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   },
 
   async startSession(worktreeId) {
+    // A double click must not start two sessions.
+    if (get().startingSession) return;
+    set({startingSession: true});
     try {
       set({activeSessionName: await window.fly.sessions.start(worktreeId)});
       await get().loadSessions();
     } catch (error) {
       set({error: errorMessage(error)});
+    } finally {
+      set({startingSession: false});
     }
   },
 

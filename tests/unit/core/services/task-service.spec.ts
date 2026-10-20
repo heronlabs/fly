@@ -117,6 +117,23 @@ describe('TaskService', () => {
       expect(() => encodeURIComponent(label)).not.toThrow();
     });
 
+    it('Should map a missing tmux to the install hint', async () => {
+      start.mockRejectedValue(
+        Object.assign(new Error('spawn tmux ENOENT'), {code: 'ENOENT'}),
+      );
+      await expect(
+        service.create({repoId: 'talon', description: 'x'}),
+      ).rejects.toThrow('tmux não encontrado — instale com: brew install tmux');
+    });
+
+    it('Should pass any other start failure through unchanged', async () => {
+      const error = new Error('duplicate session');
+      start.mockRejectedValue(error);
+      await expect(
+        service.create({repoId: 'talon', description: 'x'}),
+      ).rejects.toBe(error);
+    });
+
     it('Should fail without a workspace', async () => {
       currentWorkspace.mockReturnValue(null);
       await expect(

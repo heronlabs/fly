@@ -12,7 +12,7 @@ import {
   sessionName,
   sessionPrefix,
 } from './session-naming';
-import {SessionService} from './session-service';
+import {rethrowMissing, SessionService} from './session-service';
 
 // A baseline we cannot read means we cannot tell which worktrees are new.
 const parseBaseline = (raw: string | undefined): string[] | null => {
@@ -60,18 +60,22 @@ export class TaskService {
     const baseline = workspace.worktrees
       .filter(w => w.repoId === repo.id)
       .map(w => w.path);
-    await this.launcher.start({
-      name,
-      cwd: repo.path,
-      command: claudeCommand({sessionId: uuid, withPrompt: true}),
-      env: {[PROMPT_ENV]: normalizePrompt(`/supera:ship ${description}`)},
-      options: {
-        '@fly_session_id': uuid,
-        '@fly_task': characters.slice(0, TASK_LABEL_LENGTH).join(''),
-        '@fly_task_repo': repo.path,
-        '@fly_task_baseline': JSON.stringify(baseline),
-      },
-    });
+    try {
+      await this.launcher.start({
+        name,
+        cwd: repo.path,
+        command: claudeCommand({sessionId: uuid, withPrompt: true}),
+        env: {[PROMPT_ENV]: normalizePrompt(`/supera:ship ${description}`)},
+        options: {
+          '@fly_session_id': uuid,
+          '@fly_task': characters.slice(0, TASK_LABEL_LENGTH).join(''),
+          '@fly_task_repo': repo.path,
+          '@fly_task_baseline': JSON.stringify(baseline),
+        },
+      });
+    } catch (error) {
+      rethrowMissing(error);
+    }
     return name;
   }
 

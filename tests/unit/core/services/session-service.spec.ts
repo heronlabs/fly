@@ -186,6 +186,21 @@ describe('SessionService', () => {
     );
   });
 
+  it('Should map a missing tmux on start to the install hint', async () => {
+    start.mockRejectedValue(
+      Object.assign(new Error('spawn tmux ENOENT'), {code: 'ENOENT'}),
+    );
+    await expect(service.start('talon')).rejects.toThrow(
+      'tmux não encontrado — instale com: brew install tmux',
+    );
+  });
+
+  it('Should pass any other start failure through unchanged', async () => {
+    const error = new Error('duplicate session');
+    start.mockRejectedValue(error);
+    await expect(service.start('talon')).rejects.toBe(error);
+  });
+
   it('Should delegate kill to the launcher', async () => {
     kill.mockResolvedValue(undefined);
     await service.kill('x');

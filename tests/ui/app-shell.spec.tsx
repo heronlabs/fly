@@ -47,6 +47,7 @@ const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   useFlyStore.setState({
     sessions: emptySessions,
     activeSessionName: null,
+    startingSession: false,
     workspace: null,
     config: config('dark'),
     selectedWorktreeId: null,
