@@ -1,5 +1,8 @@
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
-import {GH_AUTH_MESSAGE} from '../../../../src/core/interfaces/pr-gateway';
+import {
+  GH_AUTH_MESSAGE,
+  GH_TIMEOUT_MESSAGE,
+} from '../../../../src/core/interfaces/pr-gateway';
 import {GhCliService} from '../../../../src/infrastructure/github/gh-cli-service';
 
 describe('GhCliService', () => {
@@ -84,4 +87,27 @@ describe('GhCliService', () => {
 
     await expect(service.list('/r')).rejects.toBe(error);
   });
+
+  it('Should throw the timeout message when gh was killed by the timeout', async () => {
+    const error = Object.assign(new Error('Command failed'), {
+      killed: true,
+      code: null,
+    });
+    run.mockImplementation(() => Promise.reject(error));
+
+    await expect(service.list('/r')).rejects.toThrow(GH_TIMEOUT_MESSAGE);
+    expect(GH_TIMEOUT_MESSAGE).toBe('gh não respondeu em 15 s');
+  });
+
+  it.each([
+    'no git remotes found',
+    'none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`',
+  ])(
+    'Should return no PRs for a repo without a GitHub remote: %s',
+    async stderr => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr});
+
+      expect(await service.list('/r')).toEqual([]);
+    },
+  );
 });
