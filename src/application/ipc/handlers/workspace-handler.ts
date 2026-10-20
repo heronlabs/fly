@@ -13,6 +13,7 @@ export class WorkspaceHandler {
   private readonly logger = new Logger(WorkspaceHandler.name);
   private currentRoot: string | null = null;
   private disposeWatcher: (() => void) | null = null;
+  private watchedPaths: string[] = [];
 
   constructor(
     @Inject(IPC_HOST) private readonly host: IpcHost,
@@ -57,18 +58,31 @@ export class WorkspaceHandler {
   private async load(root: string): Promise<Workspace> {
     const workspace = await this.workspaces.discover(root);
     this.currentRoot = root;
+    this.rewatch(root, workspace);
+    return workspace;
+  }
+
+  private rewatch(root: string, workspace: Workspace): void {
     this.disposeWatcher?.();
+    this.watchedPaths = this.repoPaths(workspace);
     this.disposeWatcher = this.watcher.watch(
-      workspace.repos.map(repo => repo.path),
+      this.watchedPaths,
       () => void this.onChange(root),
     );
-    return workspace;
+  }
+
+  private repoPaths(workspace: Workspace): string[] {
+    return workspace.repos.map(repo => repo.path).sort();
   }
 
   private async onChange(root: string): Promise<void> {
     try {
       const workspace = await this.workspaces.discover(root);
       if (this.currentRoot !== root) return;
+      const paths = this.repoPaths(workspace);
+      if (paths.join('\0') !== this.watchedPaths.join('\0')) {
+        this.rewatch(root, workspace);
+      }
       this.broadcaster.send(channels.workspaceChanged, workspace);
     } catch (error) {
       this.logger.error(

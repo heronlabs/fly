@@ -196,6 +196,42 @@ describe('WorkspaceHandler', () => {
     expect(String(error.mock.calls[0]?.[0])).toContain('texto');
   });
 
+  it('Should rewatch when a rediscovery finds a different repo set', async () => {
+    discover.mockResolvedValueOnce({
+      root: '/r',
+      repos: [{id: 'a', name: 'a', group: '', path: '/r/a'}],
+      worktrees: [],
+    });
+    await invoke(channels.workspaceOpen, '/r');
+    discover.mockResolvedValue({
+      root: '/r',
+      repos: [
+        {id: 'b', name: 'b', group: '', path: '/r/b'},
+        {id: 'a', name: 'a', group: '', path: '/r/a'},
+      ],
+      worktrees: [],
+    });
+
+    changeCallbacks[0]?.();
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+
+    expect(disposers[0]).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenLastCalledWith(
+      ['/r/a', '/r/b'],
+      expect.any(Function),
+    );
+  });
+
+  it('Should keep the watcher when the repo set is unchanged', async () => {
+    await invoke(channels.workspaceOpen, '/root');
+
+    changeCallbacks[0]?.();
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+
+    expect(disposers[0]).not.toHaveBeenCalled();
+    expect(watch).toHaveBeenCalledTimes(1);
+  });
+
   it('drops a stale watcher result when another root was opened meanwhile', async () => {
     await invoke(channels.workspaceOpen, '/one');
     let release!: (workspace: Workspace) => void;

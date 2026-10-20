@@ -11,7 +11,11 @@ class FakeWatcher extends EventEmitter {
   close = vi.fn();
 }
 
-type Registered = {dir: string; watcher: FakeWatcher; fire: () => void};
+type Registered = {
+  dir: string;
+  watcher: FakeWatcher;
+  fire: (event?: string, filename?: string | null) => void;
+};
 
 describe('GitDirWatcherService', () => {
   const service = new GitDirWatcherService();
@@ -31,7 +35,7 @@ describe('GitDirWatcherService', () => {
     existing = new Set();
     fsMock.existsSync.mockImplementation((p: string) => existing.has(p));
     fsMock.watch.mockImplementation(
-      (dir: string, _opts: unknown, listener: () => void) => {
+      (dir: string, _opts: unknown, listener: Registered['fire']) => {
         const watcher = new FakeWatcher();
         registered.push({dir, watcher, fire: listener});
         return watcher;
@@ -90,6 +94,40 @@ describe('GitDirWatcherService', () => {
     expect(at('/r/.git/worktrees')).toHaveLength(1);
     first('/r/.git/worktrees').fire();
     vi.advanceTimersByTime(300);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('Should ignore .git events for files other than HEAD and worktrees', () => {
+    const onChange = vi.fn();
+    service.watch(['/r'], onChange);
+
+    for (const name of ['index', 'FETCH_HEAD', 'ORIG_HEAD'])
+      first('/r/.git').fire('change', name);
+    vi.advanceTimersByTime(300);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it.each(['HEAD', 'worktrees', null])(
+    'Should react to the %s .git event',
+    name => {
+      const onChange = vi.fn();
+      service.watch(['/r'], onChange);
+
+      first('/r/.git').fire('change', name);
+      vi.advanceTimersByTime(300);
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('Should treat an undefined filename as unnamed', () => {
+    const onChange = vi.fn();
+    service.watch(['/r'], onChange);
+
+    first('/r/.git').fire('change');
+    vi.advanceTimersByTime(300);
+
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 

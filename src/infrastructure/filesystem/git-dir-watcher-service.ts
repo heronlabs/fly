@@ -7,6 +7,7 @@ import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
 
 const DEBOUNCE_MS = 300;
 const SAFETY_TICK_MS = 15_000;
+const RELEVANT_GIT_ENTRIES = new Set(['HEAD', 'worktrees']);
 
 @Injectable()
 export class GitDirWatcherService extends WorkspaceWatcher {
@@ -26,9 +27,14 @@ export class GitDirWatcherService extends WorkspaceWatcher {
       }, DEBOUNCE_MS);
     };
 
-    const attach = (dir: string, onEvent: () => void): boolean => {
+    const attach = (
+      dir: string,
+      onEvent: (filename: string | null) => void,
+    ): boolean => {
       try {
-        const watcher = watch(dir, {persistent: false}, onEvent);
+        const watcher = watch(dir, {persistent: false}, (_event, filename) =>
+          onEvent(filename ?? null),
+        );
         watcher.on('error', error => this.logWatchError(dir, error));
         watchers.push(watcher);
         return true;
@@ -48,7 +54,8 @@ export class GitDirWatcherService extends WorkspaceWatcher {
         worktreesAttached = attach(worktreesDir, schedule);
       };
 
-      attach(gitDir, () => {
+      attach(gitDir, filename => {
+        if (filename !== null && !RELEVANT_GIT_ENTRIES.has(filename)) return;
         attachWorktrees();
         schedule();
       });
