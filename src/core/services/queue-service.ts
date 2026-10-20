@@ -3,7 +3,7 @@ import {join} from 'node:path';
 import {Injectable} from '@nestjs/common';
 
 import {PullRequest, QueueSnapshot, WorktreeQueue} from '../domain/queue';
-import {Activity, ReceiptResult} from '../domain/transcript';
+import {Activity, ReceiptResult, TranscriptSummary} from '../domain/transcript';
 import {Workspace, Worktree} from '../domain/workspace';
 import {FileStore} from '../interfaces/file-store';
 import {PrGateway} from '../interfaces/pr-gateway';
@@ -128,11 +128,17 @@ export class QueueService {
     const {options} = session;
     const launchCwd =
       options['@fly_task_repo'] ?? options['@fly_worktree'] ?? session.cwd;
-    const summary = await this.transcripts
-      .forSession({launchCwd, sessionId})
-      .catch(() => null);
+    // A session started without a prompt has no transcript until the first one.
+    const started = options['@fly_task_repo'] === undefined;
+    let summary: TranscriptSummary | null;
+    try {
+      summary = await this.transcripts.forSession({launchCwd, sessionId});
+    } catch {
+      return {activity: classifyActivity(null, now), receipt: null};
+    }
+    const idle = started && (summary === null || summary.phase === 'none');
     return {
-      activity: classifyActivity(summary, now),
+      activity: idle ? 'waiting' : classifyActivity(summary, now),
       receipt: summary?.receipt ?? null,
     };
   }
