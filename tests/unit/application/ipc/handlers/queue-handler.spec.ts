@@ -60,13 +60,28 @@ describe('QueueHandler', () => {
     expect(refreshPullRequests).not.toHaveBeenCalled();
   });
 
-  it('Should return the snapshot and refresh PRs once across two lists', async () => {
+  it('Should return the snapshot and refresh PRs on each list', async () => {
     expect(await invoke(channels.queueList)).toEqual(snap(1));
+    await vi.advanceTimersByTimeAsync(0);
     expect(await invoke(channels.queueList)).toEqual(snap(1));
+    await vi.advanceTimersByTimeAsync(0);
 
+    expect(refreshPullRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it('Should not overlap the refreshes of two overlapping lists', async () => {
+    let release!: () => void;
+    refreshPullRequests.mockReturnValue(
+      new Promise<void>(resolve => {
+        release = resolve;
+      }),
+    );
+    await invoke(channels.queueList);
+    await invoke(channels.queueList);
     expect(refreshPullRequests).toHaveBeenCalledTimes(1);
-    // Two lists plus the tick that follows the refresh.
-    expect(snapshot).toHaveBeenCalledTimes(3);
+
+    release();
+    await vi.advanceTimersByTimeAsync(0);
   });
 
   it('Should broadcast once for identical snapshots and again on change', async () => {

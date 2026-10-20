@@ -19,7 +19,6 @@ export class QueueHandler {
   private prTimer: NodeJS.Timeout | null = null;
   private ticking = false;
   private refreshing = false;
-  private prsRequested = false;
   private lastBroadcast: string | null = null;
 
   constructor(
@@ -45,11 +44,8 @@ export class QueueHandler {
   }
 
   private async list(): Promise<QueueSnapshot> {
-    // The PRs were never fetched: ask once, the next tick broadcasts them.
-    if (!this.prsRequested) {
-      this.prsRequested = true;
-      void this.refresh();
-    }
+    // Another folder may be open now: refresh its PRs (skipped while one runs).
+    void this.refresh();
     return this.queue.snapshot();
   }
 
