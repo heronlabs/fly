@@ -1,8 +1,9 @@
 type Props = {
   counts: {ready: number; working: number; ci: number; failed: number};
+  message: string | null;
 };
 
-export const FooterBar = ({counts}: Props) => {
+export const FooterBar = ({counts, message}: Props) => {
   const items: [string, number, string][] = [
     ['Esperando você', counts.ready, 'var(--warn)'],
     ['Agente rodando', counts.working, 'var(--info)'],
@@ -29,6 +30,11 @@ export const FooterBar = ({counts}: Props) => {
           <span>{label}</span>
         </span>
       ))}
+      {message && (
+        <span role="status" style={{marginLeft: 'auto', color: 'var(--warn)'}}>
+          {message}
+        </span>
+      )}
     </footer>
   );
 };
