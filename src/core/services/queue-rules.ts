@@ -73,15 +73,19 @@ export const worktreeStatus = (input: {
   hasPlan: boolean;
 }): QueueStatus => {
   const prOpen = input.pullRequest?.state === 'open';
-  const candidates = new Set<QueueStatus>();
-  const fromPr = pullRequestStatus(input.pullRequest);
-  if (fromPr !== null) candidates.add(fromPr);
+  // null (no PR status) is in the set but never in PRECEDENCE.
+  const candidates = new Set<QueueStatus | null>([
+    pullRequestStatus(input.pullRequest),
+  ]);
   for (const activity of input.activities) {
     if (activity === 'waiting') candidates.add('waiting');
     else if (activity === 'running') candidates.add('engineer');
-    else if (activity === 'scheduled')
-      candidates.add(prOpen ? 'ci' : 'engineer');
-    else candidates.add(input.hasPlan ? 'engineer' : 'unknown');
+    else if (activity === 'scheduled') {
+      // Beside an open PR, the PR's own status already stands for it: every status
+      // pullRequestStatus returns for an open PR (failed, ready, waiting, ci) ranks
+      // at or above ci in PRECEDENCE, so a ci candidate would never change the result.
+      if (!prOpen) candidates.add('engineer');
+    } else candidates.add(input.hasPlan ? 'engineer' : 'unknown');
   }
   return PRECEDENCE.find(status => candidates.has(status)) ?? 'idle';
 };

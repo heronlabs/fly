@@ -11,10 +11,13 @@ Electron desktop app (main process runs NestJS, renderer is React) for driving a
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm test:unit` | vitest with 100% coverage thresholds |
 | `pnpm test:di` | Nest DI smoke test: `IpcModule` resolves with real decorator metadata |
+| `pnpm test:mutation` | Stryker mutation testing (vitest `node` project); CI fails below 100% |
 | `pnpm dep:cruise` | Enforce layer rules |
 | `pnpm typecheck` | Typecheck node and web projects |
 
 Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`.
+
+Mutation run on some files: `pnpm stryker run stryker.conf.json --mutate '<file1>,<file2>'`.
 
 ## Testing and tmux
 
@@ -23,6 +26,10 @@ Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill t
 Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token (the DI test points `CLAUDE_CONFIG_DIR` at a temp dir). Never the real `~/.claude`.
 
 `gh` is always mocked in tests, through `CommandRunner` or `PrGateway`. Never the real `gh`.
+
+## Mutation testing
+
+Kill a surviving mutant with a test first; if that is not possible, with a behaviour-preserving simplification; only for a genuine equivalent mutant, with `// Stryker disable next-line <Mutator>: <reason>`. Never disable whole files, blocks or `all`. `vitest.stryker.config.ts` mirrors the `node` project of `vitest.config.ts` by hand, so change both together.
 
 ## Layout and layer rules
 

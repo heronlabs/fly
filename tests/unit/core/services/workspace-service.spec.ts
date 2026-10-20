@@ -150,6 +150,18 @@ describe('WorkspaceService', () => {
     expect(ws.repos.map(r => r.id)).toEqual(['talon']);
   });
 
+  it('Should skip an unreadable depth-2 directory and keep its siblings', async () => {
+    tree = {
+      [root]: [dir('g')],
+      [`${root}/g`]: [dir('locked'), dir('ok')],
+      [`${root}/g/ok`]: [dir('.git')],
+    };
+
+    const ws = await service.discover(root);
+
+    expect(ws.repos.map(r => r.id)).toEqual(['g/ok']);
+  });
+
   it('Should normalise a root with a trailing slash', async () => {
     tree = {
       [root]: [dir('talon')],
@@ -235,6 +247,7 @@ describe('WorkspaceService', () => {
     expect(ws.repos.find(r => r.id === 'ai/supera')?.error).toBeUndefined();
     expect(ws.worktrees.some(w => w.repoId === 'talon')).toBe(false);
     expect(ws.worktrees.some(w => w.repoId === 'ai/supera')).toBe(true);
+    expect(ws.worktrees.map(w => w.repoId)).toEqual(['ai/supera']);
   });
 
   it('Should stringify a non-Error rejection', async () => {

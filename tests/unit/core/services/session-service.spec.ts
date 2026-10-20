@@ -172,6 +172,15 @@ describe('SessionService', () => {
     });
   });
 
+  it('Should report a null rejection as an error instead of throwing', async () => {
+    list.mockRejectedValue(null);
+    expect(await service.snapshot()).toEqual({
+      tmux: 'error',
+      message: 'null',
+      sessions: [],
+    });
+  });
+
   it('Should stringify non-Error rejections', async () => {
     list.mockRejectedValue('bad');
     expect(await service.snapshot()).toEqual({

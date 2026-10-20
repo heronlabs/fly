@@ -76,6 +76,26 @@ describe('classifyActivity', () => {
       summary({phase: 'mid-turn', lastEventAt: null}),
       'running',
     ],
+    [
+      'mid-turn, no tools, exactly 10min silence',
+      summary({phase: 'mid-turn', lastEventAt: now - 10 * MIN}),
+      'running',
+    ],
+    [
+      'wakeup exactly 20min ago',
+      summary({wakeupAt: now - 20 * MIN}),
+      'scheduled',
+    ],
+    [
+      'looping, turn ended exactly 1,500,000ms ago',
+      summary({looping: true, lastTurnEndAt: now - 1_500_000}),
+      'scheduled',
+    ],
+    [
+      'shell launched exactly 60min ago',
+      summary({backgroundShells: [now - 60 * MIN]}),
+      'scheduled',
+    ],
     ['wakeup in the future', summary({wakeupAt: now + 5 * MIN}), 'scheduled'],
     ['wakeup 19min ago', summary({wakeupAt: now - 19 * MIN}), 'scheduled'],
     ['wakeup 21min ago', summary({wakeupAt: now - 21 * MIN}), 'unknown'],
@@ -108,6 +128,17 @@ describe('classifyActivity', () => {
     ['nothing pending', summary(), 'waiting'],
   ])('Should classify %s', (_name, input, expected) => {
     expect(classifyActivity(input, now)).toBe(expected);
+  });
+});
+
+describe('classifyActivity near the epoch', () => {
+  it('Should not treat a missing lastTurnEndAt as the epoch for a loop', () => {
+    expect(
+      classifyActivity(
+        summary({looping: true, lastTurnEndAt: null, lastEventAt: null}),
+        1000,
+      ),
+    ).toBe('waiting');
   });
 });
 

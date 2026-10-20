@@ -97,6 +97,29 @@ describe('GitDirWatcherService', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  it('Should retry attaching the worktrees watcher after a failed attach', () => {
+    existing.add('/r/.git/worktrees');
+    let failures = 1;
+    fsMock.watch.mockImplementation(
+      (dir: string, _opts: unknown, listener: Registered['fire']) => {
+        if (dir === '/r/.git/worktrees' && failures-- > 0) {
+          throw new Error('EMFILE');
+        }
+        const watcher = new FakeWatcher();
+        registered.push({dir, watcher, fire: listener});
+        return watcher;
+      },
+    );
+    service.watch(['/r'], vi.fn());
+    expect(at('/r/.git/worktrees')).toHaveLength(0);
+
+    first('/r/.git').fire('change', 'HEAD');
+    expect(at('/r/.git/worktrees')).toHaveLength(1);
+
+    first('/r/.git').fire('change', 'HEAD');
+    expect(at('/r/.git/worktrees')).toHaveLength(1);
+  });
+
   it('Should ignore .git events for files other than HEAD and worktrees', () => {
     const onChange = vi.fn();
     service.watch(['/r'], onChange);

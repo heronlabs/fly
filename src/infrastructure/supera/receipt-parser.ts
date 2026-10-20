@@ -28,24 +28,20 @@ const invalid = (problem: string): ReceiptResult => ({
  * closes on a bare ``` line, and an unclosed trailing fence still counts.
  */
 const lastJsonFence = (text: string): string | null => {
-  let lang: string | null = null;
-  let body: string[] = [];
+  let open: {lang: string; body: string[]} | null = null;
   let found: string | null = null;
   for (const line of text.split('\n').map(raw => raw.replace(/\r$/, ''))) {
-    if (lang === null) {
-      const opened = FENCE_OPEN.exec(line)?.[1];
-      if (opened !== undefined) {
-        lang = opened;
-        body = [];
-      }
+    if (open === null) {
+      const lang = FENCE_OPEN.exec(line)?.[1];
+      if (lang !== undefined) open = {lang, body: []};
     } else if (FENCE_CLOSE.test(line)) {
-      if (lang === 'json') found = body.join('\n');
-      lang = null;
+      if (open.lang === 'json') found = open.body.join('\n');
+      open = null;
     } else {
-      body.push(line);
+      open.body.push(line);
     }
   }
-  return lang === 'json' ? body.join('\n') : found;
+  return open?.lang === 'json' ? open.body.join('\n') : found;
 };
 
 /** JSON.parse never yields undefined, so undefined means "not JSON". */
@@ -53,8 +49,9 @@ const parseJson = (text: string): unknown => {
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    return undefined;
+    // Not JSON: fall through to the undefined return.
   }
+  return undefined;
 };
 
 /** The last json fence, else the whole text when it is a JSON object. */

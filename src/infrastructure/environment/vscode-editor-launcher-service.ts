@@ -19,11 +19,7 @@ export class VscodeEditorLauncherService extends EditorLauncher {
   }
 
   private async succeeds(command: string, args: string[]): Promise<boolean> {
-    try {
-      const result = await this.runner.run(command, args);
-      return result.code === 0;
-    } catch {
-      return false;
-    }
+    const result = await this.runner.run(command, args).catch(() => undefined);
+    return result?.code === 0;
   }
 }

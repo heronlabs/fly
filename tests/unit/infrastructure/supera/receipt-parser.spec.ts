@@ -125,6 +125,13 @@ describe('parseReceipt', () => {
     });
   });
 
+  it('Should trim any whitespace around a bare JSON object', () => {
+    expect(parseReceipt(`\u00a0${json(RECEIPT)}\ufeff`)).toStrictEqual({
+      kind: 'valid',
+      receipt: RECEIPT,
+    });
+  });
+
   it('Should find no receipt in prose', () => {
     expect(parseReceipt('Implemented the retry.')).toEqual(NO_RECEIPT);
   });
@@ -232,6 +239,22 @@ describe('parseReceipt', () => {
         kind: 'valid',
         receipt: RECEIPT,
       });
+    });
+
+    it('Should join the body lines with newlines', () => {
+      const split = '{"summary":"a\nb","filesChanged":[],"verification":{}}';
+      const closed = fence(split);
+
+      expect(parseReceipt(closed)).toEqual(NO_RECEIPT);
+      expect(parseReceipt(closed.replace(/\n```$/, ''))).toEqual(NO_RECEIPT);
+    });
+
+    it('Should strip only the trailing \\r of a line', () => {
+      const text = fence(
+        '{"summary":"a\rb","filesChanged":[],"verification":{}}',
+      );
+
+      expect(parseReceipt(text)).toEqual(NO_RECEIPT);
     });
 
     it('Should use the last json fence even when it is empty or not JSON', () => {

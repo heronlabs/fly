@@ -228,6 +228,28 @@ describe('SessionHandler', () => {
     release(snap(1));
   });
 
+  it('Should clear no interval when stopped before the timer exists', () => {
+    const cleared = vi.spyOn(globalThis, 'clearInterval');
+    const idle = new SessionHandler(
+      host,
+      {send} as Broadcaster,
+      {snapshot, start, kill} as unknown as SessionService,
+      {bind, create} as unknown as TaskService,
+    );
+
+    idle.stop();
+
+    expect(cleared).not.toHaveBeenCalled();
+  });
+
+  it('Should clear the interval once when stopped', () => {
+    const cleared = vi.spyOn(globalThis, 'clearInterval');
+
+    handler.stop();
+
+    expect(cleared).toHaveBeenCalledTimes(1);
+  });
+
   it('Should stop polling and tolerate stop twice or a second register', async () => {
     handler.stop();
     handler.stop();

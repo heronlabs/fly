@@ -42,6 +42,6 @@ export class NodeFileStoreService extends FileStore {
 
   async writeText(path: string, content: string): Promise<void> {
     await mkdir(dirname(path), {recursive: true});
-    await writeFile(path, content, 'utf8');
+    await writeFile(path, content);
   }
 }

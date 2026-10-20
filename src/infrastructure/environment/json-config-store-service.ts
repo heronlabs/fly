@@ -14,16 +14,11 @@ import {USER_DATA_DIR} from './tokens';
 
 const themes: readonly string[] = ['system', 'dark', 'light'];
 
-const freshDefaults = (): AppConfig => ({
-  recentRoots: [...defaultConfig.recentRoots],
-  theme: defaultConfig.theme,
-});
+const freshDefaults = (): AppConfig => structuredClone(defaultConfig);
 
 const coerce = (value: unknown): AppConfig => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return freshDefaults();
-  }
-  const {recentRoots, theme} = value as Record<string, unknown>;
+  // Arrays and primitives have neither field, so they coerce to the defaults.
+  const {recentRoots, theme} = (value ?? {}) as Record<string, unknown>;
   return {
     recentRoots: Array.isArray(recentRoots)
       ? recentRoots

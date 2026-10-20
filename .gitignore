@@ -8,3 +8,4 @@ reports/
 .serena/
 *.tsbuildinfo
 .DS_Store
+.stryker-tmp

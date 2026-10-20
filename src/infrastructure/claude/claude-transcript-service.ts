@@ -119,13 +119,13 @@ export class ClaudeTranscriptService extends TranscriptSource {
     exclude,
     now,
   }: DirectoryInput): Promise<TranscriptSummary | 'ambiguous' | null> {
-    const excluded = new Set(exclude);
+    const excluded = new Set<string | null>(exclude);
     const dir = join(this.projectsDir, projectDirName(cwd));
     const recent = (await this.transcripts(dir)).filter(
       file => file.mtimeMs >= since && !excluded.has(file.stem),
     );
     const candidates = (await this.owned(recent))
-      .filter(([, owner]) => typeof owner !== 'string' || !excluded.has(owner))
+      .filter(([, owner]) => !excluded.has(owner))
       .map(([file]) => file);
     const live = candidates.filter(
       file => file.mtimeMs >= now - LIVE_WINDOW_MS,

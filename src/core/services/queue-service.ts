@@ -61,11 +61,10 @@ export class QueueService {
       repos.map(async r => [r.path, await this.prs.list(r.path)] as const),
     );
     // A failed repo keeps its last list; repos gone from the workspace drop out.
-    const next = new Map<string, PullRequest[]>();
-    for (const repo of workspace.repos) {
-      const previous = this.pullRequests.get(repo.path);
-      if (previous) next.set(repo.path, previous);
-    }
+    const paths = new Set(workspace.repos.map(r => r.path));
+    const next = new Map(
+      [...this.pullRequests].filter(([path]) => paths.has(path)),
+    );
     const failures: unknown[] = [];
     for (const result of results) {
       if (result.status === 'rejected') failures.push(result.reason);
@@ -157,7 +156,11 @@ export class QueueService {
         now,
       });
       if (found === null) return null;
-      return found === 'ambiguous' ? 'unknown' : classifyActivity(found, now);
+      // Stryker disable next-line ConditionalExpression,StringLiteral,BlockStatement: classifyActivity('ambiguous') also yields 'unknown' (no phase, wakeupAt undefined), so the guard only makes the intent explicit.
+      if (found === 'ambiguous') {
+        return 'unknown';
+      }
+      return classifyActivity(found, now);
     } catch {
       return 'unknown';
     }
@@ -187,9 +190,12 @@ export class QueueService {
     worktree: Worktree,
   ): PullRequest | null {
     if (!hasBranch(worktree)) return null;
-    const listed = workspace.repos
-      .filter(r => r.id === worktree.repoId)
-      .flatMap(r => this.pullRequests.get(r.path) ?? []);
+    const paths = new Set(
+      workspace.repos.filter(r => r.id === worktree.repoId).map(r => r.path),
+    );
+    const listed = [...this.pullRequests]
+      .filter(([path]) => paths.has(path))
+      .flatMap(([, prs]) => prs);
     const own = listed.filter(pr => pr.branch === worktree.branch);
     const merged = own
       .filter(pr => pr.state === 'merged')

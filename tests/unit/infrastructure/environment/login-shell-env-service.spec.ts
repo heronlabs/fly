@@ -49,6 +49,16 @@ describe('LoginShellEnvService', () => {
     await expect(service.resolve('/bin/zsh')).resolves.toEqual({});
   });
 
+  it('Should return {} for long output without any marker', async () => {
+    runner.run.mockResolvedValue({
+      code: 0,
+      stdout: '/usr/bin:/bin\nen_US.UTF-8 and some more shell noise',
+      stderr: '',
+    });
+
+    await expect(service.resolve('/bin/zsh')).resolves.toEqual({});
+  });
+
   it('Should return {} when the closing marker is missing', async () => {
     runner.run.mockResolvedValue({
       code: 0,

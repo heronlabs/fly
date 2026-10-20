@@ -342,6 +342,20 @@ describe('QueueService', () => {
       expect(statusOf(snap, 'talon')).toBe('waiting');
     });
 
+    it('Should still count plan.md for shared externals and failed reads', async () => {
+      sessionsAre([
+        external('talon/.worktrees/feat'),
+        external('talon/.worktrees/feat'),
+        external('nest/.worktrees/x'),
+      ]);
+      forDirectory.mockRejectedValue(new Error('EACCES'));
+      exists.mockResolvedValue(true);
+      const snap = await service.snapshot(now);
+      expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('engineer');
+      expect(statusOf(snap, 'nest/.worktrees/x')).toBe('engineer');
+      expect(forDirectory).toHaveBeenCalledTimes(1);
+    });
+
     it('Should read an ambiguous directory as unknown and no transcript as idle', async () => {
       sessionsAre([
         external('talon/.worktrees/feat'),
@@ -428,6 +442,16 @@ describe('QueueService', () => {
       expect(statusOf(snap, 'nest/.worktrees/x')).toBe('idle');
       expect(queueOf(snap, 'talon')?.pullRequest).toBeNull();
       expect(statusOf(snap, 'talon')).toBe('engineer');
+    });
+
+    it("Should not show another repo's PR on a branch of the same name", async () => {
+      pullRequestsAre({
+        '/r/talon': [],
+        '/r/nest': [pr({branch: 'feat', number: 8})],
+      });
+      await service.refreshPullRequests();
+      const snap = await service.snapshot(now);
+      expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest).toBeNull();
     });
 
     it('Should check plan.md only for unknown, reading unknown with a plan as engineer', async () => {

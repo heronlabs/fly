@@ -1,5 +1,6 @@
 import {Injectable} from '@nestjs/common';
 
+import {TranscriptSummary} from '../domain/transcript';
 import {IdGenerator} from '../interfaces/id-generator';
 import {
   MultiplexerSession,
@@ -14,17 +15,20 @@ import {
   sessionPrefix,
 } from './session-naming';
 import {rethrowMissing, SessionService} from './session-service';
+import {compareText} from './text-order';
 
 // A baseline we cannot read means we cannot tell which worktrees are new.
 const parseBaseline = (raw: string | undefined): string[] | null => {
+  let parsed: unknown = null;
   try {
-    const parsed: unknown = JSON.parse(raw ?? '');
-    return Array.isArray(parsed) && parsed.every(p => typeof p === 'string')
-      ? (parsed as string[])
-      : null;
+    // An absent baseline reads as the text "undefined", which does not parse.
+    parsed = JSON.parse(String(raw));
   } catch {
-    return null;
+    // Unreadable stays null.
   }
+  return Array.isArray(parsed) && parsed.every(p => typeof p === 'string')
+    ? (parsed as string[])
+    : null;
 };
 
 // tmux rejects commands over ~16 KB; 2000 code points stay well below it.
@@ -33,8 +37,7 @@ const MAX_DESCRIPTION = 2000;
 const TASK_LABEL_LENGTH = 200;
 
 const byAge = (a: MultiplexerSession, b: MultiplexerSession): number =>
-  a.createdAt - b.createdAt ||
-  Number(a.name > b.name) - Number(a.name < b.name);
+  a.createdAt - b.createdAt || compareText(a.name, b.name);
 
 @Injectable()
 export class TaskService {
@@ -90,9 +93,8 @@ export class TaskService {
     } catch {
       return;
     }
-    const taken = new Set(
-      listed.flatMap(s => s.options['@fly_worktree'] ?? []),
-    );
+    // Sessions without a worktree contribute undefined, which never matches a path.
+    const taken = new Set(listed.map(s => s.options['@fly_worktree']));
     const pending = listed
       .filter(s => s.options['@fly_task_repo'] && !s.options['@fly_worktree'])
       .sort(byAge);
@@ -122,9 +124,12 @@ export class TaskService {
   ): Promise<string | null> {
     const sessionId = session.options['@fly_session_id'];
     if (!sessionId) return null;
-    const summary = await this.transcripts
-      .forSession({launchCwd, sessionId})
-      .catch(() => null);
+    let summary: TranscriptSummary | null = null;
+    try {
+      summary = await this.transcripts.forSession({launchCwd, sessionId});
+    } catch {
+      // No evidence; the fallback may still apply.
+    }
     return summary?.worktreePath ?? null;
   }
 

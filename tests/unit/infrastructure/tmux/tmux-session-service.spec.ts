@@ -83,6 +83,20 @@ describe('TmuxSessionService', () => {
       ]);
     });
 
+    it('Should default the missing fields of a short line', async () => {
+      run.mockResolvedValue(ok('only-name\n'));
+
+      expect(await plain().list()).toEqual([
+        {
+          name: 'only-name',
+          cwd: '',
+          createdAt: 0,
+          attachedClients: 0,
+          options: {},
+        },
+      ]);
+    });
+
     it.each([
       'no server running on /tmp/tmux-501/default',
       'error connecting to /tmp/tmux-501/default (No such file or directory)',
@@ -95,7 +109,7 @@ describe('TmuxSessionService', () => {
     it('Should throw with stderr on any other failure', async () => {
       run.mockResolvedValue({code: 1, stdout: '', stderr: ' boom \n'});
 
-      await expect(plain().list()).rejects.toThrow('boom');
+      await expect(plain().list()).rejects.toThrow(new Error('boom'));
     });
 
     it('Should throw a default message when stderr is empty', async () => {
@@ -251,6 +265,48 @@ describe('TmuxSessionService', () => {
     });
   });
 
+  describe('start failure messages', () => {
+    const fullInput = {
+      name: 'n-abc123',
+      cwd: '/w',
+      command: 'claude',
+      options: {'@fly_task': 't'},
+    };
+
+    // The nth run call (0-based) fails with empty stderr; the rest succeed.
+    const failAt = (index: number) => {
+      run.mockReset();
+      let call = 0;
+      run.mockImplementation(async () => {
+        const current = call++;
+        if (current === index) {
+          return {code: 1, stdout: '', stderr: ''};
+        }
+        return ok('@1\n');
+      });
+    };
+
+    it.each([
+      [1, 'set-option'],
+      [2, 'set-option'],
+      [3, 'set-option'],
+      [4, 'set-option'],
+      [5, 'new-window'],
+      [6, 'kill-window'],
+      [7, 'send-keys'],
+      [8, 'send-keys'],
+    ])(
+      'Should name the subcommand when call %i fails without stderr (%s)',
+      async (index, subcommand) => {
+        failAt(index);
+
+        await expect(plain().start(fullInput)).rejects.toThrow(
+          `tmux ${subcommand} failed`,
+        );
+      },
+    );
+  });
+
   describe('setOption', () => {
     it('Should set the encoded value on the exact session', async () => {
       run.mockResolvedValue(ok());
@@ -261,6 +317,14 @@ describe('TmuxSessionService', () => {
         'tmux',
         ['-L', 'sock', 'set-option', '-t', '=n-1:', '@fly_task', 'a%20b'],
         timeout,
+      );
+    });
+
+    it('Should throw a default message naming set-option when stderr is empty', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ''});
+
+      await expect(plain().setOption('n-1', '@fly_task', 'a')).rejects.toThrow(
+        'tmux set-option failed',
       );
     });
   });
@@ -282,6 +346,14 @@ describe('TmuxSessionService', () => {
       run.mockResolvedValue({code: 1, stdout: '', stderr: "can't find"});
 
       await expect(plain().kill('n-1')).rejects.toThrow("can't find");
+    });
+
+    it('Should throw a default message naming kill-session when stderr is empty', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ''});
+
+      await expect(plain().kill('n-1')).rejects.toThrow(
+        'tmux kill-session failed',
+      );
     });
   });
 

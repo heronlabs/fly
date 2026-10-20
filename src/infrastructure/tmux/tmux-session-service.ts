@@ -151,8 +151,9 @@ export class TmuxSessionService extends SessionLauncher {
   }
 
   private parseLine(line: string): MultiplexerSession {
-    const [name = '', cwd = '', created = '', attached = '', ...values] =
-      line.split('\t');
+    // split always returns at least one element (even for ''), so name needs no default.
+    const fields = line.split('\t') as [string, ...string[]];
+    const [name, cwd = '', created = '', attached = '', ...values] = fields;
     const options: Partial<Record<FlyOption, string>> = {};
     flyOptions.forEach((option, index) => {
       const value = values[index];
