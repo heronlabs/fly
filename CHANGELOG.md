@@ -1,3 +1,45 @@
+## v0.0.2 (2026-10-20)
+
+### Features
+
+* feat(ui): session panel and nova tarefa dialog (09504efddaca665d818e6fbeab17ed8e7ebc6825)
+* feat(ui): render tmux sessions with xterm.js (a211f67f5c156d74ad28a3428bcd7db9d7511991)
+* feat(ui): track tmux sessions in the store and mark worktrees with sessions (19fde3edef18ebb1e9c9e2c373c74cf287074020)
+* feat(ipc): stream tmux terminals over ipc with batching (15605c526b3295af35acb3a529b4646376971268)
+* feat(ipc): expose tmux sessions and ship tasks to the renderer (5bb8c0c9bb8ddf9100fc0822664ea05895f94fb8)
+* feat(pty): attach tmux sessions through node-pty (09e1ac3cf4a6025128bb1474265444a94907e44b)
+* feat(core): start ship tasks and bind them to the worktree ship creates (00d646619756237ebdf7870e7fce5e68941b0894)
+* feat(core): map tmux sessions to worktrees and start claude sessions (6fe249d702c2bc1eac36fdb8b88918df054a6021)
+* feat(tmux): start, list, tag and kill tmux sessions (8916edf40703eed714b7c418ac560445e85b6f85)
+* feat(core): derive tmux session names and the claude command (9149a4880f7f0bdcf2c576308d0c4849dbc7ebdc)
+* feat(env): load login-shell PATH and add a DI smoke test (d50a34e0e88f92c1e33534cda2e6ccf51ace05fd)
+
+### Bug Fixes
+
+* fix(ui): let a new session replace an exited terminal (da66494436af46a4462a1e24c62efe7184778797)
+* fix(ui): keep an exited terminal visible (3d8264ecc7ba972f68dcf7e105cc1a65a6b38d9a)
+* fix: guard session start and map missing tmux (5db408dfef10a2f0311757b8eb28cb8f82ea1ddc)
+* fix(tmux): pass the task prompt through the pane environment (02deffc186d5c3161a2329ca61844ed46ca17832)
+* fix(ui): clear task errors and guard double submit (c188c3ff6871232ed2717088fb36aded30722bf7)
+* fix(ui): handle terminal attach and detach failures (04bcbff72649bebf2dd61eb8d17bf6756dbf5831)
+* fix(ipc): clear pending terminal output on renderer reset (2c2221efdadb323d5bc35b1b02eac451773af343)
+* fix(core): strip control characters from the claude prompt (697d898f2012d40e1a2cd038bca261364ea79e77)
+* fix(core): resolve the workspace root to its real path (95608e389f42d3b18117deda4b914023ff874769)
+
+### Performance Improvements
+
+* perf(watch): ignore git index noise and rewatch new repos (b2100ccf22b3d385a5ab7087b46cedbf16b2d7fc)
+
+### Documentation
+
+* docs: document M2 terminal prerequisites and status (f69f417365233edc5c72d92593a4b7db9b13fef3)
+* docs: add M2 terminal plan (1c7748933432e20c7f080c61eee115fa753b0a74)
+
+### Miscellaneous Chores
+
+* other: clean up tmux sockets and DI temp dirs (73be9252de241d7ec5c2b930b8c6d604751909a9)
+* other: ignore .serena (cc8ef33110ad1861da3b8a94dc19e3ff4b0a9509)
+
 ## v0.0.1 (2026-10-19)
 
 ### Features
