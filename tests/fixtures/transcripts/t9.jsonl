@@ -1,0 +1,2 @@
+{"type":"user","uuid":"u9","parentUuid":"a9","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_bg1","content":"Command running in background with ID: bx1."}]},"toolUseResult":{"stdout":"","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false,"backgroundTaskId":"bx1"}}
+{"type":"system","subtype":"turn_duration","uuid":"s9","parentUuid":"u9","durationMs":1500,"messageCount":3}

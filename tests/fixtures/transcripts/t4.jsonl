@@ -1,0 +1,4 @@
+{"type":"assistant","uuid":"a4","parentUuid":"u3","message":{"id":"msg_4","role":"assistant","content":[{"type":"tool_use","id":"toolu_w1","name":"ScheduleWakeup","input":{"delaySeconds":1200,"prompt":"/supera:pr-watch 7 --tick 1","reason":"CI running","noop":false}}],"stop_reason":"tool_use"}}
+{"type":"user","uuid":"u4","parentUuid":"a4","timestamp":"2026-10-20T10:00:05.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_w1","content":"Next wakeup scheduled for 07:20:05 (in 1200s)."}]},"toolUseResult":{"scheduledFor":1792491605000,"clampedDelaySeconds":1200,"wasClamped":false}}
+{"type":"system","subtype":"stop_hook_summary","uuid":"s3","parentUuid":"u4"}
+{"type":"system","subtype":"turn_duration","uuid":"s4","parentUuid":"s3","timestamp":"2026-10-20T10:00:05.300Z","durationMs":900,"messageCount":3}

@@ -1,0 +1,2 @@
+{"type":"system","subtype":"scheduled_task_fire","uuid":"s5","parentUuid":"s4","timestamp":"2026-10-20T10:20:05.400Z","taskId":"1a2b3c4d","cron":"20 7 * * *","prompt":"/supera:pr-watch 7 --tick 1","taskKind":"loop","cronKind":"loop","content":"Claude resuming /loop wakeup","isMeta":false}
+{"type":"user","uuid":"u5","parentUuid":"s5","turnOrigin":"scheduled","scheduledTaskId":"1a2b3c4d","scheduledFireId":"f-1","message":{"role":"user","content":"<command-name>/supera:pr-watch</command-name>\n<command-args>7 --tick 1</command-args>"}}
