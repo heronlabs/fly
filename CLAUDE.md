@@ -22,7 +22,7 @@ Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill t
 
 Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token (the DI test points `CLAUDE_CONFIG_DIR` at a temp dir). Never the real `~/.claude`.
 
-`gh` is always mocked in tests, through `CommandRunner`. Never the real `gh`.
+`gh` is always mocked in tests, through `CommandRunner` or `PrGateway`. Never the real `gh`.
 
 ## Layout and layer rules
 
