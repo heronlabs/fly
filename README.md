@@ -25,4 +25,4 @@ pnpm install
 pnpm dev
 ```
 
-Run `pnpm test:unit` and `pnpm test:di` for the test suites.
+Run `pnpm test:unit` and `pnpm test:di` for the test suites, and `pnpm test:mutation` for mutation testing.
