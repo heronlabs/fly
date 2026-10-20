@@ -349,6 +349,75 @@ describe('TranscriptParser', () => {
     ).toBe('mid-turn');
   });
 
+  it('Should treat a user line as a result only for a tool_result block with a string id', () => {
+    const parser = new TranscriptParser();
+    pushAll(parser, toolUse('toolu_1', 'Read'));
+
+    expect(
+      pushAll(parser, prompt([{type: 'text', tool_use_id: 'toolu_1'}]))
+        .openTools,
+    ).toBe(1);
+    expect(
+      pushAll(
+        parser,
+        prompt([
+          {type: 'tool_result', tool_use_id: 9},
+          {type: 'text', text: '[Request interrupted by user]'},
+        ]),
+      ),
+    ).toMatchObject({phase: 'turn-ended', openTools: 0});
+  });
+
+  it('Should read an interrupt only from a text block, among any blocks', () => {
+    expect(
+      pushAll(
+        new TranscriptParser(),
+        prompt([{type: 'image', text: '[Request interrupted by user]'}]),
+      ).phase,
+    ).toBe('mid-turn');
+    expect(
+      pushAll(
+        new TranscriptParser(),
+        prompt([
+          {type: 'text', text: 'hi'},
+          {type: 'text', text: '[Request interrupted by user]'},
+        ]),
+      ).phase,
+    ).toBe('turn-ended');
+  });
+
+  it('Should map system subtypes only on system lines', () => {
+    const summary = pushAll(
+      parserWith('t8'),
+      '{"type":"mode","subtype":"agents_killed"}',
+      '{"type":"mode","subtype":"turn_duration","timestamp":"2026-10-20T13:00:00Z"}',
+    );
+
+    expect(summary).toEqual(parse('t8'));
+  });
+
+  it('Should move to mid-turn when a scheduled task fires', () => {
+    expect(
+      pushAll(
+        parserWith('t1'),
+        '{"type":"system","subtype":"scheduled_task_fire"}',
+      ).phase,
+    ).toBe('mid-turn');
+  });
+
+  it('Should not throw on a null block in assistant or user content', () => {
+    const parser = new TranscriptParser();
+
+    expect(() =>
+      pushAll(
+        parser,
+        line({type: 'assistant', message: {content: [null]}}),
+        line({type: 'user', message: {content: [null]}}),
+      ),
+    ).not.toThrow();
+    expect(parser.summary().phase).toBe('mid-turn');
+  });
+
   it('Should open only well-formed tool_use blocks', () => {
     const summary = pushAll(
       new TranscriptParser(),
@@ -358,6 +427,7 @@ describe('TranscriptParser', () => {
           content: [
             'x',
             {type: 'text', text: 'hi'},
+            {type: 'text', id: 'toolu_t', name: 'Bash'},
             {type: 'tool_use', id: 5, name: 'Bash'},
             {type: 'tool_use', id: 'toolu_n', name: 5},
             {type: 'tool_use', id: 'toolu_ok', name: 'Bash'},
@@ -602,6 +672,58 @@ describe('TranscriptParser receipt', () => {
       openTools: 0,
       receipt: {kind: 'valid', receipt: OTHER},
     });
+  });
+
+  it('Should join the text blocks of a completed result with newlines and skip the rest', () => {
+    const summary = pushAll(
+      new TranscriptParser(),
+      toolUse('toolu_s', 'Task', ENGINEER),
+      toolResult('toolu_s', {status: 'completed'}, {}, [
+        null,
+        {type: 'text', text: '```json'},
+        {type: 'text', text: 5},
+        {type: 'image', text: 'ignored'},
+        {type: 'text', text: JSON.stringify(OTHER)},
+        {type: 'text', text: '```'},
+      ]),
+    );
+
+    expect(summary.receipt).toStrictEqual({kind: 'valid', receipt: OTHER});
+  });
+
+  it('Should read a bare receipt from the text blocks of a completed result', () => {
+    const summary = pushAll(
+      new TranscriptParser(),
+      toolUse('toolu_s', 'Task', ENGINEER),
+      toolResult('toolu_s', {status: 'completed'}, {}, [
+        {type: 'image'},
+        {type: 'text', text: JSON.stringify(OTHER)},
+      ]),
+    );
+
+    expect(summary.receipt).toStrictEqual({kind: 'valid', receipt: OTHER});
+  });
+
+  it('Should ignore a result for another tool-use-id while the engineer awaits a receipt', () => {
+    const summary = pushAll(
+      new TranscriptParser(),
+      toolUse('toolu_s', 'Task', ENGINEER),
+      toolResult('toolu_other', {status: 'completed'}, {}, fenced(OTHER)),
+    );
+
+    expect(summary.receipt).toBeNull();
+  });
+
+  it('Should not throw on a result when no engineer was called', () => {
+    const parser = new TranscriptParser();
+
+    expect(() =>
+      pushAll(
+        parser,
+        toolResult('toolu_x', {status: 'completed'}, {}, fenced(OTHER)),
+      ),
+    ).not.toThrow();
+    expect(parser.summary().receipt).toBeNull();
   });
 
   it('Should find no receipt in a completed result whose content is not text', () => {
