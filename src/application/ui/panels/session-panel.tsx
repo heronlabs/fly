@@ -39,14 +39,20 @@ const ActiveSession = ({
   name,
   others,
   theme,
+  exited = false,
   onKill,
+  onStart,
   onSelectSession,
+  onExit,
 }: {
   name: string;
   others: string[];
   theme: ResolvedTheme;
+  exited?: boolean;
   onKill(name: string): void;
+  onStart(): void;
   onSelectSession(name: string): void;
+  onExit?(): void;
 }) => {
   const [confirming, setConfirming] = useState(false);
 
@@ -90,7 +96,11 @@ const ActiveSession = ({
             ))}
           </span>
         )}
-        {confirming ? (
+        {exited ? (
+          <button type="button" style={buttonStyle} onClick={onStart}>
+            Iniciar sessão
+          </button>
+        ) : confirming ? (
           <>
             <button
               type="button"
@@ -121,7 +131,12 @@ const ActiveSession = ({
         )}
       </header>
       <div style={{flex: 1, minHeight: 0}}>
-        <TerminalView key={name} sessionName={name} theme={theme} />
+        <TerminalView
+          key={name}
+          sessionName={name}
+          theme={theme}
+          onExit={onExit}
+        />
       </div>
     </section>
   );
@@ -136,6 +151,16 @@ export const SessionPanel = ({
   onKill,
   onSelectSession,
 }: Props) => {
+  // The shown session whose terminal exited; its last output stays visible
+  // after the snapshot drops it (tmux history dies with the session).
+  const [ended, setEnded] = useState<{
+    name: string;
+    worktreeId: string;
+  } | null>(null);
+  if (ended && (ended.worktreeId !== worktree?.id || snapshot.tmux !== 'ok')) {
+    setEnded(null);
+  }
+
   if (!worktree) {
     return (
       <section style={centered}>
@@ -155,15 +180,34 @@ export const SessionPanel = ({
   const names = snapshot.sessions
     .filter(session => session.worktreeId === worktree.id)
     .map(session => session.name);
+  const start = () => {
+    setEnded(null);
+    onStart(worktree.id);
+  };
+  const select = (name: string) => {
+    setEnded(null);
+    onSelectSession(name);
+  };
+  // Same component and key as before, so the terminal is never re-attached.
+  if (ended?.worktreeId === worktree.id && !names.includes(ended.name)) {
+    return (
+      <ActiveSession
+        key={ended.name}
+        name={ended.name}
+        others={names}
+        theme={theme}
+        exited
+        onKill={onKill}
+        onStart={start}
+        onSelectSession={select}
+      />
+    );
+  }
   const shown = names.find(name => name === activeSessionName) ?? names[0];
   if (shown === undefined) {
     return (
       <section style={centered}>
-        <button
-          type="button"
-          style={buttonStyle}
-          onClick={() => onStart(worktree.id)}
-        >
+        <button type="button" style={buttonStyle} onClick={start}>
           Iniciar sessão
         </button>
       </section>
@@ -176,7 +220,9 @@ export const SessionPanel = ({
       others={names.filter(name => name !== shown)}
       theme={theme}
       onKill={onKill}
-      onSelectSession={onSelectSession}
+      onStart={start}
+      onSelectSession={select}
+      onExit={() => setEnded({name: shown, worktreeId: worktree.id})}
     />
   );
 };
