@@ -12,7 +12,6 @@ import {ShellHandler} from './application/ipc/handlers/shell-handler';
 import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
-import {TerminalService} from './core/services/terminal-service';
 import {
   LoginShellEnvService,
   mergePath,
@@ -92,9 +91,9 @@ app
     context.get(SettingsHandler).register();
     context.get(ShellHandler).register();
     context.get(SessionHandler).register();
-    context.get(TerminalHandler).register();
-    const terminals = context.get(TerminalService);
-    const onReset = () => terminals.detachAll();
+    const terminalHandler = context.get(TerminalHandler);
+    terminalHandler.register();
+    const onReset = () => terminalHandler.reset();
     createWindow(onReset);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow(onReset);

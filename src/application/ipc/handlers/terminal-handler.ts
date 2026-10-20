@@ -47,6 +47,12 @@ export class TerminalHandler {
     );
   }
 
+  // Renderer reload or window close: forget buffered output and kill every pty.
+  reset(): void {
+    for (const terminalId of [...this.pending.keys()]) this.drop(terminalId);
+    this.terminals.detachAll();
+  }
+
   // Called from inside pty callbacks: it must never throw.
   private readonly sink: TerminalSink = {
     data: (terminalId, data) => {

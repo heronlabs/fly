@@ -23,6 +23,8 @@ const attach = vi.fn();
 const write = vi.fn();
 const resize = vi.fn();
 const detach = vi.fn();
+const detachAll = vi.fn();
+let handler: TerminalHandler;
 
 let sink: TerminalSink;
 
@@ -41,11 +43,12 @@ beforeEach(() => {
       return 't1';
     },
   );
-  new TerminalHandler(
+  handler = new TerminalHandler(
     host,
     {send} as Broadcaster,
-    {attach, write, resize, detach} as unknown as TerminalService,
-  ).register();
+    {attach, write, resize, detach, detachAll} as unknown as TerminalService,
+  );
+  handler.register();
 });
 
 afterEach(() => {
@@ -146,6 +149,18 @@ describe('TerminalHandler', () => {
 
     expect(detach).toHaveBeenCalledWith('t1');
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('Should drop every pending buffer and detach all on reset', async () => {
+    await invoke(channels.terminalAttach, 'sess', {cols: 80, rows: 24});
+    sink.data('t1', 'a');
+    sink.data('t2', 'b');
+
+    handler.reset();
+    vi.advanceTimersByTime(TERMINAL_FLUSH_MS * 2);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(detachAll).toHaveBeenCalledTimes(1);
   });
 
   it('Should detach an id that has nothing pending', async () => {
