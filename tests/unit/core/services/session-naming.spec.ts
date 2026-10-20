@@ -61,4 +61,14 @@ describe('claudeCommand', () => {
     ).toBe(
       "claude --dangerously-skip-permissions --session-id u1 '/supera:ship fix it'\\''s bug'; exit",
     ));
+
+  it('Should turn control characters into spaces', () =>
+    expect(
+      claudeCommand({
+        sessionId: 'u1',
+        prompt: 'a\x03b\x1bc\x7fd\u0085e',
+      }),
+    ).toBe(
+      "claude --dangerously-skip-permissions --session-id u1 'a b c d e'; exit",
+    ));
 });

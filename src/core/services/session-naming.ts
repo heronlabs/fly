@@ -19,7 +19,13 @@ export const claudeCommand = (input: {
 }): string => {
   const base = `claude --dangerously-skip-permissions --session-id ${input.sessionId}`;
   const prompt = input.prompt
-    ? ` ${shellQuote(input.prompt.replace(/\s+/g, ' ').trim())}`
+    ? ` ${shellQuote(
+        input.prompt
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )}`
     : '';
   return `${base}${prompt}; exit`;
 };

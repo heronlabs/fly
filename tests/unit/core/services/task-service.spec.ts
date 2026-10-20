@@ -84,6 +84,13 @@ describe('TaskService', () => {
       });
     });
 
+    it('Should not type control characters into the shell', async () => {
+      await service.create({repoId: 'talon', description: 'x\x03rm -rf ~ #'});
+      expect(start.mock.calls[0]?.[0].command).toBe(
+        "claude --dangerously-skip-permissions --session-id u1 '/supera:ship x rm -rf ~ #'; exit",
+      );
+    });
+
     it('Should fail without a workspace', async () => {
       currentWorkspace.mockReturnValue(null);
       await expect(
