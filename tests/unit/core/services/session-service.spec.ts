@@ -131,6 +131,29 @@ describe('SessionService', () => {
     ]);
   });
 
+  it('Should map raw sessions to worktree ids, leaving out unknown cwds', async () => {
+    const fly = mux({name: 'a', options: {'@fly_session_id': 'x'}});
+    const external = mux({name: 'b', cwd: '/r/talon-2/src', createdAt: 0});
+    list.mockResolvedValue([fly, mux({cwd: '/elsewhere'}), external]);
+    expect(await service.mapped()).toEqual({
+      tmux: 'ok',
+      message: null,
+      items: [
+        {session: fly, worktreeId: 'talon'},
+        {session: external, worktreeId: 'talon-2'},
+      ],
+    });
+  });
+
+  it('Should map no items when tmux is missing', async () => {
+    list.mockRejectedValue(Object.assign(new Error('spawn'), {code: 'ENOENT'}));
+    expect(await service.mapped()).toEqual({
+      tmux: 'missing',
+      message: 'tmux não encontrado — instale com: brew install tmux',
+      items: [],
+    });
+  });
+
   it('Should report tmux missing on ENOENT', async () => {
     list.mockRejectedValue(Object.assign(new Error('spawn'), {code: 'ENOENT'}));
     expect(await service.snapshot()).toEqual({
