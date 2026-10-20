@@ -44,7 +44,10 @@ const workspace: Workspace = {
   ],
 };
 
-const setup = (selectedId: string | null = null) => {
+const setup = (
+  selectedId: string | null = null,
+  sessionCounts: Record<string, number> = {},
+) => {
   const onSelect = vi.fn();
   const onOpenInEditor = vi.fn();
   render(
@@ -53,6 +56,7 @@ const setup = (selectedId: string | null = null) => {
       selectedId={selectedId}
       onSelect={onSelect}
       onOpenInEditor={onOpenInEditor}
+      sessionCounts={sessionCounts}
     />,
   );
   return {onSelect, onOpenInEditor};
@@ -115,5 +119,18 @@ describe('WorktreesPanel', () => {
     await user.click(button as HTMLElement);
     expect(onOpenInEditor).toHaveBeenCalledWith('/r/actions/one');
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('Should show the session dot only on rows with a session', () => {
+    setup(null, {'one-main': 1, 'one-feat': 0});
+    expect(screen.getAllByLabelText('Sessão ativa')).toHaveLength(1);
+    expect(screen.getByRole('option', {name: /main/})).toContainElement(
+      screen.getByLabelText('Sessão ativa'),
+    );
+  });
+
+  it('Should not show the session dot without sessions', () => {
+    setup();
+    expect(screen.queryByLabelText('Sessão ativa')).not.toBeInTheDocument();
   });
 });

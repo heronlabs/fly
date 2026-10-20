@@ -1,7 +1,9 @@
-import {useEffect, useRef} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 
 import {FooterBar} from './panels/footer-bar';
+import {NewTaskDialog} from './panels/new-task-dialog';
 import {PlaceholderPanel} from './panels/placeholder-panel';
+import {SessionPanel} from './panels/session-panel';
 import {TopBar} from './panels/top-bar';
 import {WelcomePanel} from './panels/welcome-panel';
 import {WorktreesPanel} from './panels/worktrees-panel';
@@ -22,9 +24,19 @@ export const AppShell = () => {
     select,
     setTheme,
     applyWorkspace,
+    sessions,
+    activeSessionName,
+    applySessions,
+    startSession,
+    killSession,
+    createTask,
+    setActiveSession,
   } = useFlyStore();
   const theme = useTheme(config.theme);
   const bootstrapped = useRef(false);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const canCreateTask = (workspace?.repos.length ?? 0) > 0;
 
   useEffect(() => {
     if (!bootstrapped.current) {
@@ -33,6 +45,35 @@ export const AppShell = () => {
     }
     return window.fly.workspace.onChanged(applyWorkspace);
   }, [bootstrap, applyWorkspace]);
+
+  useEffect(
+    () => window.fly.sessions.onChanged(applySessions),
+    [applySessions],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey && event.key === 'n' && canCreateTask) {
+        event.preventDefault();
+        openTask();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [canCreateTask]);
+
+  const sessionCounts = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const session of sessions.sessions) {
+      result[session.worktreeId] = (result[session.worktreeId] ?? 0) + 1;
+    }
+    return result;
+  }, [sessions]);
+
+  const openTask = () => {
+    useFlyStore.setState({error: null});
+    setTaskOpen(true);
+  };
 
   const openInEditor = async (path: string) => {
     try {
@@ -72,7 +113,8 @@ export const AppShell = () => {
         onToggleTheme={() => void setTheme(theme === 'dark' ? 'light' : 'dark')}
         onOpenFolder={() => void pickAndOpen()}
         onOpenInEditor={() => selected && void openInEditor(selected.path)}
-        onNewTask={() => undefined}
+        canCreateTask={canCreateTask}
+        onNewTask={openTask}
       />
       <div
         style={{
@@ -81,7 +123,7 @@ export const AppShell = () => {
           minHeight: 0,
         }}
       >
-        {error && (
+        {error && !taskOpen && (
           <p
             role="alert"
             style={{margin: 0, padding: '6px 14px', color: 'var(--err)'}}
@@ -109,13 +151,39 @@ export const AppShell = () => {
               selectedId={selectedWorktreeId}
               onSelect={select}
               onOpenInEditor={path => void openInEditor(path)}
+              sessionCounts={sessionCounts}
             />
           )}
-          <PlaceholderPanel title="Sessão" hint="Terminal chega no marco 2" />
+          <SessionPanel
+            worktree={selected}
+            snapshot={sessions}
+            activeSessionName={activeSessionName}
+            theme={theme}
+            onStart={worktreeId => void startSession(worktreeId)}
+            onKill={name => void killSession(name)}
+            onSelectSession={setActiveSession}
+          />
           <PlaceholderPanel title="Diff / PR" hint="Marco 4" />
         </div>
       </div>
       <FooterBar counts={counts} />
+      <NewTaskDialog
+        open={taskOpen}
+        repos={workspace.repos}
+        defaultRepoId={selected?.repoId ?? null}
+        error={error}
+        submitting={submitting}
+        onCancel={() => {
+          useFlyStore.setState({error: null});
+          setTaskOpen(false);
+        }}
+        onSubmit={input => {
+          setSubmitting(true);
+          void createTask(input)
+            .then(ok => ok && setTaskOpen(false))
+            .finally(() => setSubmitting(false));
+        }}
+      />
     </div>
   );
 };

@@ -6,6 +6,7 @@ import {EditorLauncher} from '../../../../../src/core/interfaces/editor-launcher
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
+  on: vi.fn(),
 };
 const open = vi.fn();
 

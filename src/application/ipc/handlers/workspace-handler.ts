@@ -3,6 +3,7 @@ import {Inject, Injectable, Logger} from '@nestjs/common';
 import {channels} from '../../../core/domain/fly-api';
 import type {Workspace} from '../../../core/domain/workspace';
 import {WorkspaceWatcher} from '../../../core/interfaces/workspace-watcher';
+import {SessionService} from '../../../core/services/session-service';
 import {SettingsService} from '../../../core/services/settings-service';
 import {WorkspaceService} from '../../../core/services/workspace-service';
 import type {Broadcaster, FolderPicker, IpcHost} from '../ipc-types';
@@ -13,6 +14,7 @@ export class WorkspaceHandler {
   private readonly logger = new Logger(WorkspaceHandler.name);
   private currentRoot: string | null = null;
   private disposeWatcher: (() => void) | null = null;
+  private watchedPaths: string[] = [];
 
   constructor(
     @Inject(IPC_HOST) private readonly host: IpcHost,
@@ -21,6 +23,7 @@ export class WorkspaceHandler {
     private readonly workspaces: WorkspaceService,
     private readonly settings: SettingsService,
     private readonly watcher: WorkspaceWatcher,
+    private readonly sessions: SessionService,
   ) {}
 
   register(): void {
@@ -57,18 +60,33 @@ export class WorkspaceHandler {
   private async load(root: string): Promise<Workspace> {
     const workspace = await this.workspaces.discover(root);
     this.currentRoot = root;
+    this.sessions.setWorkspace(workspace);
+    this.rewatch(root, workspace);
+    return workspace;
+  }
+
+  private rewatch(root: string, workspace: Workspace): void {
     this.disposeWatcher?.();
+    this.watchedPaths = this.repoPaths(workspace);
     this.disposeWatcher = this.watcher.watch(
-      workspace.repos.map(repo => repo.path),
+      this.watchedPaths,
       () => void this.onChange(root),
     );
-    return workspace;
+  }
+
+  private repoPaths(workspace: Workspace): string[] {
+    return workspace.repos.map(repo => repo.path).sort();
   }
 
   private async onChange(root: string): Promise<void> {
     try {
       const workspace = await this.workspaces.discover(root);
       if (this.currentRoot !== root) return;
+      this.sessions.setWorkspace(workspace);
+      const paths = this.repoPaths(workspace);
+      if (paths.join('\0') !== this.watchedPaths.join('\0')) {
+        this.rewatch(root, workspace);
+      }
       this.broadcaster.send(channels.workspaceChanged, workspace);
     } catch (error) {
       this.logger.error(

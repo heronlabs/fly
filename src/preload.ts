@@ -25,6 +25,54 @@ const api: FlyApi = {
   shell: {
     openInEditor: path => ipcRenderer.invoke(channels.shellOpenInEditor, path),
   },
+  sessions: {
+    list: () => ipcRenderer.invoke(channels.sessionList),
+    start: worktreeId => ipcRenderer.invoke(channels.sessionStart, worktreeId),
+    kill: name => ipcRenderer.invoke(channels.sessionKill, name),
+    onChanged: listener => {
+      const handler = (
+        _event: unknown,
+        snapshot: Parameters<typeof listener>[0],
+      ) => listener(snapshot);
+      ipcRenderer.on(channels.sessionChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.sessionChanged, handler);
+      };
+    },
+  },
+  tasks: {
+    create: input => ipcRenderer.invoke(channels.taskCreate, input),
+  },
+  terminal: {
+    attach: (sessionName, size) =>
+      ipcRenderer.invoke(channels.terminalAttach, sessionName, size),
+    detach: terminalId =>
+      ipcRenderer.invoke(channels.terminalDetach, terminalId),
+    write: (terminalId, data) =>
+      ipcRenderer.send(channels.terminalInput, terminalId, data),
+    resize: (terminalId, size) =>
+      ipcRenderer.send(channels.terminalResize, terminalId, size),
+    onData: listener => {
+      const handler = (
+        _event: unknown,
+        payload: {terminalId: string; data: string},
+      ) => listener(payload.terminalId, payload.data);
+      ipcRenderer.on(channels.terminalData, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.terminalData, handler);
+      };
+    },
+    onExit: listener => {
+      const handler = (
+        _event: unknown,
+        payload: {terminalId: string; exitCode: number},
+      ) => listener(payload.terminalId, payload.exitCode);
+      ipcRenderer.on(channels.terminalExit, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.terminalExit, handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('fly', api);

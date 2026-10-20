@@ -9,6 +9,7 @@ import type {
 import {channels} from '../../../../../src/core/domain/fly-api';
 import type {Workspace} from '../../../../../src/core/domain/workspace';
 import {WorkspaceWatcher} from '../../../../../src/core/interfaces/workspace-watcher';
+import {SessionService} from '../../../../../src/core/services/session-service';
 import {SettingsService} from '../../../../../src/core/services/settings-service';
 import {WorkspaceService} from '../../../../../src/core/services/workspace-service';
 
@@ -24,6 +25,7 @@ const makeWorkspace = (root: string): Workspace => ({
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
+  on: vi.fn(),
 };
 const send = vi.fn();
 const broadcaster: Broadcaster = {send};
@@ -32,6 +34,7 @@ const picker: FolderPicker = {pick};
 const discover = vi.fn();
 const rememberRoot = vi.fn();
 const watch = vi.fn();
+const setWorkspace = vi.fn();
 
 const invoke = (channel: string, ...args: unknown[]) =>
   listeners.get(channel)!({}, ...args);
@@ -58,6 +61,7 @@ beforeEach(() => {
     {discover} as unknown as WorkspaceService,
     {rememberRoot} as unknown as SettingsService,
     {watch} as unknown as WorkspaceWatcher,
+    {setWorkspace} as unknown as SessionService,
   ).register();
 });
 
@@ -80,6 +84,7 @@ describe('WorkspaceHandler', () => {
   it('opens a root: remembers it, discovers it and watches its repos', async () => {
     const result = await invoke(channels.workspaceOpen, '/root');
 
+    expect(setWorkspace).toHaveBeenCalledWith(makeWorkspace('/root'));
     expect(rememberRoot).toHaveBeenCalledWith('/root');
     expect(result).toEqual(makeWorkspace('/root'));
     expect(watch).toHaveBeenCalledWith(
@@ -142,6 +147,8 @@ describe('WorkspaceHandler', () => {
     await vi.waitFor(() => expect(send).toHaveBeenCalled());
 
     expect(discover).toHaveBeenCalledWith('/root');
+    expect(setWorkspace).toHaveBeenCalledTimes(2);
+    expect(setWorkspace).toHaveBeenLastCalledWith(makeWorkspace('/root'));
     expect(send).toHaveBeenCalledWith(
       channels.workspaceChanged,
       makeWorkspace('/root'),
@@ -166,6 +173,7 @@ describe('WorkspaceHandler', () => {
     const result = (await invoke(channels.workspaceRefresh)) as Workspace;
 
     expect(result.repos.map(repo => repo.id)).toEqual(['c']);
+    expect(setWorkspace).toHaveBeenLastCalledWith(result);
     expect(rememberRoot).not.toHaveBeenCalled();
     expect(disposers[0]).toHaveBeenCalledTimes(1);
     expect(watch).toHaveBeenLastCalledWith(['/root/c'], expect.any(Function));
@@ -196,6 +204,42 @@ describe('WorkspaceHandler', () => {
     expect(String(error.mock.calls[0]?.[0])).toContain('texto');
   });
 
+  it('Should rewatch when a rediscovery finds a different repo set', async () => {
+    discover.mockResolvedValueOnce({
+      root: '/r',
+      repos: [{id: 'a', name: 'a', group: '', path: '/r/a'}],
+      worktrees: [],
+    });
+    await invoke(channels.workspaceOpen, '/r');
+    discover.mockResolvedValue({
+      root: '/r',
+      repos: [
+        {id: 'b', name: 'b', group: '', path: '/r/b'},
+        {id: 'a', name: 'a', group: '', path: '/r/a'},
+      ],
+      worktrees: [],
+    });
+
+    changeCallbacks[0]?.();
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+
+    expect(disposers[0]).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenLastCalledWith(
+      ['/r/a', '/r/b'],
+      expect.any(Function),
+    );
+  });
+
+  it('Should keep the watcher when the repo set is unchanged', async () => {
+    await invoke(channels.workspaceOpen, '/root');
+
+    changeCallbacks[0]?.();
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+
+    expect(disposers[0]).not.toHaveBeenCalled();
+    expect(watch).toHaveBeenCalledTimes(1);
+  });
+
   it('drops a stale watcher result when another root was opened meanwhile', async () => {
     await invoke(channels.workspaceOpen, '/one');
     let release!: (workspace: Workspace) => void;
@@ -210,5 +254,13 @@ describe('WorkspaceHandler', () => {
     await new Promise(resolve => setImmediate(resolve));
 
     expect(send).not.toHaveBeenCalled();
+    expect(setWorkspace).toHaveBeenLastCalledWith(makeWorkspace('/two'));
+  });
+
+  it('Should not set the workspace when discovery fails', async () => {
+    discover.mockRejectedValue(new Error('sem acesso'));
+    await expect(invoke(channels.workspaceOpen, '/x')).rejects.toThrow();
+
+    expect(setWorkspace).not.toHaveBeenCalled();
   });
 });

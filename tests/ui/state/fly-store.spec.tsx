@@ -3,6 +3,7 @@ import {
   groupsOf,
   useFlyStore,
 } from '../../../src/application/ui/state/fly-store';
+import type {SessionsSnapshot} from '../../../src/core/domain/session';
 import type {Workspace} from '../../../src/core/domain/workspace';
 
 const workspace = (ids: string[] = ['a/x']): Workspace => ({
@@ -22,6 +23,11 @@ const initial = useFlyStore.getState();
 
 beforeEach(() => {
   useFlyStore.setState(initial, true);
+  vi.mocked(window.fly.sessions.list).mockResolvedValue({
+    tmux: 'ok',
+    message: null,
+    sessions: [],
+  });
 });
 
 describe('fly store', () => {
@@ -190,5 +196,195 @@ describe('errorMessage', () => {
   it('keeps plain messages and stringifies non-errors', () => {
     expect(errorMessage(new Error('x'))).toBe('x');
     expect(errorMessage(42)).toBe('42');
+  });
+  describe('sessions', () => {
+    const snapshot = (
+      sessions: {name: string; worktreeId: string}[],
+    ): SessionsSnapshot => ({
+      tmux: 'ok',
+      message: null,
+      sessions: sessions.map(session => ({
+        ...session,
+        createdAt: 1,
+        attachedClients: 0,
+        origin: 'fly',
+        task: null,
+      })),
+    });
+
+    it('Should store the snapshot on loadSessions', async () => {
+      const loaded = snapshot([{name: 'a-1', worktreeId: 'a#main'}]);
+      vi.mocked(window.fly.sessions.list).mockResolvedValue(loaded);
+      await useFlyStore.getState().loadSessions();
+      expect(useFlyStore.getState().sessions).toEqual(loaded);
+    });
+
+    it('Should report a loadSessions failure', async () => {
+      vi.mocked(window.fly.sessions.list).mockRejectedValue(new Error('tmux'));
+      await useFlyStore.getState().loadSessions();
+      expect(useFlyStore.getState().error).toBe('tmux');
+    });
+
+    it('Should load sessions after openRoot', async () => {
+      vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
+      await useFlyStore.getState().openRoot('/r');
+      expect(window.fly.sessions.list).toHaveBeenCalledTimes(1);
+    });
+
+    it('Should drop an active session that vanished', () => {
+      useFlyStore.setState({activeSessionName: 'gone'});
+      useFlyStore.getState().applySessions(snapshot([]));
+      expect(useFlyStore.getState().activeSessionName).toBeNull();
+    });
+
+    it('Should keep an active session that still exists', () => {
+      useFlyStore.setState({activeSessionName: 'a-1'});
+      useFlyStore
+        .getState()
+        .applySessions(snapshot([{name: 'a-1', worktreeId: 'a'}]));
+      expect(useFlyStore.getState().activeSessionName).toBe('a-1');
+    });
+
+    it('Should follow the active session to its new worktree', () => {
+      useFlyStore.setState({
+        selectedWorktreeId: 'talon',
+        activeSessionName: 'talon-abc',
+        sessions: snapshot([{name: 'talon-abc', worktreeId: 'talon'}]),
+      });
+      useFlyStore
+        .getState()
+        .applySessions(
+          snapshot([{name: 'talon-abc', worktreeId: 'talon/.worktrees/feat'}]),
+        );
+      expect(useFlyStore.getState().selectedWorktreeId).toBe(
+        'talon/.worktrees/feat',
+      );
+    });
+
+    it('Should not follow when another worktree is selected', () => {
+      useFlyStore.setState({
+        selectedWorktreeId: 'other',
+        activeSessionName: 'talon-abc',
+        sessions: snapshot([{name: 'talon-abc', worktreeId: 'talon'}]),
+      });
+      useFlyStore
+        .getState()
+        .applySessions(
+          snapshot([{name: 'talon-abc', worktreeId: 'talon/.worktrees/feat'}]),
+        );
+      expect(useFlyStore.getState().selectedWorktreeId).toBe('other');
+    });
+
+    it('Should set the active session on startSession', async () => {
+      vi.mocked(window.fly.sessions.start).mockResolvedValue('a-1');
+      vi.mocked(window.fly.sessions.list).mockResolvedValue(
+        snapshot([{name: 'a-1', worktreeId: 'a#main'}]),
+      );
+      await useFlyStore.getState().startSession('a#main');
+      expect(window.fly.sessions.start).toHaveBeenCalledWith('a#main');
+      expect(useFlyStore.getState().activeSessionName).toBe('a-1');
+      expect(window.fly.sessions.list).toHaveBeenCalled();
+    });
+
+    it('Should report a startSession failure', async () => {
+      vi.mocked(window.fly.sessions.start).mockRejectedValue(new Error('no'));
+      await useFlyStore.getState().startSession('a#main');
+      expect(useFlyStore.getState().error).toBe('no');
+    });
+
+    it('Should ignore a second startSession while one is in flight', async () => {
+      let finish: (name: string) => void = () => undefined;
+      vi.mocked(window.fly.sessions.start).mockReturnValueOnce(
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+      );
+      vi.mocked(window.fly.sessions.list).mockResolvedValue(
+        snapshot([{name: 'a-1', worktreeId: 'a#main'}]),
+      );
+      const first = useFlyStore.getState().startSession('a#main');
+      await useFlyStore.getState().startSession('a#main');
+      expect(window.fly.sessions.start).toHaveBeenCalledTimes(1);
+      finish('a-1');
+      await first;
+      expect(useFlyStore.getState().activeSessionName).toBe('a-1');
+    });
+
+    it('Should allow a new startSession once the previous one failed', async () => {
+      vi.mocked(window.fly.sessions.start)
+        .mockRejectedValueOnce(new Error('no'))
+        .mockResolvedValueOnce('a-2');
+      await useFlyStore.getState().startSession('a#main');
+      await useFlyStore.getState().startSession('a#main');
+      expect(window.fly.sessions.start).toHaveBeenCalledTimes(2);
+    });
+
+    it('Should kill a session and reload', async () => {
+      vi.mocked(window.fly.sessions.kill).mockResolvedValue(undefined);
+      await useFlyStore.getState().killSession('a-1');
+      expect(window.fly.sessions.kill).toHaveBeenCalledWith('a-1');
+      expect(window.fly.sessions.list).toHaveBeenCalled();
+    });
+
+    it('Should report a killSession failure', async () => {
+      vi.mocked(window.fly.sessions.kill).mockRejectedValue(new Error('no'));
+      await useFlyStore.getState().killSession('a-1');
+      expect(useFlyStore.getState().error).toBe('no');
+    });
+
+    it('Should select the main worktree on createTask', async () => {
+      useFlyStore.setState({workspace: workspace(['a/x', 'b/y'])});
+      vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
+      vi.mocked(window.fly.sessions.list).mockResolvedValue(
+        snapshot([{name: 'task-1', worktreeId: 'b/y#main'}]),
+      );
+      const ok = await useFlyStore
+        .getState()
+        .createTask({repoId: 'b/y', description: 'fazer'});
+      expect(ok).toBe(true);
+      expect(window.fly.tasks.create).toHaveBeenCalledWith({
+        repoId: 'b/y',
+        description: 'fazer',
+      });
+      expect(useFlyStore.getState().selectedWorktreeId).toBe('b/y#main');
+      expect(useFlyStore.getState().activeSessionName).toBe('task-1');
+    });
+
+    it('Should keep the selection when the repo has no main worktree', async () => {
+      useFlyStore.setState({
+        workspace: workspace(['a/x']),
+        selectedWorktreeId: 'a/x#main',
+      });
+      vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
+      await useFlyStore
+        .getState()
+        .createTask({repoId: 'zzz', description: 'fazer'});
+      expect(useFlyStore.getState().selectedWorktreeId).toBe('a/x#main');
+    });
+
+    it('Should keep the selection when no workspace is open', async () => {
+      vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
+      const ok = await useFlyStore
+        .getState()
+        .createTask({repoId: 'a/x', description: 'fazer'});
+      expect(ok).toBe(true);
+      expect(useFlyStore.getState().selectedWorktreeId).toBeNull();
+    });
+
+    it('Should set error and return false when createTask rejects', async () => {
+      vi.mocked(window.fly.tasks.create).mockRejectedValue(
+        new Error('Descreva a tarefa'),
+      );
+      const ok = await useFlyStore
+        .getState()
+        .createTask({repoId: 'a/x', description: ''});
+      expect(ok).toBe(false);
+      expect(useFlyStore.getState().error).toBe('Descreva a tarefa');
+    });
+
+    it('Should set the active session explicitly', () => {
+      useFlyStore.getState().setActiveSession('x');
+      expect(useFlyStore.getState().activeSessionName).toBe('x');
+    });
   });
 });

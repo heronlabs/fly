@@ -33,6 +33,17 @@ export default defineConfig({
           setupFiles: ['tests/ui/setup.ts'],
         },
       },
+      {
+        extends: true,
+        // Real Nest DI needs decorator metadata, unlike the hand-built unit tests.
+        oxc: {decorator: {legacy: true, emitDecoratorMetadata: true}},
+        test: {
+          name: 'di',
+          environment: 'node',
+          include: ['tests/di/**/*.spec.ts'],
+          setupFiles: ['reflect-metadata'],
+        },
+      },
     ],
     coverage: {
       provider: 'v8',

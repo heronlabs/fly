@@ -18,6 +18,7 @@ type Props = {
   onToggleTheme(): void;
   onOpenFolder(): void;
   onOpenInEditor(): void;
+  canCreateTask: boolean;
   onNewTask(): void;
 };
 
@@ -41,6 +42,7 @@ export const TopBar = ({
   onToggleTheme,
   onOpenFolder,
   onOpenInEditor,
+  canCreateTask,
   onNewTask,
 }: Props) => (
   <header
@@ -85,9 +87,8 @@ export const TopBar = ({
     </span>
     <button
       type="button"
-      disabled
-      title="Marco 2"
-      style={{...buttonStyle, cursor: 'default', opacity: 0.5}}
+      disabled={!canCreateTask}
+      style={{...buttonStyle, opacity: canCreateTask ? 1 : 0.5}}
       onClick={onNewTask}
     >
       <PlusOutlined /> Nova tarefa

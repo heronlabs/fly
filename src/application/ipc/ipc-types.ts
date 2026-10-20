@@ -5,6 +5,10 @@ export type IpcHost = {
     channel: Channel,
     listener: (event: unknown, ...args: any[]) => unknown,
   ): void;
+  on(
+    channel: Channel,
+    listener: (event: unknown, ...args: any[]) => void,
+  ): void;
 };
 export type Broadcaster = {send(channel: Channel, payload: unknown): void};
 export type FolderPicker = {pick(): Promise<string | null>};

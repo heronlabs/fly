@@ -10,10 +10,15 @@ Electron desktop app (main process runs NestJS, renderer is React) for driving a
 | `pnpm build` | Build main, preload and renderer into `out/` |
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm test:unit` | vitest with 100% coverage thresholds |
+| `pnpm test:di` | Nest DI smoke test: `IpcModule` resolves with real decorator metadata |
 | `pnpm dep:cruise` | Enforce layer rules |
 | `pnpm typecheck` | Typecheck node and web projects |
 
 Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`.
+
+## Testing and tmux
+
+Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill that server afterwards. Never the default tmux server: production sessions live there, so bare `tmux ls` / `tmux attach -t <name>` from Termius sees them.
 
 ## Layout and layer rules
 

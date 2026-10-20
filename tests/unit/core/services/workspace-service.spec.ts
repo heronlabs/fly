@@ -30,14 +30,17 @@ describe('WorkspaceService', () => {
     if (!entries) throw new Error(`ENOENT ${path}`);
     return entries;
   });
+  const realPath = vi.fn();
   const listWorktrees = vi.fn();
   const service = new WorkspaceService(
-    {readDir} as unknown as FileStore,
+    {readDir, realPath} as unknown as FileStore,
     {listWorktrees} as unknown as VcsGateway,
   );
 
   beforeEach(() => {
     tree = {};
+    realPath.mockReset();
+    realPath.mockImplementation(async (p: string) => p);
     listWorktrees.mockReset();
     listWorktrees.mockImplementation(async (path: string) => [
       wt(path, 'main', true),
@@ -251,5 +254,27 @@ describe('WorkspaceService', () => {
       repos: [],
       worktrees: [],
     });
+  });
+
+  it('Should compute ids against the real path of a symlinked root', async () => {
+    realPath.mockResolvedValue('/real/root');
+    tree = {
+      '/real/root': [dir('talon')],
+      '/real/root/talon': [dir('.git')],
+    };
+    listWorktrees.mockResolvedValue([
+      wt('/real/root/talon/.worktrees/feat', 'feat', false),
+      wt('/real/root/talon', 'main', true),
+    ]);
+
+    const ws = await service.discover('/link/root');
+
+    expect(realPath).toHaveBeenCalledWith('/link/root');
+    expect(ws.root).toBe('/link/root');
+    expect(ws.worktrees.map(w => w.id)).toEqual([
+      'talon',
+      'talon/.worktrees/feat',
+    ]);
+    expect(ws.worktrees.some(w => w.id.startsWith('..'))).toBe(false);
   });
 });

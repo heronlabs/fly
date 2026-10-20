@@ -6,10 +6,17 @@ import {pathToFileURL} from 'node:url';
 import {NestFactory} from '@nestjs/core';
 import {app, BrowserWindow} from 'electron';
 
+import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
+import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
+import {
+  LoginShellEnvService,
+  mergePath,
+} from './infrastructure/environment/login-shell-env-service';
+import {ExecCommandRunnerService} from './infrastructure/process/exec-command-runner-service';
 
 function isAppUrl(
   url: string,
@@ -28,7 +35,8 @@ function isAppUrl(
   }
 }
 
-function createWindow(): void {
+// onReset runs when the renderer reloads or the window closes.
+function createWindow(onReset: () => void): void {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -53,6 +61,8 @@ function createWindow(): void {
     if (!isAppUrl(url, rendererUrl, indexFile)) event.preventDefault();
   });
   window.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
+  window.webContents.on('did-start-loading', onReset);
+  window.on('closed', onReset);
 
   if (rendererUrl) {
     void window.loadURL(rendererUrl);
@@ -68,15 +78,25 @@ let context: Awaited<
 app
   .whenReady()
   .then(async () => {
+    // Apps launched from Finder get a minimal PATH; load the login shell's.
+    const env = await new LoginShellEnvService(
+      new ExecCommandRunnerService(),
+    ).resolve(process.env['SHELL'] ?? '/bin/zsh');
+    process.env['PATH'] = mergePath(process.env['PATH'], env.PATH);
+    process.env['LANG'] ??= env.LANG ?? 'en_US.UTF-8';
     context = await NestFactory.createApplicationContext(IpcModule, {
       logger: ['error', 'warn'],
     });
     context.get(WorkspaceHandler).register();
     context.get(SettingsHandler).register();
     context.get(ShellHandler).register();
-    createWindow();
+    context.get(SessionHandler).register();
+    const terminalHandler = context.get(TerminalHandler);
+    terminalHandler.register();
+    const onReset = () => terminalHandler.reset();
+    createWindow(onReset);
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(onReset);
     });
   })
   .catch((error: unknown) => {
