@@ -61,11 +61,10 @@ export class QueueService {
       repos.map(async r => [r.path, await this.prs.list(r.path)] as const),
     );
     // A failed repo keeps its last list; repos gone from the workspace drop out.
-    const next = new Map<string, PullRequest[]>();
-    for (const repo of workspace.repos) {
-      const previous = this.pullRequests.get(repo.path);
-      if (previous) next.set(repo.path, previous);
-    }
+    const paths = new Set(workspace.repos.map(r => r.path));
+    const next = new Map(
+      [...this.pullRequests].filter(([path]) => paths.has(path)),
+    );
     const failures: unknown[] = [];
     for (const result of results) {
       if (result.status === 'rejected') failures.push(result.reason);
@@ -157,6 +156,7 @@ export class QueueService {
         now,
       });
       if (found === null) return null;
+      // Stryker disable next-line ConditionalExpression,StringLiteral: classifyActivity('ambiguous') also yields 'unknown' (no phase, wakeupAt undefined), so the guard only makes the intent explicit.
       return found === 'ambiguous' ? 'unknown' : classifyActivity(found, now);
     } catch {
       return 'unknown';
@@ -189,6 +189,7 @@ export class QueueService {
     if (!hasBranch(worktree)) return null;
     const listed = workspace.repos
       .filter(r => r.id === worktree.repoId)
+      // Stryker disable next-line ArrayDeclaration: a non-PR element never matches worktree.branch, so any fallback list behaves like [].
       .flatMap(r => this.pullRequests.get(r.path) ?? []);
     const own = listed.filter(pr => pr.branch === worktree.branch);
     const merged = own

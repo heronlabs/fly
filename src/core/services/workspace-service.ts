@@ -5,6 +5,7 @@ import {Injectable} from '@nestjs/common';
 import {Repo, Workspace, Worktree} from '../domain/workspace';
 import {DirEntry, FileStore} from '../interfaces/file-store';
 import {VcsGateway} from '../interfaces/vcs-gateway';
+import {compareText} from './text-order';
 
 const isScannable = (entry: DirEntry): boolean =>
   entry.isDirectory &&
@@ -15,7 +16,7 @@ const hasGitDir = (entries: DirEntry[]): boolean =>
   entries.some(entry => entry.name === '.git' && entry.isDirectory);
 
 const byId = (a: {id: string}, b: {id: string}): number =>
-  Number(a.id > b.id) - Number(a.id < b.id);
+  compareText(a.id, b.id);
 
 @Injectable()
 export class WorkspaceService {
@@ -39,13 +40,15 @@ export class WorkspaceService {
     for (const entry of top.filter(isScannable)) {
       const topPath = posix.join(base, entry.name);
       const children = await this.readDirSafe(topPath);
+      if (children === null) continue;
       if (hasGitDir(children)) {
         repos.push(this.toRepo(base, topPath));
         continue;
       }
       for (const child of children.filter(isScannable)) {
         const childPath = posix.join(topPath, child.name);
-        if (hasGitDir(await this.readDirSafe(childPath))) {
+        const grandchildren = await this.readDirSafe(childPath);
+        if (grandchildren && hasGitDir(grandchildren)) {
           repos.push(this.toRepo(base, childPath));
         }
       }
@@ -53,11 +56,12 @@ export class WorkspaceService {
     return repos;
   }
 
-  private async readDirSafe(path: string): Promise<DirEntry[]> {
+  // An unreadable directory is null, never an empty one.
+  private async readDirSafe(path: string): Promise<DirEntry[] | null> {
     try {
       return await this.fileStore.readDir(path);
     } catch {
-      return [];
+      return null;
     }
   }
 

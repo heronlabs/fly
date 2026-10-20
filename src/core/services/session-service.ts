@@ -8,6 +8,7 @@ import {
   SessionLauncher,
 } from '../interfaces/session-launcher';
 import {claudeCommand, sessionName, sessionPrefix} from './session-naming';
+import {compareText} from './text-order';
 
 export const TMUX_MISSING =
   'tmux não encontrado — instale com: brew install tmux';
@@ -47,8 +48,7 @@ export type MappedSessions = {
 };
 
 const bySessionOrder = (a: Session, b: Session): number =>
-  a.createdAt - b.createdAt ||
-  Number(a.name > b.name) - Number(a.name < b.name);
+  a.createdAt - b.createdAt || compareText(a.name, b.name);
 
 @Injectable()
 export class SessionService {
