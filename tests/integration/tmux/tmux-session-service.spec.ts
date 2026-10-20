@@ -25,6 +25,16 @@ describe('TmuxSessionService (real tmux)', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   let cwd: string;
+  let socketPath: string;
+
+  beforeAll(() => {
+    // kill-server leaves the socket file behind; learn its path while a
+    // server lives so every test can unlink it.
+    tmux('new-session', '-d', '-s', 'probe');
+    socketPath = tmux('display', '-p', '#{socket_path}').trim();
+    tmux('kill-server');
+    rmSync(socketPath, {force: true});
+  });
 
   beforeEach(() => {
     cwd = mkdtempSync(join(tmpdir(), 'fly tmux '));
@@ -34,8 +44,9 @@ describe('TmuxSessionService (real tmux)', () => {
     try {
       tmux('kill-server');
     } catch {
-      // no server was started
+      // no server was started, or it exited with its last session
     }
+    rmSync(socketPath, {force: true});
     rmSync(cwd, {recursive: true, force: true});
   });
 
