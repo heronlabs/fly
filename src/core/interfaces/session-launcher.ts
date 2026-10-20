@@ -22,6 +22,7 @@ export abstract class SessionLauncher {
     name: string;
     cwd: string;
     command: string;
+    env?: Record<string, string>;
     options: Partial<Record<FlyOption, string>>;
   }): Promise<void>;
   abstract setOption(

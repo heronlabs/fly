@@ -49,6 +49,7 @@ export class TmuxSessionService extends SessionLauncher {
     name: string;
     cwd: string;
     command: string;
+    env?: Record<string, string>;
     options: Partial<Record<FlyOption, string>>;
   }): Promise<void> {
     // set-option and new-window parse -t as a pane/window target, where a bare
@@ -68,46 +69,60 @@ export class TmuxSessionService extends SessionLauncher {
       ],
       'new-session',
     );
-    // history-limit only applies to windows created after it is set, hence the
-    // second window and the removal of the first.
-    await this.checked(
-      ['set-option', '-t', target, 'mouse', 'on'],
-      'set-option',
-    );
-    await this.checked(
-      ['set-option', '-t', target, 'status', 'off'],
-      'set-option',
-    );
-    await this.checked(
-      ['set-option', '-t', target, 'history-limit', '10000'],
-      'set-option',
-    );
-    for (const option of flyOptions) {
-      const value = input.options[option];
-      if (value !== undefined) {
-        await this.setOption(input.name, option, value);
+    try {
+      // history-limit only applies to windows created after it is set, hence
+      // the second window and the removal of the first.
+      await this.checked(
+        ['set-option', '-t', target, 'mouse', 'on'],
+        'set-option',
+      );
+      await this.checked(
+        ['set-option', '-t', target, 'status', 'off'],
+        'set-option',
+      );
+      await this.checked(
+        ['set-option', '-t', target, 'history-limit', '10000'],
+        'set-option',
+      );
+      for (const option of flyOptions) {
+        const value = input.options[option];
+        if (value !== undefined) {
+          await this.setOption(input.name, option, value);
+        }
       }
-    }
-    const secondWindow = await this.checked(
-      [
+      const env = Object.entries(input.env ?? {}).flatMap(([key, value]) => [
+        '-e',
+        `${key}=${value}`,
+      ]);
+      const secondWindow = await this.checked(
+        [
+          'new-window',
+          '-d',
+          '-t',
+          target,
+          '-c',
+          input.cwd,
+          ...env,
+          '-P',
+          '-F',
+          '#{window_id}',
+        ],
         'new-window',
-        '-d',
-        '-t',
-        target,
-        '-c',
-        input.cwd,
-        '-P',
-        '-F',
-        '#{window_id}',
-      ],
-      'new-window',
-    );
-    await this.checked(['kill-window', '-t', firstWindow], 'kill-window');
-    await this.checked(
-      ['send-keys', '-t', secondWindow, '-l', input.command],
-      'send-keys',
-    );
-    await this.checked(['send-keys', '-t', secondWindow, 'Enter'], 'send-keys');
+      );
+      await this.checked(['kill-window', '-t', firstWindow], 'kill-window');
+      await this.checked(
+        ['send-keys', '-t', secondWindow, '-l', input.command],
+        'send-keys',
+      );
+      await this.checked(
+        ['send-keys', '-t', secondWindow, 'Enter'],
+        'send-keys',
+      );
+    } catch (error) {
+      // A half-built session would otherwise be bound as a pending task.
+      await this.kill(input.name).catch(() => undefined);
+      throw error;
+    }
   }
 
   async setOption(

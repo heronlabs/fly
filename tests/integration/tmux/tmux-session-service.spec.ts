@@ -1,6 +1,12 @@
 import {execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -71,4 +77,28 @@ describe('TmuxSessionService (real tmux)', () => {
     await service.kill('it-abc123');
     expect(await service.list()).toEqual([]);
   });
+
+  it('Should hand a hostile prompt to the shell byte-exact through the pane environment', async () => {
+    const out = join(cwd, 'prompt.txt');
+    const fragment =
+      'it\'s "q" $(touch pwned) `touch pwned` ; a & b | c \\ ação 🚀 ';
+    const prompt = fragment
+      .repeat(Math.ceil(3072 / Buffer.byteLength(fragment)))
+      .trim();
+
+    await service.start({
+      name: 'it-def456',
+      cwd,
+      command: `printf %s "$FLY_PROMPT" > '${out}'; exit`,
+      env: {FLY_PROMPT: prompt},
+      options: {},
+    });
+
+    await vi.waitFor(() => expect(readFileSync(out, 'utf8')).toBe(prompt), {
+      timeout: 10_000,
+      interval: 100,
+    });
+    expect(Buffer.byteLength(prompt)).toBeGreaterThan(3000);
+    expect(existsSync(join(cwd, 'pwned'))).toBe(false);
+  }, 15_000);
 });

@@ -64,7 +64,7 @@ describe('TaskService', () => {
   });
 
   describe('create', () => {
-    it('Should start a ship session in the repo root with a quoted prompt', async () => {
+    it('Should start a ship session with the prompt in the pane environment', async () => {
       const name = await service.create({
         repoId: 'talon',
         description: "  fix it's\n  $(x)  ",
@@ -74,7 +74,8 @@ describe('TaskService', () => {
         name: 'talon-abc123',
         cwd: mainPath,
         command:
-          "claude --dangerously-skip-permissions --session-id u1 '/supera:ship fix it'\\''s $(x)'; exit",
+          'claude --dangerously-skip-permissions --session-id u1 "$FLY_PROMPT"; exit',
+        env: {FLY_PROMPT: "/supera:ship fix it's $(x)"},
         options: {
           '@fly_session_id': 'u1',
           '@fly_task': "fix it's\n  $(x)",
@@ -84,11 +85,36 @@ describe('TaskService', () => {
       });
     });
 
-    it('Should not type control characters into the shell', async () => {
+    it('Should turn control characters in the prompt into spaces', async () => {
       await service.create({repoId: 'talon', description: 'x\x03rm -rf ~ #'});
-      expect(start.mock.calls[0]?.[0].command).toBe(
-        "claude --dangerously-skip-permissions --session-id u1 '/supera:ship x rm -rf ~ #'; exit",
-      );
+      expect(start.mock.calls[0]?.[0].env).toEqual({
+        FLY_PROMPT: '/supera:ship x rm -rf ~ #',
+      });
+    });
+
+    it('Should accept 2000 characters counted as code points', async () => {
+      const description = '🚀'.repeat(2000);
+      await service.create({repoId: 'talon', description: ` ${description} `});
+      expect(start.mock.calls[0]?.[0].env).toEqual({
+        FLY_PROMPT: `/supera:ship ${description}`,
+      });
+    });
+
+    it('Should reject a description over 2000 characters', async () => {
+      await expect(
+        service.create({repoId: 'talon', description: 'a'.repeat(2001)}),
+      ).rejects.toThrow('Descrição muito longa (máx. 2000 caracteres)');
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('Should store only the first 200 characters as the task label', async () => {
+      await service.create({
+        repoId: 'talon',
+        description: `${'a'.repeat(199)}🚀${'b'.repeat(50)}`,
+      });
+      const label = start.mock.calls[0]?.[0].options['@fly_task'];
+      expect(label).toBe(`${'a'.repeat(199)}🚀`);
+      expect(() => encodeURIComponent(label)).not.toThrow();
     });
 
     it('Should fail without a workspace', async () => {

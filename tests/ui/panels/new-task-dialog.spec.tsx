@@ -37,6 +37,14 @@ describe('NewTaskDialog', () => {
     expect(screen.getByLabelText('Repositório')).toHaveValue('repo-b');
   });
 
+  it('Should cap the description at 2000 characters', () => {
+    setup();
+    expect(screen.getByLabelText('Descrição')).toHaveAttribute(
+      'maxlength',
+      '2000',
+    );
+  });
+
   it('Should fall back to the first repo without a default', () => {
     setup({defaultRepoId: null});
     expect(screen.getByLabelText('Repositório')).toHaveValue('repo-a');

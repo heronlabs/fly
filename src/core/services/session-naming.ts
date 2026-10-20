@@ -9,23 +9,21 @@ export const sessionPrefix = (relativePath: string): string =>
 export const sessionName = (prefix: string, hex: string): string =>
   `${prefix || 'fly'}-${hex}`;
 
-// POSIX single quoting: the only character that needs escaping is `'` itself.
-export const shellQuote = (value: string): string =>
-  `'${value.replace(/'/g, "'\\''")}'`;
+// The task prompt reaches the pane through this variable; it is never typed.
+export const PROMPT_ENV = 'FLY_PROMPT';
+
+// Control characters (C0, DEL, C1) become spaces, then whitespace collapses.
+export const normalizePrompt = (prompt: string): string =>
+  prompt
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export const claudeCommand = (input: {
   sessionId: string;
-  prompt?: string;
+  withPrompt?: boolean;
 }): string => {
   const base = `claude --dangerously-skip-permissions --session-id ${input.sessionId}`;
-  const prompt = input.prompt
-    ? ` ${shellQuote(
-        input.prompt
-          // eslint-disable-next-line no-control-regex
-          .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim(),
-      )}`
-    : '';
-  return `${base}${prompt}; exit`;
+  return input.withPrompt ? `${base} "$${PROMPT_ENV}"; exit` : `${base}; exit`;
 };

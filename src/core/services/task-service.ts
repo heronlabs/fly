@@ -5,7 +5,13 @@ import {
   MultiplexerSession,
   SessionLauncher,
 } from '../interfaces/session-launcher';
-import {claudeCommand, sessionName, sessionPrefix} from './session-naming';
+import {
+  claudeCommand,
+  normalizePrompt,
+  PROMPT_ENV,
+  sessionName,
+  sessionPrefix,
+} from './session-naming';
 import {SessionService} from './session-service';
 
 // A baseline we cannot read means we cannot tell which worktrees are new.
@@ -19,6 +25,11 @@ const parseBaseline = (raw: string | undefined): string[] | null => {
     return null;
   }
 };
+
+// tmux rejects commands over ~16 KB; 2000 code points stay well below it.
+const MAX_DESCRIPTION = 2000;
+// @fly_task is display-only and travels in every list-sessions line.
+const TASK_LABEL_LENGTH = 200;
 
 const byAge = (a: MultiplexerSession, b: MultiplexerSession): number =>
   a.createdAt - b.createdAt ||
@@ -39,6 +50,11 @@ export class TaskService {
     if (!repo) throw new Error('Repositório não encontrado');
     const description = input.description.trim();
     if (!description) throw new Error('Descreva a tarefa');
+    // Code points, so an emoji counts once and is never split in half.
+    const characters = Array.from(description);
+    if (characters.length > MAX_DESCRIPTION) {
+      throw new Error('Descrição muito longa (máx. 2000 caracteres)');
+    }
     const uuid = this.ids.uuid();
     const name = sessionName(sessionPrefix(repo.id), this.ids.hex(3));
     const baseline = workspace.worktrees
@@ -47,13 +63,11 @@ export class TaskService {
     await this.launcher.start({
       name,
       cwd: repo.path,
-      command: claudeCommand({
-        sessionId: uuid,
-        prompt: `/supera:ship ${description}`,
-      }),
+      command: claudeCommand({sessionId: uuid, withPrompt: true}),
+      env: {[PROMPT_ENV]: normalizePrompt(`/supera:ship ${description}`)},
       options: {
         '@fly_session_id': uuid,
-        '@fly_task': description,
+        '@fly_task': characters.slice(0, TASK_LABEL_LENGTH).join(''),
         '@fly_task_repo': repo.path,
         '@fly_task_baseline': JSON.stringify(baseline),
       },

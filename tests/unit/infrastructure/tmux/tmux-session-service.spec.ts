@@ -115,7 +115,7 @@ describe('TmuxSessionService', () => {
     const input = {
       name: 'n-abc123',
       cwd: '/w x',
-      command: "claude 'do it'; exit",
+      command: 'claude "$FLY_PROMPT"; exit',
       options: {'@fly_task': "x'y z", '@fly_worktree': '/w x'} as const,
     };
 
@@ -130,7 +130,11 @@ describe('TmuxSessionService', () => {
         .mockResolvedValueOnce(ok('@2\n'))
         .mockResolvedValue(ok());
 
-      await onSocket().start({...input, options: {...input.options}});
+      await onSocket().start({
+        ...input,
+        env: {FLY_PROMPT: 'x y=z', OTHER: '1'},
+        options: {...input.options},
+      });
 
       const t = ['-L', 'sock'];
       expect(run.mock.calls).toEqual([
@@ -173,6 +177,10 @@ describe('TmuxSessionService', () => {
             '=n-abc123:',
             '-c',
             '/w x',
+            '-e',
+            'FLY_PROMPT=x y=z',
+            '-e',
+            'OTHER=1',
             '-P',
             '-F',
             '#{window_id}',
@@ -197,20 +205,50 @@ describe('TmuxSessionService', () => {
 
       expect(run).toHaveBeenCalledTimes(8);
       expect(run.mock.calls[0]?.[1]?.[0]).toBe('new-session');
+      expect(run.mock.calls[4]?.[1]).toEqual([
+        'new-window',
+        '-d',
+        '-t',
+        '=n-abc123:',
+        '-c',
+        '/w x',
+        '-P',
+        '-F',
+        '#{window_id}',
+      ]);
     });
 
-    it('Should throw with stderr when a later step fails', async () => {
+    it('Should kill the half-built session and rethrow when a later step fails', async () => {
       run
         .mockResolvedValueOnce(ok('@1\n'))
         .mockResolvedValueOnce(ok())
-        .mockResolvedValueOnce(ok())
-        .mockResolvedValueOnce(ok())
-        .mockResolvedValueOnce({code: 1, stdout: '', stderr: 'no window\n'});
+        .mockResolvedValueOnce({code: 1, stdout: '', stderr: 'no window\n'})
+        .mockResolvedValue(ok());
 
       await expect(plain().start({...input, options: {}})).rejects.toThrow(
         'no window',
       );
-      expect(run).toHaveBeenCalledTimes(5);
+      expect(run).toHaveBeenCalledTimes(4);
+      expect(run.mock.calls[3]?.[1]).toEqual([
+        'kill-session',
+        '-t',
+        '=n-abc123',
+      ]);
+    });
+
+    it('Should rethrow the original error when the cleanup kill also fails', async () => {
+      const error = new Error('timed out');
+      run
+        .mockResolvedValueOnce(ok('@1\n'))
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({code: 1, stdout: '', stderr: 'no session'});
+
+      await expect(plain().start({...input, options: {}})).rejects.toBe(error);
+      expect(run.mock.calls[2]?.[1]).toEqual([
+        'kill-session',
+        '-t',
+        '=n-abc123',
+      ]);
     });
 
     it('Should throw a default message naming the subcommand when stderr is empty', async () => {
@@ -219,6 +257,7 @@ describe('TmuxSessionService', () => {
       await expect(plain().start({...input, options: {}})).rejects.toThrow(
         'tmux new-session failed',
       );
+      expect(run).toHaveBeenCalledTimes(1);
     });
   });
 

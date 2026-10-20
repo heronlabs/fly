@@ -110,6 +110,7 @@ const DialogBody = ({
           <textarea
             autoFocus
             rows={5}
+            maxLength={2000}
             value={description}
             onChange={event => setDescription(event.target.value)}
             style={{...fieldStyle, resize: 'vertical'}}

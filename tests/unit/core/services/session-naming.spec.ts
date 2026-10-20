@@ -1,14 +1,10 @@
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
-
 import {
   claudeCommand,
+  normalizePrompt,
+  PROMPT_ENV,
   sessionName,
   sessionPrefix,
-  shellQuote,
 } from '../../../../src/core/services/session-naming';
-
-const execFileP = promisify(execFile);
 
 describe('session naming', () => {
   it.each([
@@ -32,43 +28,26 @@ describe('session naming', () => {
     expect(sessionName('', 'abc123')).toBe('fly-abc123'));
 });
 
-describe('shellQuote', () => {
-  it.each([
-    "it's",
-    '$(touch /tmp/pwned)',
-    '`id`',
-    'a; rm -rf ~',
-    'ação "x" \\ y',
-    '\n',
-  ])('Should round-trip %j through a real sh unchanged', async value => {
-    const {stdout} = await execFileP('sh', [
-      '-c',
-      `printf %s ${shellQuote(value)}`,
-    ]);
-    expect(stdout).toBe(value);
-  });
-});
-
 describe('claudeCommand', () => {
   it('Should build the plain claude command', () =>
     expect(claudeCommand({sessionId: 'u1'})).toBe(
       'claude --dangerously-skip-permissions --session-id u1; exit',
     ));
 
-  it('Should collapse prompt whitespace and quote it', () =>
-    expect(
-      claudeCommand({sessionId: 'u1', prompt: "/supera:ship fix it's\n  bug"}),
-    ).toBe(
-      "claude --dangerously-skip-permissions --session-id u1 '/supera:ship fix it'\\''s bug'; exit",
+  it('Should read the prompt from the pane environment, never inline it', () => {
+    expect(PROMPT_ENV).toBe('FLY_PROMPT');
+    expect(claudeCommand({sessionId: 'u1', withPrompt: true})).toBe(
+      'claude --dangerously-skip-permissions --session-id u1 "$FLY_PROMPT"; exit',
+    );
+  });
+});
+
+describe('normalizePrompt', () => {
+  it('Should collapse whitespace and trim', () =>
+    expect(normalizePrompt("  /supera:ship fix it's\n  bug ")).toBe(
+      "/supera:ship fix it's bug",
     ));
 
   it('Should turn control characters into spaces', () =>
-    expect(
-      claudeCommand({
-        sessionId: 'u1',
-        prompt: 'a\x03b\x1bc\x7fd\u0085e',
-      }),
-    ).toBe(
-      "claude --dangerously-skip-permissions --session-id u1 'a b c d e'; exit",
-    ));
+    expect(normalizePrompt('a\x03b\x1bc\x7fd\u0085e')).toBe('a b c d e'));
 });
