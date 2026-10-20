@@ -39,7 +39,8 @@ describe('NodePtyTerminalService', () => {
     expect(await run('exit 3').exited).toBe(3);
   });
 
-  it('Should set TERM and COLORTERM', async () => {
+  it('Should override an inherited TERM and set COLORTERM', async () => {
+    process.env.TERM = 'dumb';
     const r = run('printf "%s|%s" "$TERM" "$COLORTERM"');
 
     await r.exited;

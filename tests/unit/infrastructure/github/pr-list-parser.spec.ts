@@ -149,6 +149,35 @@ describe('parsePrList', () => {
     expect(parsePrList(json)).toHaveLength(1);
   });
 
+  it.each([
+    ['number', '7'],
+    ['url', 5],
+    ['headRefName', 5],
+    ['state', ['OPEN']],
+  ])('Should skip a PR whose %s has the wrong type', (field, value) => {
+    expect(parsePrList(JSON.stringify([pr({[field]: value})]))).toEqual([]);
+  });
+
+  it('Should skip array entries', () => {
+    expect(parsePrList(JSON.stringify([[], pr()]))).toHaveLength(1);
+  });
+
+  it('Should treat a non-string reviewDecision as none', () => {
+    expect(parse({reviewDecision: ['APPROVED']}).review).toBe('none');
+  });
+
+  it('Should ignore a StatusContext whose state is not a string', () => {
+    expect(
+      parse({
+        statusCheckRollup: [{__typename: 'StatusContext', state: ['FAILURE']}],
+      }).checks,
+    ).toBe('none');
+  });
+
+  it('Should map a non-array rollup to none', () => {
+    expect(parse({statusCheckRollup: 'FAILURE'}).checks).toBe('none');
+  });
+
   it('Should skip PRs with an unknown state', () => {
     expect(parsePrList(JSON.stringify([pr({state: 'WAT'})]))).toEqual([]);
   });
