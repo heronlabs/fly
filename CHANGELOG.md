@@ -1,3 +1,32 @@
+## v0.0.3 (2026-10-20)
+
+### Features
+
+* feat(ui): style scrollbars with the theme palette (3d41b232e969c25b19da98a5869b0c86acebd0a4)
+* feat(ui): show queue status badges and footer counts (937038d054c2127ca878f5ed3d3dddc867707335)
+* feat(ipc): poll and broadcast the queue snapshot (f7ac9bb2884089616306d62e1e8b1472c3dd5a31)
+* feat(core): assemble the queue snapshot (aa11a093af720a3dd824d2630d8af5a7673bfe7b)
+* feat(github): list pull requests per repo with gh (ad104397281222ab1874d4c455e71f9355bc3b30)
+* feat(claude): tail transcripts incrementally and follow /clear (71271852e8dcecb98bbfb1c2c0b26d36520d0520)
+* feat(supera): read the engineer receipt from the transcript (6c96aa80e363b37971ae581d02c6bb823183d024)
+* feat(claude): parse transcript lines into a summary (bddea7e256a7c43aeca27894e1a00e0c85da52bf)
+* feat(core): add queue state rules (a50fe0549134b4c42794e87fd640904e32f4503c)
+
+### Bug Fixes
+
+* fix(ui): give the status badge an img role (7f4d71f4bde0ca41bbbd8741a46b9973f102e45e)
+* fix(claude): skip transcripts that vanish mid-listing (9c44fb651533318696aa7a3586c6b18eb1392184)
+* fix(github): report gh timeouts and treat repos without a GitHub remote as no PRs (ecf02b96a1ffb0af9505cd0b3289d1f31b6cf072)
+* fix(core): read a started session without a transcript as waiting (b2b485e52c2ea223482d89aa00947f291a287c73)
+* fix(ipc): refresh pull requests on every queue list (b29901d6a8f9db98911ddfc48490dd5251e980bc)
+* fix(task): bind a new task to the worktree its transcript entered (c7d8e898f1a842b50071c5fdff18793cc541a6f5)
+
+### Documentation
+
+* docs: mention PrGateway in the gh mocking rule (648c6abfedbc2e78990dc90623f282a6f602da2d)
+* docs: note transcript and gh test rules (5afcde33ad9d2cd847ceab7d0b6b35b422ef0300)
+* docs: add M3 queue plan and transcript spike (65f97c3600349ad2c97a37246db3691934d167ce)
+
 ## v0.0.2 (2026-10-20)
 
 ### Features
