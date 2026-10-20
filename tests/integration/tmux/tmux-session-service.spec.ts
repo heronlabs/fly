@@ -1,0 +1,74 @@
+import {execFileSync} from 'node:child_process';
+import {randomBytes} from 'node:crypto';
+import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+
+import {ExecCommandRunnerService} from '../../../src/infrastructure/process/exec-command-runner-service';
+import {TmuxSessionService} from '../../../src/infrastructure/tmux/tmux-session-service';
+
+describe('TmuxSessionService (real tmux)', () => {
+  const socket = `fly-test-${randomBytes(4).toString('hex')}`;
+  const service = new TmuxSessionService(
+    socket,
+    new ExecCommandRunnerService(),
+  );
+  const tmux = (...args: string[]) =>
+    execFileSync('tmux', ['-L', socket, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'fly tmux '));
+  });
+
+  afterEach(() => {
+    try {
+      tmux('kill-server');
+    } catch {
+      // no server was started
+    }
+    rmSync(cwd, {recursive: true, force: true});
+  });
+
+  it('Should return [] when no server is running on the socket', async () => {
+    expect(await service.list()).toEqual([]);
+  });
+
+  it('Should start, list, configure and kill a session', async () => {
+    await service.start({
+      name: 'it-abc123',
+      cwd,
+      command: 'cat',
+      options: {'@fly_task': "x'y z"},
+    });
+
+    await vi.waitFor(async () => {
+      const sessions = await service.list();
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        name: 'it-abc123',
+        cwd: realpathSync(cwd),
+        attachedClients: 0,
+        options: {'@fly_task': "x'y z"},
+      });
+    });
+    expect(
+      tmux(
+        'display',
+        '-p',
+        '-t',
+        '=it-abc123:',
+        '#{history_limit} #{session_windows}',
+      ),
+    ).toBe('10000 1\n');
+
+    await service.setOption('it-abc123', '@fly_worktree', '/a b');
+    expect((await service.list())[0]?.options['@fly_worktree']).toBe('/a b');
+
+    await service.kill('it-abc123');
+    expect(await service.list()).toEqual([]);
+  });
+});
