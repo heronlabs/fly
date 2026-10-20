@@ -69,7 +69,8 @@
     "lint:fix": "gts fix && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --fix --no-error-on-unmatched-pattern --ignore-pattern '.serena/**'",
     "postinstall": "node node_modules/electron/install.js",
     "preview": "electron-vite preview",
-    "test:unit": "vitest run --coverage",
+    "test:di": "vitest run --project di",
+    "test:unit": "vitest run --coverage --project node --project ui",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "version": "0.0.1"

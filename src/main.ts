@@ -10,6 +10,11 @@ import {SettingsHandler} from './application/ipc/handlers/settings-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
+import {
+  LoginShellEnvService,
+  mergePath,
+} from './infrastructure/environment/login-shell-env-service';
+import {ExecCommandRunnerService} from './infrastructure/process/exec-command-runner-service';
 
 function isAppUrl(
   url: string,
@@ -68,6 +73,12 @@ let context: Awaited<
 app
   .whenReady()
   .then(async () => {
+    // Apps launched from Finder get a minimal PATH; load the login shell's.
+    const env = await new LoginShellEnvService(
+      new ExecCommandRunnerService(),
+    ).resolve(process.env['SHELL'] ?? '/bin/zsh');
+    process.env['PATH'] = mergePath(process.env['PATH'], env.PATH);
+    process.env['LANG'] ??= env.LANG ?? 'en_US.UTF-8';
     context = await NestFactory.createApplicationContext(IpcModule, {
       logger: ['error', 'warn'],
     });

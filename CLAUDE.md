@@ -10,6 +10,7 @@ Electron desktop app (main process runs NestJS, renderer is React) for driving a
 | `pnpm build` | Build main, preload and renderer into `out/` |
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm test:unit` | vitest with 100% coverage thresholds |
+| `pnpm test:di` | Nest DI smoke test: `IpcModule` resolves with real decorator metadata |
 | `pnpm dep:cruise` | Enforce layer rules |
 | `pnpm typecheck` | Typecheck node and web projects |
 

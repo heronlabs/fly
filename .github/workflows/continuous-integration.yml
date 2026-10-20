@@ -88,6 +88,8 @@ jobs:
 
       - run: pnpm test:unit
 
+      - run: pnpm test:di
+
       - if: always()
         name: Upload unit-test coverage
         uses: actions/upload-artifact@v7
