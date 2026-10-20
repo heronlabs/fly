@@ -170,6 +170,27 @@ describe('QueueHandler', () => {
     expect(refreshPullRequests).not.toHaveBeenCalled();
   });
 
+  it('Should clear no interval when stopped before any timer exists', () => {
+    const cleared = vi.spyOn(globalThis, 'clearInterval');
+    const idle = new QueueHandler(
+      host,
+      {send} as Broadcaster,
+      {snapshot, refreshPullRequests} as unknown as QueueService,
+    );
+
+    idle.stop();
+
+    expect(cleared).not.toHaveBeenCalled();
+  });
+
+  it('Should clear both intervals once when stopped', () => {
+    const cleared = vi.spyOn(globalThis, 'clearInterval');
+
+    handler.stop();
+
+    expect(cleared).toHaveBeenCalledTimes(2);
+  });
+
   it('Should leave one of each timer after registering twice', async () => {
     handler.register();
     handler.register();

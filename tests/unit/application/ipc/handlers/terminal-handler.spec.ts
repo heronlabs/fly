@@ -130,6 +130,16 @@ describe('TerminalHandler', () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it('Should cancel the flush timer when the exit flushes the data', async () => {
+    const cleared = vi.spyOn(globalThis, 'clearTimeout');
+    await invoke(channels.terminalAttach, 'sess', {cols: 80, rows: 24});
+
+    sink.data('t1', 'bye');
+    sink.exit('t1', 3);
+
+    expect(cleared).toHaveBeenCalledTimes(1);
+  });
+
   it('Should send only the exit event when nothing is pending', async () => {
     await invoke(channels.terminalAttach, 'sess', {cols: 80, rows: 24});
 

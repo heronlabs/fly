@@ -1,4 +1,4 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync, type Stats} from 'node:fs';
 import {
   appendFile,
   mkdir,
@@ -6,6 +6,7 @@ import {
   open,
   rename,
   rm,
+  stat,
   symlink,
   utimes,
   writeFile,
@@ -105,6 +106,42 @@ describe('ClaudeTranscriptService', () => {
             file,
             ...rest,
           )) as unknown as typeof open);
+  };
+
+  /** Wraps `open` so every handle's `read` and `close` calls are recorded. */
+  const trackHandles = async (): Promise<
+    {
+      path: string;
+      read: ReturnType<typeof vi.spyOn>;
+      close: ReturnType<typeof vi.spyOn>;
+    }[]
+  > => {
+    const actual =
+      await vi.importActual<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      );
+    const handles: {
+      path: string;
+      read: ReturnType<typeof vi.spyOn>;
+      close: ReturnType<typeof vi.spyOn>;
+    }[] = [];
+    vi.mocked(open).mockImplementation((async (
+      file: string,
+      ...rest: unknown[]
+    ) => {
+      const handle = await (
+        actual.open as (
+          ...args: unknown[]
+        ) => Promise<Awaited<ReturnType<typeof open>>>
+      )(file, ...rest);
+      handles.push({
+        path: file,
+        read: vi.spyOn(handle, 'read'),
+        close: vi.spyOn(handle, 'close'),
+      });
+      return handle;
+    }) as unknown as typeof open);
+    return handles;
   };
 
   const opened = (path: string): number =>
@@ -237,6 +274,108 @@ describe('ClaudeTranscriptService', () => {
       expect(opened(path)).toBe(1);
     });
 
+    it('Should read the file with one exact-size read and close the handle', async () => {
+      const path = await write(S, text('t1'));
+      const handles = await trackHandles();
+      await session();
+      expect(handles).toHaveLength(1);
+      const [handle] = handles;
+      expect(handle?.read).toHaveBeenCalledTimes(1);
+      expect(handle?.read.mock.calls[0]).toEqual([
+        expect.objectContaining({length: Buffer.byteLength(text('t1'))}),
+        0,
+        Buffer.byteLength(text('t1')),
+        0,
+      ]);
+      expect(handle?.close).toHaveBeenCalledTimes(1);
+      expect(path).toBe(handle?.path);
+    });
+
+    it('Should size the buffer for the held remainder plus the appended bytes', async () => {
+      const path = await write(S, text('t1'));
+      await session();
+      const line = text('t3');
+      await appendFile(path, line.slice(0, 40));
+      await session();
+      const handles = await trackHandles();
+      await appendFile(path, line.slice(40));
+      await session();
+      const [handle] = handles;
+      expect(handle?.read).toHaveBeenCalledTimes(1);
+      expect(handle?.read.mock.calls[0]).toEqual([
+        expect.objectContaining({length: Buffer.byteLength(line)}),
+        40,
+        Buffer.byteLength(line) - 40,
+        Buffer.byteLength(text('t1')) + 40,
+      ]);
+    });
+
+    it('Should stop reading when the file is shorter than its stat said', async () => {
+      const path = await write(S, text('t1'));
+      const actual =
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
+        );
+      vi.mocked(stat).mockImplementation((async (
+        file: string,
+        ...rest: unknown[]
+      ) => {
+        const stats = await (
+          actual.stat as (...args: unknown[]) => Promise<Stats>
+        )(file, ...rest);
+        return file === path ? {...stats, size: stats.size + 50} : stats;
+      }) as unknown as typeof stat);
+      expect(await session()).toEqual(expected('t1'));
+    });
+
+    it('Should close the handle of a newer file after scanning its owner', async () => {
+      await write(S, text('t1'), 1000);
+      const successor = await write(C, text('c1', 't3'), 2000);
+      const handles = await trackHandles();
+      await session();
+      const scan = handles.filter(handle => handle.path === successor);
+      expect(scan.length).toBeGreaterThan(0);
+      for (const handle of handles) {
+        expect(handle.close).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it('Should let a later reader wait for the one that follows an earlier one', async () => {
+      const calls: (() => void)[] = [];
+      const tail = vi
+        .spyOn(
+          service as unknown as {tail(path: string): Promise<unknown>},
+          'tail',
+        )
+        .mockImplementation(
+          () => new Promise<unknown>(resolve => calls.push(() => resolve({}))),
+        );
+      const reads = service as unknown as {
+        read(path: string): Promise<unknown>;
+        reads: Map<string, unknown>;
+      };
+      const settle = (): Promise<void> =>
+        new Promise(resolve => setImmediate(resolve));
+      const first = reads.read('p');
+      const second = reads.read('p');
+      calls[0]?.();
+      await first;
+      await settle();
+      expect(tail).toHaveBeenCalledTimes(2);
+      const third = reads.read('p');
+      await settle();
+      // The second read is still running: the third must wait for it.
+      expect(tail).toHaveBeenCalledTimes(2);
+      calls[1]?.();
+      await second;
+      await settle();
+      expect(tail).toHaveBeenCalledTimes(3);
+      calls[2]?.();
+      await third;
+      await settle();
+      expect(reads.reads.size).toBe(0);
+    });
+
     it('Should reject when the project dir is not a directory', async () => {
       await writeFile(dirOf(ROOT), 'x');
       await expect(session()).rejects.toMatchObject({code: 'ENOTDIR'});
@@ -326,6 +465,36 @@ describe('ClaudeTranscriptService', () => {
         expect(await session()).toEqual(parse(noisy));
       });
 
+      it('Should not follow an owned file with the same mtime as the current one', async () => {
+        await write(S, text('t1'), 1000);
+        await write(C, text('c1', 't3'), 1000);
+        expect(await session()).toEqual(expected('t1'));
+      });
+
+      it('Should never take the current file as its own successor', async () => {
+        // The current file is rewritten between the first stat and the listing.
+        await write(S, text('c1', 't3'), 1000);
+        await write(D, text('c1', 't4'), 800);
+        const path = join(dirOf(ROOT), `${S}.jsonl`);
+        const actual =
+          await vi.importActual<typeof import('node:fs/promises')>(
+            'node:fs/promises',
+          );
+        let first = true;
+        vi.mocked(stat).mockImplementation((async (
+          file: string,
+          ...rest: unknown[]
+        ) => {
+          const stats = await (
+            actual.stat as (...args: unknown[]) => Promise<Stats>
+          )(file, ...rest);
+          if (file !== path || !first) return stats;
+          first = false;
+          return {...stats, mtimeMs: 500_000};
+        }) as unknown as typeof stat);
+        expect(await session()).toEqual(expected('c1', 't4'));
+      });
+
       it('Should ignore an owned file older than the current one', async () => {
         await write(S, text('t1'), 2000);
         await write(C, text('c1', 't3'), 1000);
@@ -367,6 +536,19 @@ describe('ClaudeTranscriptService', () => {
       expect(await directory()).toBeNull();
     });
 
+    it('Should keep a transcript written exactly at since', async () => {
+      await write(S, text('t1'), ago(60 * MINUTE));
+      expect(await directory()).toEqual(expected('t1'));
+    });
+
+    it('Should ignore a file that is not a .jsonl transcript', async () => {
+      const path = join(dirOf(ROOT), 'agent.meta.json');
+      await mkdir(dirOf(ROOT), {recursive: true});
+      await writeFile(path, '{}');
+      await utimes(path, ago(MINUTE), ago(MINUTE));
+      expect(await directory()).toBeNull();
+    });
+
     it('Should ignore a transcript whose stem is excluded', async () => {
       await write(S, text('t1'), ago(MINUTE));
       expect(await directory({exclude: [S]})).toBeNull();
@@ -381,6 +563,19 @@ describe('ClaudeTranscriptService', () => {
       await write(S, text('t1'), ago(MINUTE));
       await write(OTHER, text('t3'), ago(LIVE_WINDOW_MS - MINUTE));
       expect(await directory()).toBe('ambiguous');
+    });
+
+    it('Should count a transcript written exactly at the live window edge as live', async () => {
+      await write(S, text('t1'), ago(MINUTE));
+      await write(OTHER, text('t3'), ago(LIVE_WINDOW_MS));
+      expect(await directory()).toBe('ambiguous');
+    });
+
+    it('Should keep a transcript whose owner is unknown', async () => {
+      await write(S, '{"type":"user"}\n', ago(MINUTE));
+      expect(await directory({exclude: [OTHER]})).toEqual(
+        parse('{"type":"user"}\n'),
+      );
     });
 
     it('Should read the live transcript when the other one is stale', async () => {
@@ -406,6 +601,12 @@ describe('ClaudeTranscriptService', () => {
       const gone = await write(OTHER, text('t3'), ago(2 * MINUTE));
       await vanishOnOpen(gone);
       expect(await directory()).toEqual(expected('t1'));
+    });
+
+    it('Should return null when its only candidate vanished before its owner scan', async () => {
+      const gone = await write(S, text('t1'), ago(MINUTE));
+      await vanishOnOpen(gone);
+      expect(await directory()).toBeNull();
     });
 
     it('Should reject when the project dir is not a directory', async () => {
