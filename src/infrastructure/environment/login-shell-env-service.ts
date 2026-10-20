@@ -26,7 +26,8 @@ export class LoginShellEnvService {
 function parse(stdout: string): LoginEnv {
   const start = stdout.indexOf(MARKER);
   const end = stdout.lastIndexOf(MARKER);
-  if (start === -1 || end <= start) return {};
+  // A lone marker gives end === start, hence an empty body and no values.
+  if (start === -1) return {};
   const body = stdout.slice(start + MARKER.length, end);
   const [path, lang] = body.split('\n');
   const env: LoginEnv = {};

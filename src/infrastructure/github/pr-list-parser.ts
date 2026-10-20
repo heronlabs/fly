@@ -16,7 +16,7 @@ const REVIEWS: Record<string, PullRequest['review']> = {
   REVIEW_REQUIRED: 'required',
 };
 
-const PASSING_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+const PASSING_CONCLUSIONS = new Set<unknown>(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 
 const CONTEXT_STATES: Record<string, Check> = {
   SUCCESS: 'passing',
@@ -26,8 +26,9 @@ const CONTEXT_STATES: Record<string, Check> = {
   ERROR: 'failing',
 };
 
+// Object(value) === value is true only for objects: null and primitives fail.
 const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+  Object(value) === value && !Array.isArray(value);
 
 const classifyCheck = (entry: unknown): Check | null => {
   if (!isRecord(entry)) {
@@ -37,10 +38,7 @@ const classifyCheck = (entry: unknown): Check | null => {
     if (entry.status !== 'COMPLETED') {
       return 'pending';
     }
-    return typeof entry.conclusion === 'string' &&
-      PASSING_CONCLUSIONS.has(entry.conclusion)
-      ? 'passing'
-      : 'failing';
+    return PASSING_CONCLUSIONS.has(entry.conclusion) ? 'passing' : 'failing';
   }
   if (entry.__typename === 'StatusContext') {
     return typeof entry.state === 'string'
@@ -51,7 +49,10 @@ const classifyCheck = (entry: unknown): Check | null => {
 };
 
 const aggregateChecks = (rollup: unknown): ChecksState => {
-  const states = (Array.isArray(rollup) ? rollup : []).map(classifyCheck);
+  if (!Array.isArray(rollup)) {
+    return 'none';
+  }
+  const states = rollup.map(classifyCheck);
   if (states.includes('failing')) {
     return 'failing';
   }
@@ -60,6 +61,9 @@ const aggregateChecks = (rollup: unknown): ChecksState => {
   }
   return states.includes('passing') ? 'passing' : 'none';
 };
+
+const mapReview = (value: unknown): PullRequest['review'] =>
+  typeof value === 'string' ? (REVIEWS[value] ?? 'none') : 'none';
 
 const mapMergeable = (value: unknown): PullRequest['mergeable'] => {
   if (value === 'MERGEABLE') {
@@ -82,8 +86,6 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
   if (!state) {
     return null;
   }
-  const decision =
-    typeof entry.reviewDecision === 'string' ? entry.reviewDecision : '';
   return {
     number: entry.number,
     url: entry.url,
@@ -91,20 +93,22 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
     state,
     draft: entry.isDraft === true,
     mergeable: mapMergeable(entry.mergeable),
-    review: REVIEWS[decision] ?? 'none',
+    review: mapReview(entry.reviewDecision),
     checks: aggregateChecks(entry.statusCheckRollup),
   };
 };
 
-export const parsePrList = (json: string): PullRequest[] => {
-  let data: unknown;
+const parseArray = (json: string): unknown[] => {
   try {
-    data = JSON.parse(json);
+    const data: unknown = JSON.parse(json);
+    if (Array.isArray(data)) {
+      return data;
+    }
   } catch {
-    throw new Error(INVALID);
+    // Invalid JSON is reported below, exactly like a non-array.
   }
-  if (!Array.isArray(data)) {
-    throw new Error(INVALID);
-  }
-  return data.flatMap(entry => mapPullRequest(entry) ?? []);
+  throw new Error(INVALID);
 };
+
+export const parsePrList = (json: string): PullRequest[] =>
+  parseArray(json).flatMap(entry => mapPullRequest(entry) ?? []);
