@@ -340,40 +340,60 @@ describe('ClaudeTranscriptService', () => {
       }
     });
 
-    it('Should let a later reader wait for the one that follows an earlier one', async () => {
-      const calls: (() => void)[] = [];
-      const tail = vi
-        .spyOn(
-          service as unknown as {tail(path: string): Promise<unknown>},
-          'tail',
-        )
-        .mockImplementation(
-          () => new Promise<unknown>(resolve => calls.push(() => resolve({}))),
+    it('Should queue a third caller behind the second while the first has finished', async () => {
+      const path = await write(S, text('t1'));
+      const actual =
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
         );
-      const reads = service as unknown as {
-        read(path: string): Promise<unknown>;
-        reads: Map<string, unknown>;
-      };
-      const settle = (): Promise<void> =>
-        new Promise(resolve => setImmediate(resolve));
-      const first = reads.read('p');
-      const second = reads.read('p');
-      calls[0]?.();
-      await first;
-      await settle();
-      expect(tail).toHaveBeenCalledTimes(2);
-      const third = reads.read('p');
-      await settle();
+      const gates: (() => void)[] = [];
+      let stats = 0;
+      vi.mocked(open).mockImplementation((async (
+        file: string,
+        ...rest: unknown[]
+      ) => {
+        if (file === path) await new Promise<void>(r => gates.push(r));
+        return (actual.open as (...args: unknown[]) => unknown)(file, ...rest);
+      }) as unknown as typeof open);
+      vi.mocked(stat).mockImplementation((async (
+        file: string,
+        ...rest: unknown[]
+      ) => {
+        if (file === path) stats++;
+        return (actual.stat as (...args: unknown[]) => unknown)(file, ...rest);
+      }) as unknown as typeof stat);
+      const pause = (): Promise<void> =>
+        new Promise(resolve => setTimeout(resolve, 30));
+
+      // Each call stats the file twice before it reaches the read.
+      const first = session();
+      await vi.waitFor(() => expect(opened(path)).toBe(1));
+      await appendFile(path, text('t3'));
+      const second = session();
+      await vi.waitFor(() => expect(stats).toBe(5));
+      await pause();
+      gates[0]?.();
+      await vi.waitFor(() => expect(opened(path)).toBe(2));
+      const third = session();
+      await vi.waitFor(() => expect(stats).toBeGreaterThanOrEqual(8));
+      await pause();
       // The second read is still running: the third must wait for it.
-      expect(tail).toHaveBeenCalledTimes(2);
-      calls[1]?.();
-      await second;
-      await settle();
-      expect(tail).toHaveBeenCalledTimes(3);
-      calls[2]?.();
-      await third;
-      await settle();
-      expect(reads.reads.size).toBe(0);
+      expect(opened(path)).toBe(2);
+      gates[1]?.();
+
+      expect(await first).toEqual(expected('t1'));
+      expect(await second).toEqual(expected('t1', 't3'));
+      expect(await third).toEqual(expected('t1', 't3'));
+      expect(opened(path)).toBe(2);
+    });
+
+    it('Should drop the per-path read chain once it settles', async () => {
+      await write(S, text('t1'));
+      await Promise.all([session(), session()]);
+      await new Promise(resolve => setImmediate(resolve));
+      expect(
+        (service as unknown as {reads: Map<string, unknown>}).reads.size,
+      ).toBe(0);
     });
 
     it('Should reject when the project dir is not a directory', async () => {
