@@ -38,6 +38,12 @@ const nullIfMissing = (error: unknown): null => {
   throw error;
 };
 
+/** `undefined` for a file that vanished mid-listing; anything else rejects. */
+const skipIfMissing = (error: unknown): undefined => {
+  if ((error as {code?: unknown}).code === 'ENOENT') return undefined;
+  throw error;
+};
+
 /** The complete lines of `bytes`, decoded as UTF-8. */
 const completeLines = (bytes: Buffer): string[] =>
   bytes.toString('utf8', 0, bytes.lastIndexOf(NEWLINE) + 1).split('\n');
@@ -98,9 +104,9 @@ export class ClaudeTranscriptService extends TranscriptSource {
     const newer = (await this.transcripts(dir)).filter(
       file => file.path !== current && file.mtimeMs > mtimeMs,
     );
-    const owners = await Promise.all(newer.map(file => this.owner(file)));
+    const owned = await this.owned(newer);
     const successor = newest(
-      newer.filter((_, index) => owners[index] === sessionId),
+      owned.filter(([, owner]) => owner === sessionId).map(([file]) => file),
     );
     if (successor === undefined) return this.read(current);
     this.successors.set(launchFile, successor.path);
@@ -118,11 +124,9 @@ export class ClaudeTranscriptService extends TranscriptSource {
     const recent = (await this.transcripts(dir)).filter(
       file => file.mtimeMs >= since && !excluded.has(file.stem),
     );
-    const owners = await Promise.all(recent.map(file => this.owner(file)));
-    const candidates = recent.filter((_, index) => {
-      const owner = owners[index];
-      return typeof owner !== 'string' || !excluded.has(owner);
-    });
+    const candidates = (await this.owned(recent))
+      .filter(([, owner]) => typeof owner !== 'string' || !excluded.has(owner))
+      .map(([file]) => file);
     const live = candidates.filter(
       file => file.mtimeMs >= now - LIVE_WINDOW_MS,
     );
@@ -133,13 +137,29 @@ export class ClaudeTranscriptService extends TranscriptSource {
 
   private async transcripts(dir: string): Promise<Transcript[]> {
     const names = (await readdir(dir)).filter(name => name.endsWith(EXTENSION));
-    return Promise.all(
+    const found = await Promise.all(
       names.map(async name => {
         const path = join(dir, name);
-        const {mtimeMs, size} = await stat(path);
+        const stats = await stat(path).catch(skipIfMissing);
+        if (stats === undefined) return undefined;
+        const {mtimeMs, size} = stats;
         return {path, stem: name.slice(0, -EXTENSION.length), mtimeMs, size};
       }),
     );
+    return found.filter((file): file is Transcript => file !== undefined);
+  }
+
+  /** Each file with its owner, leaving out those that vanished meanwhile. */
+  private async owned(
+    files: Transcript[],
+  ): Promise<[Transcript, string | null][]> {
+    const owners = await Promise.all(
+      files.map(file => this.owner(file).catch(skipIfMissing)),
+    );
+    return files.flatMap((file, index) => {
+      const owner = owners[index];
+      return owner === undefined ? [] : [[file, owner]];
+    });
   }
 
   /** The first string `session_id` in the complete lines of the first 256 KiB. */

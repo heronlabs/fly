@@ -6,6 +6,7 @@ import {
   open,
   rename,
   rm,
+  symlink,
   utimes,
   writeFile,
 } from 'node:fs/promises';
@@ -90,6 +91,21 @@ describe('ClaudeTranscriptService', () => {
 
   const session = (sessionId = S, launchCwd = ROOT) =>
     service.forSession({launchCwd, sessionId});
+
+  /** Makes `open` fail with ENOENT for `path`, as if it vanished after the stat. */
+  const vanishOnOpen = async (path: string, code = 'ENOENT'): Promise<void> => {
+    const actual =
+      await vi.importActual<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      );
+    vi.mocked(open).mockImplementation(((file: string, ...rest: unknown[]) =>
+      file === path
+        ? Promise.reject(Object.assign(new Error('gone'), {code}))
+        : (actual.open as (...args: unknown[]) => unknown)(
+            file,
+            ...rest,
+          )) as unknown as typeof open);
+  };
 
   const opened = (path: string): number =>
     vi.mocked(open).mock.calls.filter(([file]) => file === path).length;
@@ -233,6 +249,26 @@ describe('ClaudeTranscriptService', () => {
       await expect(session()).rejects.toMatchObject({code: 'EISDIR'});
     });
 
+    it('Should skip a candidate that vanished before its stat', async () => {
+      await write(S, text('t1'), 1000);
+      await symlink(join(dirOf(ROOT), 'missing'), join(dirOf(ROOT), 'x.jsonl'));
+      expect(await session()).toEqual(expected('t1'));
+    });
+
+    it('Should skip a newer candidate that vanished before its owner scan', async () => {
+      await write(S, text('t1'), 1000);
+      const gone = await write(C, text('c1', 't3'), 2000);
+      await vanishOnOpen(gone);
+      expect(await session()).toEqual(expected('t1'));
+    });
+
+    it('Should reject when a newer candidate cannot be opened for another reason', async () => {
+      await write(S, text('t1'), 1000);
+      const broken = await write(C, text('c1', 't3'), 2000);
+      await vanishOnOpen(broken, 'EACCES');
+      await expect(session()).rejects.toMatchObject({code: 'EACCES'});
+    });
+
     describe('after /clear', () => {
       /** The launch file holds T1; the newer successor holds `successor`. */
       const clear = async (successor: string): Promise<string> => {
@@ -357,6 +393,19 @@ describe('ClaudeTranscriptService', () => {
       await write(S, text('t1'), ago(LIVE_WINDOW_MS + 5 * MINUTE));
       await write(OTHER, text('t3'), ago(LIVE_WINDOW_MS + MINUTE));
       expect(await directory()).toEqual(expected('t3'));
+    });
+
+    it('Should skip a candidate that vanished before its stat', async () => {
+      await write(S, text('t1'), ago(MINUTE));
+      await symlink(join(dirOf(ROOT), 'missing'), join(dirOf(ROOT), 'x.jsonl'));
+      expect(await directory()).toEqual(expected('t1'));
+    });
+
+    it('Should skip a candidate that vanished before its owner scan', async () => {
+      await write(S, text('t1'), ago(MINUTE));
+      const gone = await write(OTHER, text('t3'), ago(2 * MINUTE));
+      await vanishOnOpen(gone);
+      expect(await directory()).toEqual(expected('t1'));
     });
 
     it('Should reject when the project dir is not a directory', async () => {
