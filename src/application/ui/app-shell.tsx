@@ -109,6 +109,7 @@ export const AppShell = () => {
               selectedId={selectedWorktreeId}
               onSelect={select}
               onOpenInEditor={path => void openInEditor(path)}
+              sessionCounts={{}}
             />
           )}
           <PlaceholderPanel title="Sessão" hint="Terminal chega no marco 2" />

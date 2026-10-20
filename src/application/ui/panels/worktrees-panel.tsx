@@ -10,6 +10,7 @@ type Props = {
   selectedId: string | null;
   onSelect(id: string): void;
   onOpenInEditor(path: string): void;
+  sessionCounts: Record<string, number>;
 };
 
 export const WorktreesPanel = ({
@@ -17,6 +18,7 @@ export const WorktreesPanel = ({
   selectedId,
   onSelect,
   onOpenInEditor,
+  sessionCounts,
 }: Props) => {
   const activate = (event: KeyboardEvent, id: string) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -110,6 +112,20 @@ export const WorktreesPanel = ({
                         >
                           {worktree.branch ?? worktree.head.slice(0, 7)}
                         </span>
+                        {(sessionCounts[worktree.id] ?? 0) >= 1 && (
+                          <span
+                            role="img"
+                            aria-label="Sessão ativa"
+                            style={{
+                              display: 'inline-block',
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              flex: 'none',
+                              background: 'var(--ok)',
+                            }}
+                          />
+                        )}
                       </div>
                       <button
                         type="button"
