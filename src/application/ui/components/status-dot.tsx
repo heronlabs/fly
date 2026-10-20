@@ -34,6 +34,7 @@ export const StatusBadge = ({status}: {status: QueueStatus}) => {
   if (badge === null) return null;
   return (
     <span
+      role="img"
       aria-label={title}
       style={{
         flex: 'none',

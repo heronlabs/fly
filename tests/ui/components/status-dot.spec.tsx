@@ -32,7 +32,7 @@ describe('StatusBadge', () => {
       expect(container).toBeEmptyDOMElement();
       return;
     }
-    const badge = screen.getByLabelText(title);
+    const badge = screen.getByRole('img', {name: title});
     expect(badge).toHaveTextContent(text);
     expect(badge.style.getPropertyValue('color')).toBe(color);
     expect(badge.style.getPropertyValue('background')).toBe('var(--surface)');
