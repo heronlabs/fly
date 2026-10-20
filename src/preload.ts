@@ -25,6 +25,24 @@ const api: FlyApi = {
   shell: {
     openInEditor: path => ipcRenderer.invoke(channels.shellOpenInEditor, path),
   },
+  sessions: {
+    list: () => ipcRenderer.invoke(channels.sessionList),
+    start: worktreeId => ipcRenderer.invoke(channels.sessionStart, worktreeId),
+    kill: name => ipcRenderer.invoke(channels.sessionKill, name),
+    onChanged: listener => {
+      const handler = (
+        _event: unknown,
+        snapshot: Parameters<typeof listener>[0],
+      ) => listener(snapshot);
+      ipcRenderer.on(channels.sessionChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.sessionChanged, handler);
+      };
+    },
+  },
+  tasks: {
+    create: input => ipcRenderer.invoke(channels.taskCreate, input),
+  },
 };
 
 contextBridge.exposeInMainWorld('fly', api);

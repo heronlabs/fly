@@ -1,3 +1,4 @@
+import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
 import type {Workspace} from './workspace';
 
@@ -9,6 +10,11 @@ export const channels = {
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   shellOpenInEditor: 'shell:open-in-editor',
+  sessionList: 'session:list',
+  sessionStart: 'session:start',
+  sessionKill: 'session:kill',
+  sessionChanged: 'session:changed',
+  taskCreate: 'task:create',
 } as const;
 
 export type Channel = (typeof channels)[keyof typeof channels];
@@ -25,6 +31,15 @@ export type FlyApi = {
     set(patch: Partial<AppConfig>): Promise<AppConfig>;
   };
   shell: {openInEditor(path: string): Promise<void>};
+  sessions: {
+    list(): Promise<SessionsSnapshot>;
+    start(worktreeId: string): Promise<string>;
+    kill(name: string): Promise<void>;
+    onChanged(listener: (snapshot: SessionsSnapshot) => void): () => void;
+  };
+  tasks: {
+    create(input: {repoId: string; description: string}): Promise<string>;
+  };
 };
 
 declare global {

@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {NestFactory} from '@nestjs/core';
 import {app, BrowserWindow} from 'electron';
 
+import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
@@ -85,6 +86,7 @@ app
     context.get(WorkspaceHandler).register();
     context.get(SettingsHandler).register();
     context.get(ShellHandler).register();
+    context.get(SessionHandler).register();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

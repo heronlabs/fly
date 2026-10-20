@@ -3,6 +3,7 @@ import {Inject, Injectable, Logger} from '@nestjs/common';
 import {channels} from '../../../core/domain/fly-api';
 import type {Workspace} from '../../../core/domain/workspace';
 import {WorkspaceWatcher} from '../../../core/interfaces/workspace-watcher';
+import {SessionService} from '../../../core/services/session-service';
 import {SettingsService} from '../../../core/services/settings-service';
 import {WorkspaceService} from '../../../core/services/workspace-service';
 import type {Broadcaster, FolderPicker, IpcHost} from '../ipc-types';
@@ -22,6 +23,7 @@ export class WorkspaceHandler {
     private readonly workspaces: WorkspaceService,
     private readonly settings: SettingsService,
     private readonly watcher: WorkspaceWatcher,
+    private readonly sessions: SessionService,
   ) {}
 
   register(): void {
@@ -58,6 +60,7 @@ export class WorkspaceHandler {
   private async load(root: string): Promise<Workspace> {
     const workspace = await this.workspaces.discover(root);
     this.currentRoot = root;
+    this.sessions.setWorkspace(workspace);
     this.rewatch(root, workspace);
     return workspace;
   }
@@ -79,6 +82,7 @@ export class WorkspaceHandler {
     try {
       const workspace = await this.workspaces.discover(root);
       if (this.currentRoot !== root) return;
+      this.sessions.setWorkspace(workspace);
       const paths = this.repoPaths(workspace);
       if (paths.join('\0') !== this.watchedPaths.join('\0')) {
         this.rewatch(root, workspace);
