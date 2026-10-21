@@ -2,9 +2,11 @@ import {
   errorMessage,
   groupsOf,
   queueCounts,
+  queueOf,
   statusesOf,
   useFlyStore,
 } from '../../../src/application/ui/state/fly-store';
+import type {WorktreeDiff} from '../../../src/core/domain/diff';
 import type {QueueSnapshot, QueueStatus} from '../../../src/core/domain/queue';
 import type {SessionsSnapshot} from '../../../src/core/domain/session';
 import type {Workspace} from '../../../src/core/domain/workspace';
@@ -470,6 +472,131 @@ describe('errorMessage', () => {
         w0: 'ready',
         w1: 'ci',
       });
+    });
+  });
+
+  describe('diff and merge', () => {
+    const diffOf = (worktreeId: string, base = 'main'): WorktreeDiff => ({
+      worktreeId,
+      scope: 'live',
+      base,
+      diff: {files: [], truncated: false},
+      error: null,
+    });
+
+    it('loadDiff stores the result', async () => {
+      useFlyStore.setState({selectedWorktreeId: 'a/x#main'});
+      const result = diffOf('a/x#main');
+      vi.mocked(window.fly.diff.get).mockResolvedValue(result);
+      await useFlyStore.getState().loadDiff('a/x#main', 'live');
+      expect(window.fly.diff.get).toHaveBeenCalledWith('a/x#main', 'live');
+      expect(useFlyStore.getState().diff).toBe(result);
+    });
+
+    it('loadDiff ignores a result for another worktree', async () => {
+      useFlyStore.setState({selectedWorktreeId: 'a/x#main'});
+      vi.mocked(window.fly.diff.get).mockResolvedValue(diffOf('b/y#main'));
+      await useFlyStore.getState().loadDiff('b/y#main', 'live');
+      expect(useFlyStore.getState().diff).toBeNull();
+    });
+
+    it('applyDiff keeps the same object for an identical result', () => {
+      useFlyStore.setState({selectedWorktreeId: 'a/x#main'});
+      useFlyStore.getState().applyDiff(diffOf('a/x#main'));
+      const first = useFlyStore.getState().diff;
+      useFlyStore.getState().applyDiff(diffOf('a/x#main'));
+      expect(useFlyStore.getState().diff).toBe(first);
+      useFlyStore.getState().applyDiff(diffOf('a/x#main', 'dev'));
+      expect(useFlyStore.getState().diff).not.toBe(first);
+      expect(useFlyStore.getState().diff?.base).toBe('dev');
+    });
+
+    it('loadDiff reports a rejection', async () => {
+      vi.mocked(window.fly.diff.get).mockRejectedValue(new Error('boom'));
+      await useFlyStore.getState().loadDiff('a/x#main', 'live');
+      expect(useFlyStore.getState().error).toBe('boom');
+    });
+
+    it('select of a new id clears the diff, the same id keeps it', () => {
+      useFlyStore.setState({
+        selectedWorktreeId: 'a/x#main',
+        diff: diffOf('a/x#main'),
+      });
+      useFlyStore.getState().select('a/x#main');
+      expect(useFlyStore.getState().diff).not.toBeNull();
+      useFlyStore.getState().select('b/y#main');
+      expect(useFlyStore.getState().diff).toBeNull();
+    });
+
+    it('clearDiff drops the diff', () => {
+      useFlyStore.setState({diff: diffOf('a/x#main')});
+      useFlyStore.getState().clearDiff();
+      expect(useFlyStore.getState().diff).toBeNull();
+    });
+
+    it('mergePullRequest sets merging around the call and reloads the queue', async () => {
+      useFlyStore.setState({error: 'old'});
+      let release: () => void = () => {};
+      vi.mocked(window.fly.pullRequests.merge).mockReturnValue(
+        new Promise<void>(resolve => {
+          release = resolve;
+        }),
+      );
+      const pending = useFlyStore.getState().mergePullRequest('a/x#main');
+      expect(useFlyStore.getState().merging).toBe(true);
+      expect(useFlyStore.getState().error).toBeNull();
+      await useFlyStore.getState().mergePullRequest('a/x#main');
+      expect(window.fly.pullRequests.merge).toHaveBeenCalledTimes(1);
+      release();
+      await pending;
+      expect(window.fly.pullRequests.merge).toHaveBeenCalledWith('a/x#main');
+      expect(useFlyStore.getState().merging).toBe(false);
+      expect(window.fly.queue.list).toHaveBeenCalledTimes(1);
+    });
+
+    it('mergePullRequest reports a rejection and stops merging', async () => {
+      vi.mocked(window.fly.pullRequests.merge).mockRejectedValue(
+        new Error('conflito'),
+      );
+      await useFlyStore.getState().mergePullRequest('a/x#main');
+      expect(useFlyStore.getState().error).toBe('conflito');
+      expect(useFlyStore.getState().merging).toBe(false);
+      expect(window.fly.queue.list).not.toHaveBeenCalled();
+    });
+
+    it('setDiffPanel persists and stores the config', async () => {
+      vi.mocked(window.fly.settings.set).mockResolvedValue({
+        recentRoots: [],
+        theme: 'system',
+        diffPanel: 'collapsed',
+      });
+      await useFlyStore.getState().setDiffPanel('collapsed');
+      expect(window.fly.settings.set).toHaveBeenCalledWith({
+        diffPanel: 'collapsed',
+      });
+      expect(useFlyStore.getState().config.diffPanel).toBe('collapsed');
+    });
+
+    it('setDiffPanel reports a failure', async () => {
+      vi.mocked(window.fly.settings.set).mockRejectedValue(new Error('no'));
+      await useFlyStore.getState().setDiffPanel('collapsed');
+      expect(useFlyStore.getState().error).toBe('no');
+    });
+
+    it('queueOf finds by id and returns null otherwise', () => {
+      const item = {
+        worktreeId: 'a',
+        status: 'idle' as QueueStatus,
+        pullRequest: null,
+        receipt: null,
+      };
+      const snapshot: QueueSnapshot = {
+        github: 'ok',
+        message: null,
+        worktrees: [item],
+      };
+      expect(queueOf(snapshot, 'a')).toBe(item);
+      expect(queueOf(snapshot, 'b')).toBeNull();
     });
   });
 });
