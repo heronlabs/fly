@@ -36,7 +36,8 @@ export const TerminalView = ({
     setExited(false);
 
     const xterm = new Terminal({
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontFamily:
+        "'JetBrains Mono', 'Symbols Nerd Font Mono', ui-monospace, monospace",
       fontSize: 13,
       cursorBlink: true,
       macOptionClickForcesSelection: true,

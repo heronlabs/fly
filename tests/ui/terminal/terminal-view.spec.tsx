@@ -113,6 +113,14 @@ describe('TerminalView', () => {
     expect(h.terms[0]?.options['scrollback']).toBe(1000);
   });
 
+  it('Should fall back to the Nerd Font symbols after JetBrains Mono', async () => {
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    expect(h.terms[0]?.options['fontFamily']).toBe(
+      "'JetBrains Mono', 'Symbols Nerd Font Mono', ui-monospace, monospace",
+    );
+  });
+
   it('Should write only data for its own id', async () => {
     render(<TerminalView sessionName="s1" theme="dark" />);
     await flush();
