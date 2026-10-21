@@ -1,3 +1,9 @@
+## v0.1.0 (2026-10-21)
+
+### Features
+
+* feat: show the version in the top bar, widen the tree and set the dock icon (c9198c4c2603acad097596d53c378f9e2ec0faf6)
+
 ## v0.0.7 (2026-10-21)
 
 ### Documentation
