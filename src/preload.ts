@@ -24,6 +24,7 @@ const api: FlyApi = {
   },
   shell: {
     openInEditor: path => ipcRenderer.invoke(channels.shellOpenInEditor, path),
+    openExternal: url => ipcRenderer.invoke(channels.shellOpenExternal, url),
   },
   sessions: {
     list: () => ipcRenderer.invoke(channels.sessionList),
@@ -52,6 +53,13 @@ const api: FlyApi = {
         ipcRenderer.removeListener(channels.queueChanged, handler);
       };
     },
+  },
+  diff: {
+    get: (worktreeId, scope) =>
+      ipcRenderer.invoke(channels.diffGet, worktreeId, scope),
+  },
+  pullRequests: {
+    merge: worktreeId => ipcRenderer.invoke(channels.prMerge, worktreeId),
   },
   tasks: {
     create: input => ipcRenderer.invoke(channels.taskCreate, input),

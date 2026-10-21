@@ -11,7 +11,9 @@ const fly: FlyApi = {
     onChanged: vi.fn(),
   },
   settings: {get: vi.fn(), set: vi.fn()},
-  shell: {openInEditor: vi.fn()},
+  shell: {openInEditor: vi.fn(), openExternal: vi.fn()},
+  diff: {get: vi.fn()},
+  pullRequests: {merge: vi.fn()},
   sessions: {
     list: vi.fn(),
     start: vi.fn(),

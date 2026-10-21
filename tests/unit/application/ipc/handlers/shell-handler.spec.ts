@@ -1,5 +1,8 @@
 import {ShellHandler} from '../../../../../src/application/ipc/handlers/shell-handler';
-import type {IpcHost} from '../../../../../src/application/ipc/ipc-types';
+import type {
+  IpcHost,
+  LinkOpener,
+} from '../../../../../src/application/ipc/ipc-types';
 import {channels} from '../../../../../src/core/domain/fly-api';
 import {EditorLauncher} from '../../../../../src/core/interfaces/editor-launcher';
 
@@ -9,10 +12,16 @@ const host: IpcHost = {
   on: vi.fn(),
 };
 const open = vi.fn();
+const linkOpen = vi.fn();
 
 beforeEach(() => {
   listeners.clear();
-  new ShellHandler(host, {open} as unknown as EditorLauncher).register();
+  linkOpen.mockReset();
+  new ShellHandler(
+    host,
+    {open} as unknown as EditorLauncher,
+    {open: linkOpen} as LinkOpener,
+  ).register();
 });
 
 describe('ShellHandler', () => {
@@ -28,4 +37,23 @@ describe('ShellHandler', () => {
       listeners.get(channels.shellOpenInEditor)!({}, '/wt'),
     ).rejects.toThrow('VSCode não encontrado');
   });
+
+  it('Should open an https URL', async () => {
+    linkOpen.mockResolvedValue(undefined);
+    await listeners.get(channels.shellOpenExternal)!(
+      {},
+      'https://github.com/x',
+    );
+    expect(linkOpen).toHaveBeenCalledWith('https://github.com/x');
+  });
+
+  it.each(['http://github.com/x', 'file:///etc/passwd', 'not a url'])(
+    'Should reject %s without opening it',
+    async url => {
+      await expect(
+        listeners.get(channels.shellOpenExternal)!({}, url),
+      ).rejects.toThrow('URL não permitida');
+      expect(linkOpen).not.toHaveBeenCalled();
+    },
+  );
 });

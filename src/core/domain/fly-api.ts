@@ -1,3 +1,4 @@
+import type {DiffScope, WorktreeDiff} from './diff';
 import type {QueueSnapshot} from './queue';
 import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
@@ -17,6 +18,9 @@ export const channels = {
   sessionChanged: 'session:changed',
   queueList: 'queue:list',
   queueChanged: 'queue:changed',
+  diffGet: 'diff:get',
+  prMerge: 'pr:merge',
+  shellOpenExternal: 'shell:open-external',
   taskCreate: 'task:create',
   terminalAttach: 'terminal:attach',
   terminalDetach: 'terminal:detach',
@@ -39,7 +43,10 @@ export type FlyApi = {
     get(): Promise<AppConfig>;
     set(patch: Partial<AppConfig>): Promise<AppConfig>;
   };
-  shell: {openInEditor(path: string): Promise<void>};
+  shell: {
+    openInEditor(path: string): Promise<void>;
+    openExternal(url: string): Promise<void>;
+  };
   sessions: {
     list(): Promise<SessionsSnapshot>;
     start(worktreeId: string): Promise<string>;
@@ -50,6 +57,8 @@ export type FlyApi = {
     list(): Promise<QueueSnapshot>;
     onChanged(listener: (snapshot: QueueSnapshot) => void): () => void;
   };
+  diff: {get(worktreeId: string, scope: DiffScope): Promise<WorktreeDiff>};
+  pullRequests: {merge(worktreeId: string): Promise<void>};
   tasks: {
     create(input: {repoId: string; description: string}): Promise<string>;
   };
