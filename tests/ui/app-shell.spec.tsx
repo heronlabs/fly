@@ -32,6 +32,7 @@ const workspace: Workspace = {
 const config = (theme: AppConfig['theme']): AppConfig => ({
   recentRoots: [],
   theme,
+  diffPanel: 'open',
 });
 
 const emptySessions: SessionsSnapshot = {

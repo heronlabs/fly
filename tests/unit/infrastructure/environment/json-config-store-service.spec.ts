@@ -35,7 +35,11 @@ describe('JsonConfigStoreService', () => {
   it('Should return defaults when the file is missing', async () => {
     exists.mockResolvedValue(false);
 
-    expect(await store.load()).toEqual({recentRoots: [], theme: 'system'});
+    expect(await store.load()).toEqual({
+      recentRoots: [],
+      theme: 'system',
+      diffPanel: 'open',
+    });
     expect(exists).toHaveBeenCalledWith(configPath);
     expect(readText).not.toHaveBeenCalled();
   });
@@ -52,14 +56,22 @@ describe('JsonConfigStoreService', () => {
   it('Should return defaults when the file is not valid json', async () => {
     withFile('{not json');
 
-    expect(await store.load()).toEqual({recentRoots: [], theme: 'system'});
+    expect(await store.load()).toEqual({
+      recentRoots: [],
+      theme: 'system',
+      diffPanel: 'open',
+    });
   });
 
   it('Should return defaults when the file cannot be read', async () => {
     exists.mockResolvedValue(true);
     readText.mockRejectedValue(new Error('EACCES'));
 
-    expect(await store.load()).toEqual({recentRoots: [], theme: 'system'});
+    expect(await store.load()).toEqual({
+      recentRoots: [],
+      theme: 'system',
+      diffPanel: 'open',
+    });
   });
 
   it.each(['null', '[]', '"text"', '42'])(
@@ -67,14 +79,22 @@ describe('JsonConfigStoreService', () => {
     async content => {
       withFile(content);
 
-      expect(await store.load()).toEqual({recentRoots: [], theme: 'system'});
+      expect(await store.load()).toEqual({
+        recentRoots: [],
+        theme: 'system',
+        diffPanel: 'open',
+      });
     },
   );
 
   it('Should coerce invalid fields and drop unknown keys', async () => {
     withFile('{"theme":"neon","recentRoots":"x","extra":1}');
 
-    expect(await store.load()).toEqual({recentRoots: [], theme: 'system'});
+    expect(await store.load()).toEqual({
+      recentRoots: [],
+      theme: 'system',
+      diffPanel: 'open',
+    });
   });
 
   it('Should keep valid values', async () => {
@@ -83,7 +103,37 @@ describe('JsonConfigStoreService', () => {
     expect(await store.load()).toEqual({
       recentRoots: ['/a', '/b'],
       theme: 'dark',
+      diffPanel: 'open',
     });
+  });
+
+  it('Should load collapsed and a config saved before the diff panel existed', async () => {
+    withFile('{"diffPanel":"collapsed"}');
+    expect((await store.load()).diffPanel).toBe('collapsed');
+
+    withFile('{"theme":"dark","recentRoots":[]}');
+    expect((await store.load()).diffPanel).toBe('open');
+  });
+
+  it.each(['42', '"closed"', 'null', '{}'])(
+    'Should fall back to open for diffPanel %s',
+    async value => {
+      withFile(`{"diffPanel":${value}}`);
+
+      expect((await store.load()).diffPanel).toBe('open');
+    },
+  );
+
+  it('Should round-trip collapsed through save and load', async () => {
+    const config = {
+      recentRoots: [],
+      theme: 'system' as const,
+      diffPanel: 'collapsed' as const,
+    };
+    await store.save(config);
+    withFile(writeText.mock.calls[0]![1] as string);
+
+    expect(await store.load()).toEqual(config);
   });
 
   it('Should keep only string roots and cap them at the maximum', async () => {
@@ -99,7 +149,11 @@ describe('JsonConfigStoreService', () => {
   });
 
   it('Should write pretty json to config.json on save', async () => {
-    const config = {recentRoots: ['/a'], theme: 'dark' as const};
+    const config = {
+      recentRoots: ['/a'],
+      theme: 'dark' as const,
+      diffPanel: 'open' as const,
+    };
 
     await store.save(config);
 

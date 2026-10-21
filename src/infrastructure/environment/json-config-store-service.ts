@@ -5,6 +5,7 @@ import {Inject, Injectable} from '@nestjs/common';
 import {
   AppConfig,
   defaultConfig,
+  DiffPanelMode,
   maxRecentRoots,
   ThemeMode,
 } from '../../core/domain/settings';
@@ -13,12 +14,16 @@ import {FileStore} from '../../core/interfaces/file-store';
 import {USER_DATA_DIR} from './tokens';
 
 const themes: readonly string[] = ['system', 'dark', 'light'];
+const diffPanelModes: readonly string[] = ['open', 'collapsed'];
 
 const freshDefaults = (): AppConfig => structuredClone(defaultConfig);
 
 const coerce = (value: unknown): AppConfig => {
   // Arrays and primitives have neither field, so they coerce to the defaults.
-  const {recentRoots, theme} = (value ?? {}) as Record<string, unknown>;
+  const {recentRoots, theme, diffPanel} = (value ?? {}) as Record<
+    string,
+    unknown
+  >;
   return {
     recentRoots: Array.isArray(recentRoots)
       ? recentRoots
@@ -28,6 +33,9 @@ const coerce = (value: unknown): AppConfig => {
     theme: themes.includes(theme as string)
       ? (theme as ThemeMode)
       : defaultConfig.theme,
+    diffPanel: diffPanelModes.includes(diffPanel as string)
+      ? (diffPanel as DiffPanelMode)
+      : defaultConfig.diffPanel,
   };
 };
 

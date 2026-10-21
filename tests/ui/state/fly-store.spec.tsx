@@ -43,6 +43,7 @@ describe('fly store', () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
       recentRoots: ['/r', '/q'],
       theme: 'dark',
+      diffPanel: 'open',
     });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
     await useFlyStore.getState().bootstrap();
@@ -55,6 +56,7 @@ describe('fly store', () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
       recentRoots: [],
       theme: 'system',
+      diffPanel: 'open',
     });
     await useFlyStore.getState().bootstrap();
     expect(window.fly.workspace.open).not.toHaveBeenCalled();
@@ -131,6 +133,7 @@ describe('fly store', () => {
     vi.mocked(window.fly.settings.set).mockResolvedValue({
       recentRoots: [],
       theme: 'light',
+      diffPanel: 'open',
     });
     await useFlyStore.getState().setTheme('light');
     expect(window.fly.settings.set).toHaveBeenCalledWith({theme: 'light'});
