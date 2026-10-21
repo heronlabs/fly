@@ -147,6 +147,7 @@ const PullRequestSection = ({
             <button
               type="button"
               style={{...buttonStyle, color: 'var(--err)'}}
+              disabled={status !== 'ready' || merging}
               onClick={() => {
                 setConfirming(false);
                 onMerge();
@@ -188,7 +189,11 @@ export const PrView = ({queue, ...props}: Props) => (
     }}
   >
     {queue?.pullRequest ? (
-      <PullRequestSection pr={queue.pullRequest} {...props} />
+      <PullRequestSection
+        key={queue.pullRequest.url}
+        pr={queue.pullRequest}
+        {...props}
+      />
     ) : (
       <div style={{color: 'var(--muted)'}}>Sem PR aberto</div>
     )}

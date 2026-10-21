@@ -203,4 +203,43 @@ describe('PrView', () => {
     expect(screen.getByText('json ruim')).toBeVisible();
     expect(screen.queryByText('Receipt do engineer')).toBeNull();
   });
+
+  it('Should drop the confirmation when another PR is shown', async () => {
+    const view = (queue: WorktreeQueue) => (
+      <PrView
+        queue={queue}
+        status="ready"
+        merging={false}
+        onMerge={() => {}}
+        onOpenExternal={() => {}}
+      />
+    );
+    const {rerender} = render(view(queueOf(pr())));
+    await userEvent.click(screen.getByRole('button', {name: 'Fazer merge'}));
+    rerender(
+      view(queueOf(pr({number: 13, url: 'https://github.com/o/r/pull/13'}))),
+    );
+    expect(screen.getByRole('button', {name: 'Fazer merge'})).toBeVisible();
+    expect(screen.queryByRole('button', {name: 'Confirmar'})).toBeNull();
+  });
+
+  it('Should not confirm once the status leaves ready', async () => {
+    const onMerge = vi.fn();
+    const view = (status: QueueStatus) => (
+      <PrView
+        queue={queueOf(pr())}
+        status={status}
+        merging={false}
+        onMerge={onMerge}
+        onOpenExternal={() => {}}
+      />
+    );
+    const {rerender} = render(view('ready'));
+    await userEvent.click(screen.getByRole('button', {name: 'Fazer merge'}));
+    rerender(view('ci'));
+    const confirm = screen.getByRole('button', {name: 'Confirmar'});
+    expect(confirm).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(onMerge).not.toHaveBeenCalled();
+  });
 });
