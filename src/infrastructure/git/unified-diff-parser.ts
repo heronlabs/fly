@@ -2,7 +2,15 @@ import {DiffFile, DiffHunk, DiffLineKind} from '../../core/domain/diff';
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 const DEV_NULL = '/dev/null';
-const GIT_HEADER = 'diff --git a/';
+const GIT_HEADER = 'diff --git ';
+const QUOTED = /^"(?:[^"\\]|\\.)*"/;
+const ESCAPE_PIECES = /\\([0-7]{3})|\\?./gs;
+const ESCAPES: Record<string, string> = {
+  '\\t': '\t',
+  '\\n': '\n',
+  '\\r': '\r',
+};
+
 const LINE_KINDS: Record<string, DiffLineKind> = {
   ' ': 'context',
   '+': 'add',
@@ -17,8 +25,37 @@ type Draft = {
   newName: string | null;
 };
 
+const unquote = (value: string): string => {
+  if (!QUOTED.test(value)) {
+    return value;
+  }
+  const bytes = [...value.slice(1, -1).matchAll(ESCAPE_PIECES)].map(
+    ([piece, octal]) =>
+      Buffer.from(
+        octal ? [parseInt(octal, 8)] : (ESCAPES[piece] ?? piece.slice(-1)),
+      ),
+  );
+  return Buffer.concat(bytes).toString('utf8');
+};
+
+const headerPathOf = (names: string): string => {
+  const quoted = QUOTED.exec(names);
+  if (quoted) {
+    return unquote(names.slice(quoted[0].length + 1)).slice(2);
+  }
+  const middle = (names.length - 1) / 2;
+  const right = names.slice(middle + 1);
+  if (
+    right.startsWith('b/') &&
+    names.slice(0, middle) === `a/${right.slice(2)}`
+  ) {
+    return right.slice(2);
+  }
+  return names.slice(names.indexOf(' b/') + ' b/'.length);
+};
+
 const startDraft = (line: string): Draft => {
-  const headerPath = line.slice(line.indexOf(' b/') + ' b/'.length);
+  const headerPath = headerPathOf(line.slice(GIT_HEADER.length));
   return {
     file: {
       oldPath: null,
@@ -39,7 +76,7 @@ const startDraft = (line: string): Draft => {
 
 const fileName = (value: string): string | null => {
   const name = value.replace(/\t$/, '');
-  return name === DEV_NULL ? null : name.slice(2);
+  return name === DEV_NULL ? null : unquote(name).slice(2);
 };
 
 export const parseUnifiedDiff = (output: string): DiffFile[] => {
@@ -90,9 +127,9 @@ export const parseUnifiedDiff = (output: string): DiffFile[] => {
       file.status = 'deleted';
     } else if (line.startsWith('rename from ')) {
       file.status = 'renamed';
-      file.oldPath = line.slice('rename from '.length);
+      file.oldPath = unquote(line.slice('rename from '.length));
     } else if (line.startsWith('rename to ')) {
-      draft.renameTo = line.slice('rename to '.length);
+      draft.renameTo = unquote(line.slice('rename to '.length));
     } else if (line.startsWith('Binary files ')) {
       file.binary = true;
     } else if (line.startsWith('--- ')) {

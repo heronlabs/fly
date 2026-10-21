@@ -319,6 +319,96 @@ diff --git a/h5 b/h5
     expect(parseUnifiedDiff(out)[0]?.path).toBe('x\ty');
   });
 
+  it('Should unquote a path containing a double quote', () => {
+    const out = `diff --git "a/r\\"q.txt" "b/r\\"q.txt"
+index 13e7564..f2b1d0d 100644
+--- "a/r\\"q.txt"
++++ "b/r\\"q.txt"
+@@ -1 +1,2 @@
+ o
++p
+`;
+
+    const files = parseUnifiedDiff(out);
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({path: 'r"q.txt', additions: 1, lines: 2});
+  });
+
+  it('Should decode octal bytes of a quoted non-ASCII path as UTF-8', () => {
+    const out = `diff --git "a/f\\303\\251.txt" "b/f\\303\\251.txt"
+index 13e7564..f2b1d0d 100644
+--- "a/f\\303\\251.txt"
++++ "b/f\\303\\251.txt"
+@@ -1 +1,2 @@
+ o
++p
+`;
+
+    expect(parseUnifiedDiff(out)[0]?.path).toBe('fé.txt');
+  });
+
+  it('Should unquote rename paths and keep quoted files from leaking into neighbours', () => {
+    const out = `diff --git a/first.txt b/first.txt
+--- a/first.txt
++++ b/first.txt
+@@ -1 +1,2 @@
+ o
++p
+diff --git "a/old \\303\\251.txt" "b/new \\303\\251.txt"
+similarity index 100%
+rename from "old \\303\\251.txt"
+rename to "new \\303\\251.txt"
+diff --git "a/a\\\\b.txt" "b/a\\\\b.txt"
+new file mode 100644
+index 0000000..8ba3a16
+--- /dev/null
++++ "b/a\\\\b.txt"
+@@ -0,0 +1 @@
++n
+`;
+
+    const files = parseUnifiedDiff(out);
+
+    expect(files.map(f => [f.path, f.oldPath, f.lines])).toEqual([
+      ['first.txt', null, 2],
+      ['new é.txt', 'old é.txt', 0],
+      ['a\\b.txt', null, 1],
+    ]);
+  });
+
+  it('Should decode tab, newline and carriage-return escapes and keep unknown ones', () => {
+    const out = 'diff --git "a/t\\tn\\nr\\rz\\q" "b/t\\tn\\nr\\rz\\q"\n';
+
+    expect(parseUnifiedDiff(out)[0]?.path).toBe('t\tn\nr\rzq');
+  });
+
+  it('Should read an unquoted b side after a quoted a side', () => {
+    expect(parseUnifiedDiff('diff --git "a/x\\ty" b/x\n')[0]?.path).toBe('x');
+  });
+
+  it('Should split a mode-only header at the midpoint for a path containing " b/"', () => {
+    const out = `diff --git a/x b/y.txt b/x b/y.txt
+old mode 100644
+new mode 100755
+`;
+
+    expect(parseUnifiedDiff(out)).toEqual([file({path: 'x b/y.txt'})]);
+  });
+
+  it('Should fall back to the first " b/" when the header halves differ', () => {
+    expect(parseUnifiedDiff('diff --git a/x b/y\n')[0]?.path).toBe('y');
+    expect(parseUnifiedDiff('diff --git a/xyz b/xy\n')[0]?.path).toBe('xy');
+    expect(parseUnifiedDiff('diff --git a/ab b/abc\n')[0]?.path).toBe('abc');
+  });
+
+  it('Should not split at the midpoint unless the right half is a b/ path equal to the left', () => {
+    expect(parseUnifiedDiff('diff --git a/ab c/ab\n')[0]?.path).toBe('ab c/ab');
+    expect(parseUnifiedDiff('diff --git a/x b/y b/12345\n')[0]?.path).toBe(
+      'y b/12345',
+    );
+  });
+
   it('Should return a bare modified file for a lone header', () => {
     expect(parseUnifiedDiff('diff --git a/x.txt b/x.txt')).toEqual([
       file({path: 'x.txt'}),
