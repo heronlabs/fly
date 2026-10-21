@@ -121,6 +121,21 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', {name: /Nova tarefa/})).toBeEnabled();
   });
 
+  it('Should pin the columns to the 1fr row with and without the alert', async () => {
+    seed({workspace});
+    await renderShell();
+    const columns = screen.getByRole('navigation', {name: 'Worktrees'})
+      .parentElement as HTMLElement;
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(columns).toHaveStyle({
+      gridTemplateColumns: '260px 1fr 380px',
+      gridRow: '2',
+    });
+    act(() => useFlyStore.setState({error: 'falhou'}));
+    expect(screen.getByRole('alert')).toHaveTextContent('falhou');
+    expect(columns).toHaveStyle({gridRow: '2'});
+  });
+
   it('shows the empty-root state and reopens the picker', async () => {
     seed({workspace: {root: '/tmp/x', repos: [], worktrees: []}});
     vi.mocked(window.fly.workspace.pickFolder).mockResolvedValue(null);
