@@ -6,7 +6,8 @@ export type ThemeVars = Record<`--${string}`, string>;
 const {colors, motion} = tokens;
 
 const fonts = {
-  '--fontMono': "'JetBrains Mono', ui-monospace, monospace",
+  '--fontMono':
+    "'JetBrains Mono', 'Symbols Nerd Font Mono', ui-monospace, monospace",
   '--fontBody': "'Nunito Sans', system-ui, sans-serif",
   '--fontDisplay': "'MuseoModerno', 'Nunito Sans', sans-serif",
   '--motionBase': motion.base,

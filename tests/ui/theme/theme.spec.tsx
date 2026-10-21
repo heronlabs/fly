@@ -26,6 +26,15 @@ describe('theme', () => {
     expect(themeVars('light')['--syString']).toBe(tokens.syntax.light.string);
   });
 
+  it('Should fall back to the Nerd Font symbols after JetBrains Mono in both themes', () => {
+    expect(themeVars('dark')['--fontMono']).toBe(
+      "'JetBrains Mono', 'Symbols Nerd Font Mono', ui-monospace, monospace",
+    );
+    expect(themeVars('light')['--fontMono']).toBe(
+      "'JetBrains Mono', 'Symbols Nerd Font Mono', ui-monospace, monospace",
+    );
+  });
+
   it('Should expose the same variable names in both themes', () => {
     expect(Object.keys(themeVars('dark')).sort()).toEqual(
       Object.keys(themeVars('light')).sort(),
