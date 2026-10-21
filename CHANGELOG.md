@@ -1,3 +1,9 @@
+## v0.1.1 (2026-10-21)
+
+### Documentation
+
+* docs: add the M4 diff and pull request panel plan (bacef5500b8ab314905f2f8cea7961e71941165d)
+
 ## v0.1.0 (2026-10-21)
 
 ### Features
