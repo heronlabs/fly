@@ -40,6 +40,8 @@ const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   mergeable: 'mergeable',
   review: 'approved',
   checks: 'passing',
+  title: 'Add x',
+  checkRuns: [],
   ...overrides,
 });
 

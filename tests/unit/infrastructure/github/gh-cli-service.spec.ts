@@ -1,6 +1,7 @@
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {
   GH_AUTH_MESSAGE,
+  GH_MERGE_TIMEOUT_MESSAGE,
   GH_TIMEOUT_MESSAGE,
 } from '../../../../src/core/interfaces/pr-gateway';
 import {GhCliService} from '../../../../src/infrastructure/github/gh-cli-service';
@@ -39,7 +40,7 @@ describe('GhCliService', () => {
         '--limit',
         '50',
         '--json',
-        'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup',
+        'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title',
       ],
       {cwd: '/r', timeoutMs: 15_000},
     );
@@ -53,6 +54,8 @@ describe('GhCliService', () => {
         mergeable: 'conflicting',
         review: 'none',
         checks: 'none',
+        title: '',
+        checkRuns: [],
       },
     ]);
   });
@@ -110,4 +113,49 @@ describe('GhCliService', () => {
       expect(await service.list('/r')).toEqual([]);
     },
   );
+
+  describe('merge', () => {
+    it('Should run gh pr merge in the repo with a 60 s timeout', async () => {
+      run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
+
+      await expect(service.merge('/r', 12)).resolves.toBeUndefined();
+
+      expect(run).toHaveBeenCalledWith('gh', ['pr', 'merge', '12', '--merge'], {
+        cwd: '/r',
+        timeoutMs: 60_000,
+      });
+    });
+
+    it('Should throw the trimmed stderr when gh fails', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: 'not mergeable\n'});
+
+      await expect(service.merge('/r', 12)).rejects.toThrow(/^not mergeable$/);
+    });
+
+    it('Should throw a default message when stderr is empty', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ' '});
+
+      await expect(service.merge('/r', 12)).rejects.toThrow(
+        'gh pr merge failed',
+      );
+    });
+
+    it('Should throw the 60 s timeout message when gh was killed', async () => {
+      run.mockImplementation(() =>
+        Promise.reject(Object.assign(new Error('x'), {killed: true})),
+      );
+
+      await expect(service.merge('/r', 12)).rejects.toThrow(
+        GH_MERGE_TIMEOUT_MESSAGE,
+      );
+      expect(GH_MERGE_TIMEOUT_MESSAGE).toBe('gh não respondeu em 60 s');
+    });
+
+    it('Should propagate other spawn errors unchanged', async () => {
+      const error = Object.assign(new Error('x'), {killed: false});
+      run.mockImplementation(() => Promise.reject(error));
+
+      await expect(service.merge('/r', 12)).rejects.toBe(error);
+    });
+  });
 });

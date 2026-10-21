@@ -9,6 +9,7 @@ const pr = (over: Record<string, unknown> = {}) => ({
   mergeable: 'MERGEABLE',
   reviewDecision: 'APPROVED',
   statusCheckRollup: [],
+  title: 'Add x',
   ...over,
 });
 
@@ -33,8 +34,70 @@ describe('parsePrList', () => {
       mergeable: 'mergeable',
       review: 'approved',
       checks: 'none',
+      title: 'Add x',
+      checkRuns: [],
     });
   });
+
+  it('Should map a missing or non-string title to an empty string', () => {
+    expect(parse({title: undefined}).title).toBe('');
+    expect(parse({title: 3}).title).toBe('');
+  });
+
+  it('Should list check rows in rollup order with name, state and url', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [
+        {...run('COMPLETED', 'SUCCESS'), name: 'build', detailsUrl: 'u1'},
+        {...ctx('PENDING'), context: 'ci/legacy', targetUrl: null},
+        {...run('IN_PROGRESS', null), name: 'lint', detailsUrl: 3},
+        {...run('COMPLETED', 'FAILURE'), name: 'test', detailsUrl: 'u4'},
+      ],
+    });
+    expect(checkRuns).toEqual([
+      {name: 'build', state: 'passing', url: 'u1'},
+      {name: 'ci/legacy', state: 'pending', url: null},
+      {name: 'lint', state: 'pending', url: null},
+      {name: 'test', state: 'failing', url: 'u4'},
+    ]);
+  });
+
+  it('Should read StatusContext url from targetUrl', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [{...ctx('SUCCESS'), context: 'c', targetUrl: 't'}],
+    });
+    expect(checkRuns).toEqual([{name: 'c', state: 'passing', url: 't'}]);
+  });
+
+  it('Should not read a CheckRun name from context nor a StatusContext name from name', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [
+        {...run('COMPLETED', 'SUCCESS'), context: 'c'},
+        {...ctx('SUCCESS'), name: 'n'},
+      ],
+    });
+    expect(checkRuns).toEqual([]);
+  });
+
+  it('Should drop rows without a string name or a known state', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [
+        run('COMPLETED', 'SUCCESS'),
+        {...run('COMPLETED', 'SUCCESS'), name: 4},
+        {...ctx('WEIRD'), context: 'x'},
+        {__typename: 'Weird', name: 'y'},
+        'z',
+        null,
+      ],
+    });
+    expect(checkRuns).toEqual([]);
+  });
+
+  it.each([null, undefined, 'x', {}])(
+    'Should map a non-array rollup (%s) to no rows',
+    rollup => {
+      expect(parse({statusCheckRollup: rollup}).checkRuns).toEqual([]);
+    },
+  );
 
   it('Should return an empty list for []', () => {
     expect(parsePrList('[]')).toEqual([]);

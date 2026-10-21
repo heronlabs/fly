@@ -19,6 +19,7 @@ import {MultiplexerSession} from '../../../../src/core/interfaces/session-launch
 import {TranscriptSource} from '../../../../src/core/interfaces/transcript-source';
 import {
   GH_MISSING,
+  NO_OPEN_PR,
   QueueService,
 } from '../../../../src/core/services/queue-service';
 import {
@@ -85,6 +86,8 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   mergeable: 'mergeable',
   review: 'approved',
   checks: 'passing',
+  title: 'Add x',
+  checkRuns: [],
   ...over,
 });
 
@@ -134,7 +137,8 @@ describe('QueueService', () => {
   const forDirectory = vi.fn();
   const transcripts = {forSession, forDirectory} as unknown as TranscriptSource;
   const list = vi.fn();
-  const prs = {list} as unknown as PrGateway;
+  const merge = vi.fn();
+  const prs = {list, merge} as unknown as PrGateway;
   const exists = vi.fn();
   const files = {exists} as unknown as FileStore;
   let service: QueueService;
@@ -237,6 +241,84 @@ describe('QueueService', () => {
       currentWorkspace.mockReturnValue(workspace);
       const snap = await service.snapshot(now);
       expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest).toBeNull();
+    });
+  });
+
+  describe('mergePullRequest', () => {
+    const feat = 'talon/.worktrees/feat';
+
+    it('Should reject an unknown worktree', async () => {
+      await expect(service.mergePullRequest('nope')).rejects.toThrow(
+        'Worktree não encontrado',
+      );
+      expect(merge).not.toHaveBeenCalled();
+    });
+
+    it('Should reject a worktree whose repo is not in the workspace', async () => {
+      currentWorkspace.mockReturnValue({
+        ...workspace,
+        repos: workspace.repos.filter(r => r.id !== 'talon'),
+      });
+      await expect(service.mergePullRequest(feat)).rejects.toThrow(
+        'Worktree não encontrado',
+      );
+    });
+
+    it("Should merge in the worktree's own repo", async () => {
+      pullRequestsAre({'/r/nest': [pr({branch: 'x', number: 3})]});
+      await service.refreshPullRequests();
+      merge.mockResolvedValue(undefined);
+
+      await service.mergePullRequest('nest/.worktrees/x');
+
+      expect(merge).toHaveBeenCalledWith('/r/nest', 3);
+    });
+
+    it('Should reject without a workspace', async () => {
+      currentWorkspace.mockReturnValue(null);
+      await expect(service.mergePullRequest(feat)).rejects.toThrow(
+        'Worktree não encontrado',
+      );
+    });
+
+    it('Should reject a worktree without a PR', async () => {
+      await service.refreshPullRequests();
+      await expect(service.mergePullRequest(feat)).rejects.toThrow(NO_OPEN_PR);
+      expect(NO_OPEN_PR).toBe('Sem PR aberto para fazer merge');
+    });
+
+    it('Should reject a worktree whose only PR is merged', async () => {
+      pullRequestsAre({'/r/talon': [pr({state: 'merged'})]});
+      await service.refreshPullRequests();
+      await expect(service.mergePullRequest(feat)).rejects.toThrow(NO_OPEN_PR);
+      expect(merge).not.toHaveBeenCalled();
+    });
+
+    it('Should merge the open PR with the repo path, then refresh', async () => {
+      pullRequestsAre({
+        '/r/talon': [pr({number: 4, state: 'merged'}), pr({number: 9})],
+      });
+      await service.refreshPullRequests();
+      list.mockClear();
+      merge.mockResolvedValue(undefined);
+
+      await service.mergePullRequest(feat);
+
+      expect(merge).toHaveBeenCalledWith('/r/talon', 9);
+      expect(list).toHaveBeenCalledWith('/r/talon');
+      expect(merge.mock.invocationCallOrder[0]!).toBeLessThan(
+        list.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('Should propagate a gateway rejection without refreshing', async () => {
+      pullRequestsAre({'/r/talon': [pr()]});
+      await service.refreshPullRequests();
+      list.mockClear();
+      merge.mockRejectedValue(new Error('conflito'));
+
+      await expect(service.mergePullRequest(feat)).rejects.toThrow('conflito');
+      expect(list).not.toHaveBeenCalled();
     });
   });
 

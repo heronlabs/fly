@@ -4,6 +4,7 @@ import type {PullRequest} from '../../core/domain/queue';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {
   GH_AUTH_MESSAGE,
+  GH_MERGE_TIMEOUT_MESSAGE,
   GH_TIMEOUT_MESSAGE,
   PrGateway,
 } from '../../core/interfaces/pr-gateway';
@@ -32,6 +33,25 @@ export class GhCliService extends PrGateway {
     return parsePrList(result.stdout);
   }
 
+  async merge(repoPath: string, number: number): Promise<void> {
+    let result: Awaited<ReturnType<CommandRunner['run']>>;
+    try {
+      result = await this.runner.run(
+        'gh',
+        ['pr', 'merge', String(number), '--merge'],
+        {cwd: repoPath, timeoutMs: 60_000},
+      );
+    } catch (error) {
+      if ((error as {killed?: unknown}).killed === true) {
+        throw new Error(GH_MERGE_TIMEOUT_MESSAGE);
+      }
+      throw error;
+    }
+    if (result.code !== 0) {
+      throw new Error(result.stderr.trim() || 'gh pr merge failed');
+    }
+  }
+
   private async run(repoPath: string): ReturnType<CommandRunner['run']> {
     try {
       return await this.runner.run(
@@ -44,7 +64,7 @@ export class GhCliService extends PrGateway {
           '--limit',
           '50',
           '--json',
-          'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup',
+          'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title',
         ],
         {cwd: repoPath, timeoutMs: 15_000},
       );
