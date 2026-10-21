@@ -1,3 +1,9 @@
+## v0.0.5 (2026-10-21)
+
+### Bug Fixes
+
+* fix: pin main panels to the 1fr grid row (9e2772d733864f2cddd4727b9dfcc87b27f2432a)
+
 ## v0.0.4 (2026-10-20)
 
 ### Documentation
