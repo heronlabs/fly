@@ -145,6 +145,7 @@ export const AppShell = () => {
           style={{
             display: 'grid',
             gridTemplateColumns: '260px 1fr 380px',
+            gridRow: 2,
             minHeight: 0,
           }}
         >
