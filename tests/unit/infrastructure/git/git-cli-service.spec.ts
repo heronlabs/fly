@@ -1,4 +1,5 @@
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
+import {GIT_TIMEOUT_MESSAGE} from '../../../../src/core/interfaces/vcs-gateway';
 import {GitCliService} from '../../../../src/infrastructure/git/git-cli-service';
 
 describe('GitCliService', () => {
@@ -42,5 +43,148 @@ describe('GitCliService', () => {
     await expect(service.listWorktrees('/r')).rejects.toThrow(
       'git worktree list failed',
     );
+  });
+
+  describe('diff', () => {
+    const base = [
+      '-c',
+      'core.quotepath=false',
+      'diff',
+      '--no-color',
+      '--no-ext-diff',
+    ];
+    const options = {cwd: '/w', timeoutMs: 15_000};
+    const ok = (stdout: string) => ({code: 0, stdout, stderr: ''});
+    const patch = (name: string) =>
+      `diff --git a/${name} b/${name}\n--- a/${name}\n+++ b/${name}\n@@ -1 +1 @@\n-a\n+b\n`;
+    const newFilePatch = (name: string) =>
+      `diff --git a/${name} b/${name}\nnew file mode 100644\n--- /dev/null\n+++ b/${name}\n@@ -0,0 +1 @@\n+x\n`;
+
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should diff <base>...HEAD as one argument for the branch scope', async () => {
+      run.mockResolvedValue(ok(patch('a.ts')));
+
+      const files = await service.diff({
+        worktreePath: '/w',
+        scope: 'branch',
+        base: 'main',
+      });
+
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(run).toHaveBeenCalledWith(
+        'git',
+        [...base, 'main...HEAD'],
+        options,
+      );
+      expect(files.map(f => f.path)).toEqual(['a.ts']);
+    });
+
+    it('Should throw git falhou with the trimmed stderr when the branch diff fails', async () => {
+      run.mockResolvedValue({code: 128, stdout: '', stderr: 'fatal: bad\n'});
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'branch', base: 'x'}),
+      ).rejects.toThrow('git falhou: fatal: bad');
+    });
+
+    it('Should diff HEAD, list untracked files and diff each against /dev/null', async () => {
+      run
+        .mockResolvedValueOnce(ok(patch('a.ts')))
+        .mockResolvedValueOnce(ok('n1.ts\0dir/n2.ts\0'))
+        .mockResolvedValueOnce({
+          code: 1,
+          stdout: newFilePatch('n1.ts'),
+          stderr: '',
+        })
+        .mockResolvedValueOnce({
+          code: 1,
+          stdout: newFilePatch('dir/n2.ts'),
+          stderr: '',
+        });
+
+      const files = await service.diff({worktreePath: '/w', scope: 'live'});
+
+      expect(run.mock.calls).toEqual([
+        ['git', [...base, 'HEAD'], options],
+        ['git', ['ls-files', '--others', '--exclude-standard', '-z'], options],
+        ['git', [...base, '--no-index', '--', '/dev/null', 'n1.ts'], options],
+        [
+          'git',
+          [...base, '--no-index', '--', '/dev/null', 'dir/n2.ts'],
+          options,
+        ],
+      ]);
+      expect(files.map(f => [f.path, f.status])).toEqual([
+        ['a.ts', 'modified'],
+        ['n1.ts', 'added'],
+        ['dir/n2.ts', 'added'],
+      ]);
+    });
+
+    it('Should accept exit 0 from --no-index and run none when nothing is untracked', async () => {
+      run.mockResolvedValueOnce(ok('')).mockResolvedValueOnce(ok('\0'));
+      expect(await service.diff({worktreePath: '/w', scope: 'live'})).toEqual(
+        [],
+      );
+      expect(run).toHaveBeenCalledTimes(2);
+
+      run.mockReset();
+      run
+        .mockResolvedValueOnce(ok(''))
+        .mockResolvedValueOnce(ok('n.ts\0'))
+        .mockResolvedValueOnce(ok(newFilePatch('n.ts')));
+      const files = await service.diff({worktreePath: '/w', scope: 'live'});
+      expect(files.map(f => f.path)).toEqual(['n.ts']);
+    });
+
+    it('Should reject exit 1 from diff HEAD', async () => {
+      run.mockResolvedValueOnce({code: 1, stdout: '', stderr: ' boom '});
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'live'}),
+      ).rejects.toThrow('git falhou: boom');
+    });
+
+    it('Should throw git falhou when ls-files fails', async () => {
+      run
+        .mockResolvedValueOnce(ok(''))
+        .mockResolvedValueOnce({code: 128, stdout: '', stderr: 'ls bad'});
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'live'}),
+      ).rejects.toThrow('git falhou: ls bad');
+    });
+
+    it('Should reject an exit code above 1 from --no-index', async () => {
+      run
+        .mockResolvedValueOnce(ok(''))
+        .mockResolvedValueOnce(ok('n.ts\0'))
+        .mockResolvedValueOnce({code: 2, stdout: '', stderr: 'idx bad'});
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'live'}),
+      ).rejects.toThrow('git falhou: idx bad');
+    });
+
+    it('Should map a killed child to the timeout message', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'live'}),
+      ).rejects.toThrow(GIT_TIMEOUT_MESSAGE);
+      expect(GIT_TIMEOUT_MESSAGE).toBe('git não respondeu em 15 s');
+    });
+
+    it('Should rethrow other rejections untouched', async () => {
+      const failure = Object.assign(new Error('maxBuffer'), {killed: false});
+      run.mockRejectedValue(failure);
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'live'}),
+      ).rejects.toBe(failure);
+    });
   });
 });

@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -45,6 +45,61 @@ describe('GitCliService (real git)', () => {
       path: join(dir, '.worktrees', 'feat-a'),
       branch: 'feat-a',
       isMain: false,
+    });
+  });
+
+  describe('diff', () => {
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=fly-test',
+          '-c',
+          'user.email=fly-test@example.com',
+          '-c',
+          'commit.gpgsign=false',
+          ...args,
+        ],
+        {cwd: dir, stdio: 'pipe'},
+      );
+    const service = () => new GitCliService(new ExecCommandRunnerService());
+
+    beforeEach(() => {
+      git('init', '-b', 'main');
+      writeFileSync(join(dir, 'tracked.txt'), 'one\n');
+      git('add', 'tracked.txt');
+      git('commit', '-m', 'init');
+    });
+
+    it('Should return modified tracked and untracked files for the live scope', async () => {
+      writeFileSync(join(dir, 'tracked.txt'), 'one\ntwo\n');
+      writeFileSync(join(dir, 'fresh.txt'), 'new\n');
+
+      const files = await service().diff({worktreePath: dir, scope: 'live'});
+
+      expect(files.map(f => [f.path, f.status])).toEqual([
+        ['tracked.txt', 'modified'],
+        ['fresh.txt', 'added'],
+      ]);
+      expect(git('status', '--porcelain').toString()).toContain('?? fresh.txt');
+    });
+
+    it('Should return the files a branch committed off its base', async () => {
+      git('checkout', '-b', 'feature');
+      writeFileSync(join(dir, 'feature.txt'), 'f\n');
+      git('add', 'feature.txt');
+      git('commit', '-m', 'feature');
+
+      const files = await service().diff({
+        worktreePath: dir,
+        scope: 'branch',
+        base: 'main',
+      });
+
+      expect(files.map(f => [f.path, f.status])).toEqual([
+        ['feature.txt', 'added'],
+      ]);
     });
   });
 });
