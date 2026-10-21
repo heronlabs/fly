@@ -1,3 +1,9 @@
+## v0.0.6 (2026-10-21)
+
+### Bug Fixes
+
+* fix: bundle Nerd Font symbols for terminal icons (36dab85cbb2ce70b535343fd7eef4d3da3e2af79)
+
 ## v0.0.5 (2026-10-21)
 
 ### Bug Fixes
