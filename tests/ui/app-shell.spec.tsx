@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import {AppShell} from '../../src/application/ui/app-shell';
 import {useFlyStore} from '../../src/application/ui/state/fly-store';
+import type {WorktreeDiff} from '../../src/core/domain/diff';
 import type {QueueSnapshot} from '../../src/core/domain/queue';
 import type {SessionsSnapshot} from '../../src/core/domain/session';
 import type {AppConfig} from '../../src/core/domain/settings';
@@ -43,6 +44,14 @@ const emptySessions: SessionsSnapshot = {
 
 const emptyQueue: QueueSnapshot = {github: 'ok', message: null, worktrees: []};
 
+const emptyDiff: WorktreeDiff = {
+  worktreeId: 'w1',
+  scope: 'live',
+  base: null,
+  diff: {files: [], truncated: false},
+  error: null,
+};
+
 const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   vi.mocked(window.fly.settings.get).mockResolvedValue(config('dark'));
   vi.mocked(window.fly.workspace.onChanged).mockReturnValue(vi.fn());
@@ -50,6 +59,7 @@ const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   vi.mocked(window.fly.sessions.list).mockResolvedValue(emptySessions);
   vi.mocked(window.fly.queue.onChanged).mockReturnValue(vi.fn());
   vi.mocked(window.fly.queue.list).mockResolvedValue(emptyQueue);
+  vi.mocked(window.fly.diff.get).mockResolvedValue(emptyDiff);
   useFlyStore.setState({
     sessions: emptySessions,
     queue: emptyQueue,
@@ -105,16 +115,17 @@ describe('AppShell', () => {
     const listener = vi.mocked(window.fly.workspace.onChanged).mock
       .calls[0]?.[0] as (ws: Workspace) => void;
     act(() => listener(workspace));
-    expect(screen.getByText('Selecione um worktree')).toBeVisible();
+    expect(screen.getAllByText('Selecione um worktree').length).toBeGreaterThan(
+      0,
+    );
   });
 
   it('renders panels, placeholders and footer with a workspace', async () => {
     seed({workspace});
     await renderShell();
     expect(screen.getByRole('navigation', {name: 'Worktrees'})).toBeVisible();
-    expect(screen.getByText('Selecione um worktree')).toBeVisible();
-    expect(screen.getByText('Diff / PR')).toBeVisible();
-    expect(screen.getByText('Marco 4')).toBeVisible();
+    expect(screen.getAllByText('Selecione um worktree')).toHaveLength(2);
+    expect(screen.queryByText('Marco 4')).not.toBeInTheDocument();
     expect(screen.getByText('Esperando você')).toBeVisible();
     expect(screen.getByText('Agente rodando')).toBeVisible();
     expect(screen.getByText('CI')).toBeVisible();
@@ -135,6 +146,85 @@ describe('AppShell', () => {
     act(() => useFlyStore.setState({error: 'falhou'}));
     expect(screen.getByRole('alert')).toHaveTextContent('falhou');
     expect(columns).toHaveStyle({gridRow: '2'});
+  });
+
+  it('Should show the Diff tab and 3 columns when open', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.diff.get).mockResolvedValue(emptyDiff);
+    await renderShell();
+    expect(screen.getByRole('tab', {name: 'Diff'})).toBeVisible();
+    expect(
+      screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
+    ).toHaveStyle({gridTemplateColumns: '320px 1fr 380px'});
+  });
+
+  it('Should drop the panel and its column when collapsed', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      ...config('dark'),
+      diffPanel: 'collapsed',
+    });
+    await renderShell();
+    expect(screen.queryByRole('tab', {name: 'Diff'})).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
+    ).toHaveStyle({gridTemplateColumns: '320px 1fr'});
+    expect(screen.getByRole('button', {name: /Mostrar painel/})).toBeVisible();
+  });
+
+  it('Should collapse the panel through settings.set', async () => {
+    seed({workspace});
+    vi.mocked(window.fly.settings.set).mockResolvedValue({
+      ...config('dark'),
+      diffPanel: 'collapsed',
+    });
+    await renderShell();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', {name: /Esconder painel/}));
+    expect(window.fly.settings.set).toHaveBeenCalledWith({
+      diffPanel: 'collapsed',
+    });
+  });
+
+  it('Should show an openExternal rejection as an alert', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.diff.get).mockResolvedValue(emptyDiff);
+    vi.mocked(window.fly.shell.openExternal).mockRejectedValue(
+      new Error(
+        "Error invoking remote method 'shell:open-external': Error: sem link",
+      ),
+    );
+    useFlyStore.setState({
+      queue: {
+        github: 'ok',
+        message: null,
+        worktrees: [
+          {
+            worktreeId: 'w1',
+            status: 'ci',
+            receipt: null,
+            pullRequest: {
+              number: 1,
+              title: 't',
+              url: 'https://github.com/o/r/pull/1',
+              branch: 'b',
+              state: 'open',
+              draft: false,
+              mergeable: 'mergeable',
+              review: 'none',
+              checks: 'pending',
+              checkRuns: [],
+            },
+          },
+        ],
+      },
+    });
+    await renderShell();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', {name: 'PR'}));
+    await user.click(screen.getByRole('button', {name: '#1 t'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('sem link');
   });
 
   it('shows the empty-root state and reopens the picker', async () => {

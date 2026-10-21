@@ -1,12 +1,14 @@
 import {
   CodeOutlined,
   FolderOpenOutlined,
+  LayoutOutlined,
   MoonOutlined,
   PlusOutlined,
   SunOutlined,
 } from '@ant-design/icons';
 import type {CSSProperties} from 'react';
 
+import type {DiffPanelMode} from '../../../core/domain/settings';
 import type {Worktree} from '../../../core/domain/workspace';
 import logo from '../assets/logo.png';
 import type {ResolvedTheme} from '../theme/theme';
@@ -15,6 +17,8 @@ type Props = {
   root: string | null;
   selected: Worktree | null;
   theme: ResolvedTheme;
+  diffPanel: DiffPanelMode;
+  onToggleDiffPanel(): void;
   onToggleTheme(): void;
   onOpenFolder(): void;
   onOpenInEditor(): void;
@@ -39,6 +43,8 @@ export const TopBar = ({
   root,
   selected,
   theme,
+  diffPanel,
+  onToggleDiffPanel,
   onToggleTheme,
   onOpenFolder,
   onOpenInEditor,
@@ -103,6 +109,10 @@ export const TopBar = ({
       style={{...buttonStyle, opacity: selected ? 1 : 0.5}}
     >
       <CodeOutlined /> Abrir no VSCode
+    </button>
+    <button type="button" onClick={onToggleDiffPanel} style={buttonStyle}>
+      <LayoutOutlined />{' '}
+      {diffPanel === 'open' ? 'Esconder painel' : 'Mostrar painel'}
     </button>
     <button
       type="button"

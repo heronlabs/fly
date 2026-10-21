@@ -1,8 +1,8 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 
+import {DiffPrPanel} from './panels/diff-pr-panel';
 import {FooterBar} from './panels/footer-bar';
 import {NewTaskDialog} from './panels/new-task-dialog';
-import {PlaceholderPanel} from './panels/placeholder-panel';
 import {SessionPanel} from './panels/session-panel';
 import {TopBar} from './panels/top-bar';
 import {WelcomePanel} from './panels/welcome-panel';
@@ -10,6 +10,7 @@ import {WorktreesPanel} from './panels/worktrees-panel';
 import {
   errorMessage,
   queueCounts,
+  queueOf,
   statusesOf,
   useFlyStore,
 } from './state/fly-store';
@@ -36,6 +37,11 @@ export const AppShell = () => {
     killSession,
     createTask,
     setActiveSession,
+    diff,
+    merging,
+    loadDiff,
+    mergePullRequest,
+    setDiffPanel,
   } = useFlyStore();
   const theme = useTheme(config.theme);
   const bootstrapped = useRef(false);
@@ -93,6 +99,14 @@ export const AppShell = () => {
     }
   };
 
+  const openExternal = async (url: string) => {
+    try {
+      await window.fly.shell.openExternal(url);
+    } catch (failure) {
+      useFlyStore.setState({error: errorMessage(failure)});
+    }
+  };
+
   if (!workspace) {
     return (
       <WelcomePanel
@@ -107,6 +121,7 @@ export const AppShell = () => {
   const selected =
     workspace.worktrees.find(worktree => worktree.id === selectedWorktreeId) ??
     null;
+  const panelOpen = config.diffPanel === 'open';
 
   return (
     <div
@@ -120,6 +135,10 @@ export const AppShell = () => {
         root={workspace.root}
         selected={selected}
         theme={theme}
+        diffPanel={config.diffPanel}
+        onToggleDiffPanel={() =>
+          void setDiffPanel(panelOpen ? 'collapsed' : 'open')
+        }
         onToggleTheme={() => void setTheme(theme === 'dark' ? 'light' : 'dark')}
         onOpenFolder={() => void pickAndOpen()}
         onOpenInEditor={() => selected && void openInEditor(selected.path)}
@@ -144,7 +163,7 @@ export const AppShell = () => {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '320px 1fr 380px',
+            gridTemplateColumns: panelOpen ? '320px 1fr 380px' : '320px 1fr',
             gridRow: 2,
             minHeight: 0,
           }}
@@ -175,7 +194,18 @@ export const AppShell = () => {
             onKill={name => void killSession(name)}
             onSelectSession={setActiveSession}
           />
-          <PlaceholderPanel title="Diff / PR" hint="Marco 4" />
+          {panelOpen && (
+            <DiffPrPanel
+              worktree={selected}
+              diff={diff?.worktreeId === selected?.id ? diff : null}
+              queue={selected ? queueOf(queue, selected.id) : null}
+              merging={merging}
+              onLoadDiff={loadDiff}
+              onMerge={id => void mergePullRequest(id)}
+              onOpenInEditor={path => void openInEditor(path)}
+              onOpenExternal={url => void openExternal(url)}
+            />
+          )}
         </div>
       </div>
       <FooterBar counts={counts} message={queue.message} />
