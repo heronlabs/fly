@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 import {NestFactory} from '@nestjs/core';
-import {app, BrowserWindow} from 'electron';
+import {app, BrowserWindow, nativeImage} from 'electron';
 
 import {QueueHandler} from './application/ipc/handlers/queue-handler';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
@@ -96,6 +96,11 @@ app
     const terminalHandler = context.get(TerminalHandler);
     terminalHandler.register();
     const onReset = () => terminalHandler.reset();
+    if (!app.isPackaged && process.platform === 'darwin') {
+      app.dock?.setIcon(
+        nativeImage.createFromPath(join(app.getAppPath(), 'build/icon.png')),
+      );
+    }
     createWindow(onReset);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow(onReset);

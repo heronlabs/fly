@@ -52,21 +52,24 @@ export const TopBar = ({
       alignItems: 'center',
       gap: 12,
       height: 44,
-      padding: '0 14px 0 80px',
+      padding: '0 14px 0 104px',
       borderBottom: '1px solid var(--border)',
       background: 'var(--drawer)',
     }}
   >
-    <img src={logo} alt="" width={24} height={24} />
-    <span
-      style={{
-        fontFamily: 'var(--fontDisplay)',
-        fontSize: 16,
-        color: 'var(--strong)',
-      }}
-    >
-      heronlabs
-    </span>
+    <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+      <img src={logo} alt="" width={24} height={24} />
+      <span
+        style={{
+          fontFamily: 'var(--fontDisplay)',
+          fontSize: 16,
+          lineHeight: 1,
+          color: 'var(--strong)',
+        }}
+      >
+        heronlabs
+      </span>
+    </div>
     <span
       style={{
         fontSize: 10,
@@ -76,7 +79,7 @@ export const TopBar = ({
         color: 'var(--muted)',
       }}
     >
-      cockpit
+      {`v${__APP_VERSION__}`}
     </span>
     <span
       style={{flex: 1, color: 'var(--muted)', fontFamily: 'var(--fontMono)'}}

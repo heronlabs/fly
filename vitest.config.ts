@@ -1,6 +1,14 @@
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+
 import {defineConfig} from 'vitest/config';
 
+const {version} = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
+  version: string;
+};
+
 export default defineConfig({
+  define: {__APP_VERSION__: JSON.stringify(version)},
   // Tests build services by hand (no Nest DI), so decorator metadata is not
   // needed; emitting it adds uncoverable `typeof X === 'undefined'` branches.
   // The electron-vite build keeps emitting it via swcPlugin.
