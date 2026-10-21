@@ -1,3 +1,9 @@
+## v0.0.7 (2026-10-21)
+
+### Documentation
+
+* docs: add the fly logo and a full README (d742d2a359ba63bfd9cb19e28db7abd4b755ab2b)
+
 ## v0.0.6 (2026-10-21)
 
 ### Bug Fixes
