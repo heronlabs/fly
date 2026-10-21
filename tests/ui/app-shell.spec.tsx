@@ -128,7 +128,7 @@ describe('AppShell', () => {
       .parentElement as HTMLElement;
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(columns).toHaveStyle({
-      gridTemplateColumns: '260px 1fr 380px',
+      gridTemplateColumns: '320px 1fr 380px',
       gridRow: '2',
     });
     act(() => useFlyStore.setState({error: 'falhou'}));

@@ -77,7 +77,7 @@
       }
     },
     {
-      "comment": "Every module in src must be reachable from the entry point (dead-code guard).",
+      "comment": "Every module in src must be reachable from the entry point (dead-code guard; allow type declarations).",
       "from": {
         "path": "^src/(main|preload)\\.ts$|^src/application/ui/main\\.tsx$"
       },
@@ -85,7 +85,11 @@
       "severity": "error",
       "to": {
         "path": "^src",
-        "pathNot": "^src/(main|preload)\\.ts$|^src/application/ui/main\\.tsx$",
+        "pathNot": [
+          "\\.d\\.ts$",
+          "^src/(main|preload)\\.ts$",
+          "^src/application/ui/main\\.tsx$"
+        ],
         "reachable": false
       }
     },
