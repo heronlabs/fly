@@ -110,6 +110,18 @@ describe('DiffView', () => {
     expect(onOpenInEditor).toHaveBeenCalledExactlyOnceWith('/r/repo/src/a.ts');
   });
 
+  it('Should not note a big file for a truncated file without lines', () => {
+    renderView(
+      result({
+        files: [file({truncated: true, lines: 0})],
+        truncated: false,
+      }),
+    );
+    expect(screen.getByText('src/a.ts')).toBeVisible();
+    expect(screen.queryByText(/Arquivo grande/)).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('Should render hunks with gutters and line backgrounds', () => {
     renderView(
       result({

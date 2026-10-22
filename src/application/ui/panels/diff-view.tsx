@@ -53,7 +53,7 @@ const FileBody = ({
   worktreePath: string;
 }) => {
   if (file.binary) return <div style={note}>Arquivo binário</div>;
-  if (file.truncated) {
+  if (file.truncated && file.lines > 0) {
     return (
       <div style={note}>
         <span>Arquivo grande ({file.lines} linhas)</span>{' '}
