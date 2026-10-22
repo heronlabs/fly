@@ -295,6 +295,24 @@ describe('WorkbenchPanel', () => {
     expect(props.onClose).toHaveBeenCalledWith('src/b.ts');
   });
 
+  it('Should not carry a close prompt to another worktree with the same path', () => {
+    const {props, rerender} = setup();
+    click(screen.getByRole('button', {name: 'Fechar b.ts'}));
+    expect(screen.getByRole('button', {name: 'Descartar'})).toBeVisible();
+    rerender({
+      worktree: worktree('w2'),
+      tabs: [tab('src/b.ts', {worktreeId: 'w2'})],
+    });
+    expect(
+      screen.queryByRole('button', {name: 'Descartar'}),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Fechar b.ts'})).toHaveTextContent(
+      '×',
+    );
+    expect(forgetEditorState).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
   it('Should bind the editor callbacks to the active file', () => {
     const {props} = setup({
       activePath: 'src/b.ts',

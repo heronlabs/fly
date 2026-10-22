@@ -189,8 +189,10 @@ export const FileTabs = ({
       onActivate={() => onActivate(null)}
     />
     {tabs.map(file => (
+      // Worktrees of one repo share paths: a path-only key would hand an
+      // open Descartar prompt to the other worktree's tab.
       <FileTab
-        key={file.path}
+        key={`${file.worktreeId}\0${file.path}`}
         file={file}
         active={file.path === activePath}
         onActivate={() => onActivate(file.path)}
