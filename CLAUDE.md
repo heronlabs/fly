@@ -31,7 +31,7 @@ Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJ
 
 Panel specs mock `CodeEditor` (`src/application/ui/editor/code-editor`) the same way they mock `TerminalView`. `tests/ui/editor` runs real CodeMirror in jsdom with three stubs in `tests/ui/setup.ts`.
 
-Every path the renderer sends over `file:*` is worktree-relative POSIX. `FileService` resolves it inside the worktree's real path and refuses anything else (`Caminho fora do worktree`); new files are created exclusively (`wx`) so symlinks are never followed.
+Every path the renderer sends over `file:*` is worktree-relative POSIX. `FileService` resolves it inside the worktree's real path and refuses anything else (`Caminho fora do worktree`); new files are created exclusively (`wx`), so a dangling symlink is never followed; an existing symlink is written only when its real path is inside the worktree.
 
 ## Mutation testing
 
