@@ -115,6 +115,16 @@ describe('CodeEditor', () => {
     expect(onDirty).not.toHaveBeenCalled();
   });
 
+  it('Should keep a lone CR as text, not a line break', () => {
+    const {onDirty, getText, view} = setup({
+      stateKey: freshKey('a.ts'),
+      text: 'a\rb\nc',
+    });
+    expect(onDirty).not.toHaveBeenCalled();
+    expect(getText()).toBe('a\rb\nc');
+    expect(view().state.doc.lines).toBe(2);
+  });
+
   it('Should report clean when the saved text catches up with the doc', () => {
     const stateKey = freshKey('a.ts');
     const {onDirty, insert, rerender} = setup({stateKey, text: 'a'});

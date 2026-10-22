@@ -76,6 +76,8 @@ const createState = (text: string, kind: FileKind, theme: ResolvedTheme) =>
       history(),
       foldGutter(),
       EditorState.allowMultipleSelections.of(true),
+      // The text is LF (toLf); a lone CR is a character, not a line break.
+      EditorState.lineSeparator.of('\n'),
       drawSelection(),
       dropCursor(),
       indentOnInput(),
