@@ -1381,6 +1381,66 @@ describe('files', () => {
       expect(state.filesError).toBe(before.filesError);
     });
 
+    const V = 'b/y#main';
+    const fileState = (ids: string[]) => ({
+      openFiles: ids.map(id => tab('a', {worktreeId: id, dirty: true})),
+      activeFile: Object.fromEntries(ids.map(id => [id, 'a'])),
+      trees: Object.fromEntries(ids.map(id => [id, tree])),
+      flags: Object.fromEntries(ids.map(id => [id, {a: 'M' as const}])),
+      filesError: Object.fromEntries(ids.map(id => [id, null])),
+      diskMtimes: Object.fromEntries(ids.map(id => [id, {a: 1}])),
+    });
+    // The repo is kept with the error and no worktrees, as WorkspaceService
+    // returns it when `git worktree list` fails.
+    const failed = (next: Workspace, repoId: string): Workspace => ({
+      ...next,
+      repos: next.repos.map(repo =>
+        repo.id === repoId ? {...repo, error: 'git falhou: index.lock'} : repo,
+      ),
+      worktrees: next.worktrees.filter(w => w.repoId !== repoId),
+    });
+    const fileStateOf = () => {
+      const {openFiles, activeFile, trees, flags, filesError, diskMtimes} =
+        useFlyStore.getState();
+      return {openFiles, activeFile, trees, flags, filesError, diskMtimes};
+    };
+
+    it('applyWorkspace keeps the file state of a repo whose discovery failed', () => {
+      const before = fileState([W, V]);
+      useFlyStore.setState({workspace: workspace(['a/x', 'b/y']), ...before});
+      useFlyStore
+        .getState()
+        .applyWorkspace(failed(workspace(['a/x', 'b/y']), 'a/x'));
+      expect(fileStateOf()).toEqual(before);
+      expect(useFlyStore.getState().openFiles).toBe(before.openFiles);
+    });
+
+    it('applyWorkspace prunes a gone worktree of a repo listed without error', () => {
+      const previous = workspace(['a/x']);
+      const feature = 'a/x#feat';
+      useFlyStore.setState({
+        workspace: {
+          ...previous,
+          worktrees: [
+            ...previous.worktrees,
+            {...previous.worktrees[0]!, id: feature, isMain: false},
+          ],
+        },
+        ...fileState([W, feature]),
+      });
+      useFlyStore.getState().applyWorkspace(workspace(['a/x']));
+      expect(fileStateOf()).toEqual(fileState([W]));
+    });
+
+    it('applyWorkspace prunes the worktrees of a repo that vanished, even beside a failed one', () => {
+      useFlyStore.setState({
+        workspace: workspace(['a/x', 'b/y']),
+        ...fileState([W, V]),
+      });
+      useFlyStore.getState().applyWorkspace(failed(workspace(['a/x']), 'a/x'));
+      expect(fileStateOf()).toEqual(fileState([W]));
+    });
+
     it('select keeps the tabs of every worktree', () => {
       const openFiles = [tab('a'), tab('b', {worktreeId: 'b/y#main'})];
       const activeFile = {[W]: 'a', 'b/y#main': 'b'};

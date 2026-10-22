@@ -140,6 +140,23 @@ const treeOf = (state: FlyState, worktreeId: string): ExplorerTree =>
 const pathSet = (flags: Record<string, FileFlag> = {}): string =>
   Object.keys(flags).sort().join('\0');
 
+// A repo whose `git worktree list` failed comes back with an error and no
+// worktrees; the file state of the worktrees it had is kept through it.
+const keptWorktrees = (
+  previous: Workspace | null,
+  next: Workspace,
+): Set<string> => {
+  const failed = new Set(
+    next.repos.filter(repo => repo.error !== undefined).map(repo => repo.id),
+  );
+  return new Set([
+    ...next.worktrees.map(worktree => worktree.id),
+    ...(previous?.worktrees ?? [])
+      .filter(worktree => failed.has(worktree.repoId))
+      .map(worktree => worktree.id),
+  ]);
+};
+
 // Keeps the same object when no worktree was dropped, so subscribers of an
 // untouched map do not re-render on every workspace push.
 const pruned = <T>(record: Record<string, T>, ids: Set<string>) =>
@@ -264,7 +281,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
 
   applyWorkspace(workspace) {
     set(state => {
-      const ids = new Set(workspace.worktrees.map(worktree => worktree.id));
+      const ids = keptWorktrees(state.workspace, workspace);
       const openFiles = state.openFiles.filter(file =>
         ids.has(file.worktreeId),
       );
