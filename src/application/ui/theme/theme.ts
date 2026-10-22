@@ -1,3 +1,4 @@
+import {syntaxVars} from '../editor/syntax-palette';
 import {tokens} from './tokens';
 
 export type ResolvedTheme = 'dark' | 'light';
@@ -47,6 +48,7 @@ const dark: ThemeVars = {
   '--badgeOk': '#0d3a1c',
   '--badgeErr': '#3d1114',
   '--badgeMerged': '#122c44',
+  ...syntaxVars('dark'),
   ...fonts,
 };
 
@@ -83,6 +85,7 @@ const light: ThemeVars = {
   '--badgeOk': '#dcfce7',
   '--badgeErr': '#fee2e2',
   '--badgeMerged': colors.borderLight,
+  ...syntaxVars('light'),
   ...fonts,
 };
 
