@@ -58,6 +58,23 @@ const api: FlyApi = {
     get: (worktreeId, scope) =>
       ipcRenderer.invoke(channels.diffGet, worktreeId, scope),
   },
+  files: {
+    list: (worktreeId, dir) =>
+      ipcRenderer.invoke(channels.fileList, worktreeId, dir),
+    read: (worktreeId, path) =>
+      ipcRenderer.invoke(channels.fileRead, worktreeId, path),
+    write: (worktreeId, path, text, eol, expectedMtimeMs) =>
+      ipcRenderer.invoke(
+        channels.fileWrite,
+        worktreeId,
+        path,
+        text,
+        eol,
+        expectedMtimeMs,
+      ),
+    poll: (worktreeId, openPaths) =>
+      ipcRenderer.invoke(channels.filePoll, worktreeId, openPaths),
+  },
   pullRequests: {
     merge: worktreeId => ipcRenderer.invoke(channels.prMerge, worktreeId),
   },

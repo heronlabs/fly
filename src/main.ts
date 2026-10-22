@@ -7,6 +7,7 @@ import {NestFactory} from '@nestjs/core';
 import {app, BrowserWindow, nativeImage} from 'electron';
 
 import {DiffHandler} from './application/ipc/handlers/diff-handler';
+import {FileHandler} from './application/ipc/handlers/file-handler';
 import {QueueHandler} from './application/ipc/handlers/queue-handler';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
@@ -95,6 +96,7 @@ app
     context.get(SessionHandler).register();
     context.get(QueueHandler).register();
     context.get(DiffHandler).register();
+    context.get(FileHandler).register();
     const terminalHandler = context.get(TerminalHandler);
     terminalHandler.register();
     const onReset = () => terminalHandler.reset();

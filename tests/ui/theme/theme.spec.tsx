@@ -1,3 +1,4 @@
+import {syntaxPalette} from '../../../src/application/ui/editor/syntax-palette';
 import {applyTheme, themeVars} from '../../../src/application/ui/theme/theme';
 import {tokens} from '../../../src/application/ui/theme/tokens';
 
@@ -24,6 +25,14 @@ describe('theme', () => {
   it('Should take syntax colors from tokens.syntax per theme', () => {
     expect(themeVars('dark')['--syKeyword']).toBe(tokens.syntax.dark.keyword);
     expect(themeVars('light')['--syString']).toBe(tokens.syntax.light.string);
+  });
+
+  it('Should expose the editor syntax palette as --ed* variables per theme', () => {
+    expect(themeVars('dark')['--edKeyword']).toBe(syntaxPalette.dark.keyword);
+    expect(themeVars('light')['--edKeyword']).toBe(syntaxPalette.light.keyword);
+    expect(themeVars('dark')['--edFindMatchOther']).toBe(
+      syntaxPalette.dark.findMatchOther,
+    );
   });
 
   it('Should fall back to the Nerd Font symbols after JetBrains Mono in both themes', () => {

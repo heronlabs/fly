@@ -1,6 +1,7 @@
 import {Injectable} from '@nestjs/common';
 
 import type {DiffFile} from '../../core/domain/diff';
+import type {FileFlag} from '../../core/domain/files';
 import {
   CommandResult,
   CommandRunner,
@@ -11,6 +12,7 @@ import {
   VcsGateway,
   WorktreeInfo,
 } from '../../core/interfaces/vcs-gateway';
+import {parseStatusPorcelain} from './status-porcelain-parser';
 import {parseUnifiedDiff} from './unified-diff-parser';
 import {parseWorktreePorcelain} from './worktree-porcelain-parser';
 
@@ -79,6 +81,18 @@ export class GitCliService extends VcsGateway {
       );
     }
     return parseUnifiedDiff(outputs.join(''));
+  }
+
+  async status(worktreePath: string): Promise<Record<string, FileFlag>> {
+    const output = await this.git(worktreePath, [
+      '-c',
+      'core.quotepath=false',
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+    ]);
+    return parseStatusPorcelain(output);
   }
 
   private async git(

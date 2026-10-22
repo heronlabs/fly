@@ -16,6 +16,7 @@ import {TranscriptSource} from '../../core/interfaces/transcript-source';
 import {VcsGateway} from '../../core/interfaces/vcs-gateway';
 import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
 import {DiffService} from '../../core/services/diff-service';
+import {FileService} from '../../core/services/file-service';
 import {QueueService} from '../../core/services/queue-service';
 import {SessionService} from '../../core/services/session-service';
 import {SettingsService} from '../../core/services/settings-service';
@@ -37,6 +38,7 @@ import {NodePtyTerminalService} from '../../infrastructure/pty/node-pty-terminal
 import {TmuxSessionService} from '../../infrastructure/tmux/tmux-session-service';
 import {TMUX_SOCKET} from '../../infrastructure/tmux/tokens';
 import {DiffHandler} from './handlers/diff-handler';
+import {FileHandler} from './handlers/file-handler';
 import {QueueHandler} from './handlers/queue-handler';
 import {SessionHandler} from './handlers/session-handler';
 import {SettingsHandler} from './handlers/settings-handler';
@@ -99,6 +101,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
     TaskService,
     QueueService,
     DiffService,
+    FileService,
     TerminalService,
     WorkspaceHandler,
     SettingsHandler,
@@ -106,6 +109,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
     SessionHandler,
     QueueHandler,
     DiffHandler,
+    FileHandler,
     TerminalHandler,
   ],
 })

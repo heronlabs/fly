@@ -1,9 +1,14 @@
-import {act, render, screen} from '@testing-library/react';
+import {act, fireEvent, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type {Ref} from 'react';
 
 import {AppShell} from '../../src/application/ui/app-shell';
-import {useFlyStore} from '../../src/application/ui/state/fly-store';
+import {
+  type OpenFile,
+  useFlyStore,
+} from '../../src/application/ui/state/fly-store';
 import type {WorktreeDiff} from '../../src/core/domain/diff';
+import type {FilesPoll} from '../../src/core/domain/files';
 import type {QueueSnapshot} from '../../src/core/domain/queue';
 import type {SessionsSnapshot} from '../../src/core/domain/session';
 import type {AppConfig} from '../../src/core/domain/settings';
@@ -14,6 +19,27 @@ vi.mock('../../src/application/ui/terminal/terminal-view', () => ({
     <div data-testid="terminal">{sessionName}</div>
   ),
 }));
+
+// The mocked editor's onDirty, so a test can make the shown file dirty.
+const editor = vi.hoisted(() => ({
+  onDirty: null as ((dirty: boolean) => void) | null,
+}));
+
+vi.mock('../../src/application/ui/editor/code-editor', async () => {
+  const {useImperativeHandle} = await import('react');
+  return {
+    forgetEditorState: vi.fn(),
+    CodeEditor: (props: {
+      stateKey: string;
+      onDirty(dirty: boolean): void;
+      editorRef?: Ref<{getText(): string}>;
+    }) => {
+      editor.onDirty = props.onDirty;
+      useImperativeHandle(props.editorRef, () => ({getText: () => 'edited'}));
+      return <div data-testid="code-editor">{props.stateKey}</div>;
+    },
+  };
+});
 
 const workspace: Workspace = {
   root: '/tmp/x',
@@ -30,10 +56,35 @@ const workspace: Workspace = {
   ],
 };
 
+const twoWorktrees: Workspace = {
+  ...workspace,
+  worktrees: [
+    ...workspace.worktrees,
+    {
+      id: 'w2',
+      repoId: 'repo-a',
+      path: '/tmp/x/repo-a/.worktrees/b',
+      branch: 'b',
+      head: 'bcdef12345',
+      isMain: false,
+    },
+  ],
+};
+
+const openTab = (worktreeId: string, path: string): OpenFile => ({
+  worktreeId,
+  path,
+  content: {kind: 'text', path, text: 'x', eol: 'lf', mtimeMs: 1},
+  dirty: false,
+  diskState: 'same',
+  revision: 0,
+});
+
 const config = (theme: AppConfig['theme']): AppConfig => ({
   recentRoots: [],
   theme,
   diffPanel: 'open',
+  explorer: 'open',
 });
 
 const emptySessions: SessionsSnapshot = {
@@ -52,6 +103,8 @@ const emptyDiff: WorktreeDiff = {
   error: null,
 };
 
+const emptyPoll: FilesPoll = {flags: {}, mtimes: {}, error: null};
+
 const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   vi.mocked(window.fly.settings.get).mockResolvedValue(config('dark'));
   vi.mocked(window.fly.workspace.onChanged).mockReturnValue(vi.fn());
@@ -60,6 +113,8 @@ const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
   vi.mocked(window.fly.queue.onChanged).mockReturnValue(vi.fn());
   vi.mocked(window.fly.queue.list).mockResolvedValue(emptyQueue);
   vi.mocked(window.fly.diff.get).mockResolvedValue(emptyDiff);
+  vi.mocked(window.fly.files.poll).mockResolvedValue(emptyPoll);
+  vi.mocked(window.fly.files.list).mockResolvedValue([]);
   useFlyStore.setState({
     sessions: emptySessions,
     queue: emptyQueue,
@@ -70,6 +125,13 @@ const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
     selectedWorktreeId: null,
     loading: false,
     error: null,
+    openFiles: [],
+    activeFile: {},
+    trees: {},
+    flags: {},
+    filesError: {},
+    diskMtimes: {},
+    saving: false,
     ...state,
   });
 };
@@ -155,7 +217,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('tab', {name: 'Diff'})).toBeVisible();
     expect(
       screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
-    ).toHaveStyle({gridTemplateColumns: '320px 1fr 380px'});
+    ).toHaveStyle({gridTemplateColumns: '320px 260px 1fr 380px'});
   });
 
   it('Should drop the panel and its column when collapsed', async () => {
@@ -163,13 +225,169 @@ describe('AppShell', () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
       ...config('dark'),
       diffPanel: 'collapsed',
+      explorer: 'open',
     });
     await renderShell();
     expect(screen.queryByRole('tab', {name: 'Diff'})).not.toBeInTheDocument();
     expect(
       screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
-    ).toHaveStyle({gridTemplateColumns: '320px 1fr'});
+    ).toHaveStyle({gridTemplateColumns: '320px 260px 1fr'});
     expect(screen.getByRole('button', {name: /Mostrar painel/})).toBeVisible();
+  });
+
+  it.each([
+    ['w1', 'open', 'open', '320px 260px 1fr 380px'],
+    ['w1', 'open', 'collapsed', '320px 260px 1fr'],
+    ['w1', 'collapsed', 'open', '320px 1fr 380px'],
+    ['w1', 'collapsed', 'collapsed', '320px 1fr'],
+    [null, 'open', 'open', '320px 1fr 380px'],
+    [null, 'open', 'collapsed', '320px 1fr'],
+    [null, 'collapsed', 'open', '320px 1fr 380px'],
+    [null, 'collapsed', 'collapsed', '320px 1fr'],
+  ] as const)(
+    'Should lay out selection %s, explorer %s, panel %s as %s',
+    async (selectedWorktreeId, explorer, diffPanel, columns) => {
+      seed({workspace, selectedWorktreeId});
+      vi.mocked(window.fly.settings.get).mockResolvedValue({
+        ...config('dark'),
+        explorer,
+        diffPanel,
+      });
+      await renderShell();
+      expect(
+        screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
+      ).toHaveStyle({gridTemplateColumns: columns});
+      expect(
+        screen.queryByRole('navigation', {name: 'Explorer'}) !== null,
+      ).toBe(selectedWorktreeId !== null && explorer === 'open');
+    },
+  );
+
+  it('Should render the explorer after the worktrees with the repo and branch', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    await renderShell();
+    const explorer = screen.getByRole('navigation', {name: 'Explorer'});
+    expect(explorer.previousElementSibling).toBe(
+      screen.getByRole('navigation', {name: 'Worktrees'}),
+    );
+    expect(explorer).toHaveTextContent('repo-a · main');
+  });
+
+  it('Should collapse the explorer and reopen it from the hamburger', async () => {
+    const user = userEvent.setup();
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.settings.set)
+      .mockResolvedValueOnce({...config('dark'), explorer: 'collapsed'})
+      .mockResolvedValueOnce(config('dark'));
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: 'Fechar explorer'}));
+    expect(window.fly.settings.set).toHaveBeenCalledWith({
+      explorer: 'collapsed',
+    });
+    expect(
+      screen.queryByRole('navigation', {name: 'Explorer'}),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'Abrir explorer'}));
+    expect(window.fly.settings.set).toHaveBeenLastCalledWith({
+      explorer: 'open',
+    });
+    expect(screen.getByRole('navigation', {name: 'Explorer'})).toBeVisible();
+  });
+
+  it('Should list the root of a selected worktree once', async () => {
+    seed({workspace});
+    await renderShell();
+    expect(window.fly.files.list).not.toHaveBeenCalled();
+    await act(async () => useFlyStore.getState().select('w1'));
+    expect(window.fly.files.list).toHaveBeenCalledTimes(1);
+    expect(window.fly.files.list).toHaveBeenCalledWith('w1', '');
+    await act(async () => useFlyStore.setState({error: 'x'}));
+    expect(window.fly.files.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('Should list the root when the tree exists without it', async () => {
+    seed({
+      workspace,
+      selectedWorktreeId: 'w1',
+      trees: {w1: {expanded: {src: true}, entries: {}}},
+    });
+    await renderShell();
+    expect(window.fly.files.list).toHaveBeenCalledWith('w1', '');
+  });
+
+  it('Should not list a root that is already listed', async () => {
+    seed({
+      workspace,
+      selectedWorktreeId: 'w1',
+      trees: {w1: {expanded: {}, entries: {'': []}}},
+    });
+    await renderShell();
+    expect(window.fly.files.list).not.toHaveBeenCalled();
+  });
+
+  it('Should poll the selected worktree with its open paths', async () => {
+    seed({
+      workspace,
+      selectedWorktreeId: 'w1',
+      openFiles: [openTab('w1', 'a.ts')],
+    });
+    await renderShell();
+    expect(window.fly.files.poll).toHaveBeenCalledWith('w1', ['a.ts']);
+  });
+
+  it('Should show only the tabs of the selected worktree', async () => {
+    seed({
+      workspace: twoWorktrees,
+      selectedWorktreeId: 'w1',
+      openFiles: [openTab('w1', 'a.ts'), openTab('w2', 'b.ts')],
+      activeFile: {w2: 'b.ts'},
+    });
+    await renderShell();
+    expect(screen.getByRole('tab', {name: 'a.ts'})).toBeVisible();
+    expect(screen.queryByRole('tab', {name: 'b.ts'})).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: 'Sessão'})).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('Should open a file from the explorer, save it with ⌘S and go back to the session', async () => {
+    const user = userEvent.setup();
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.files.list).mockResolvedValue([
+      {name: 'a.ts', kind: 'file'},
+    ]);
+    vi.mocked(window.fly.files.read).mockResolvedValue({
+      kind: 'text',
+      path: 'a.ts',
+      text: 'saved',
+      eol: 'lf',
+      mtimeMs: 7,
+    });
+    vi.mocked(window.fly.files.write).mockResolvedValue({mtimeMs: 8});
+    await renderShell();
+    await user.click(screen.getByRole('treeitem', {name: /a\.ts/}));
+    expect(window.fly.files.read).toHaveBeenCalledWith('w1', 'a.ts');
+    expect(screen.getByRole('tab', {name: 'a.ts'})).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('code-editor')).toHaveTextContent('w1\0a.ts');
+    act(() => editor.onDirty?.(true));
+    expect(screen.getByText('Modificado')).toBeVisible();
+    await act(async () => {
+      fireEvent.keyDown(window, {key: 's', metaKey: true});
+    });
+    expect(window.fly.files.write).toHaveBeenCalledWith(
+      'w1',
+      'a.ts',
+      'edited',
+      'lf',
+      7,
+    );
+    expect(screen.getByText('Salvo')).toBeVisible();
+    await user.click(screen.getByRole('tab', {name: 'Sessão'}));
+    expect(screen.queryByTestId('code-editor')).not.toBeInTheDocument();
   });
 
   it('Should collapse the panel through settings.set', async () => {
@@ -177,6 +395,7 @@ describe('AppShell', () => {
     vi.mocked(window.fly.settings.set).mockResolvedValue({
       ...config('dark'),
       diffPanel: 'collapsed',
+      explorer: 'open',
     });
     await renderShell();
     await userEvent

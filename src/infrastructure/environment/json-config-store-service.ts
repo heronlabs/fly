@@ -6,6 +6,7 @@ import {
   AppConfig,
   defaultConfig,
   DiffPanelMode,
+  ExplorerMode,
   maxRecentRoots,
   ThemeMode,
 } from '../../core/domain/settings';
@@ -15,12 +16,13 @@ import {USER_DATA_DIR} from './tokens';
 
 const themes: readonly string[] = ['system', 'dark', 'light'];
 const diffPanelModes: readonly string[] = ['open', 'collapsed'];
+const explorerModes: readonly string[] = ['open', 'collapsed'];
 
 const freshDefaults = (): AppConfig => structuredClone(defaultConfig);
 
 const coerce = (value: unknown): AppConfig => {
   // Arrays and primitives have neither field, so they coerce to the defaults.
-  const {recentRoots, theme, diffPanel} = (value ?? {}) as Record<
+  const {recentRoots, theme, diffPanel, explorer} = (value ?? {}) as Record<
     string,
     unknown
   >;
@@ -36,6 +38,9 @@ const coerce = (value: unknown): AppConfig => {
     diffPanel: diffPanelModes.includes(diffPanel as string)
       ? (diffPanel as DiffPanelMode)
       : defaultConfig.diffPanel,
+    explorer: explorerModes.includes(explorer as string)
+      ? (explorer as ExplorerMode)
+      : defaultConfig.explorer,
   };
 };
 

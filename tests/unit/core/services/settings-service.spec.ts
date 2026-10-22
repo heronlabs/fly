@@ -20,6 +20,7 @@ describe('SettingsService', () => {
       recentRoots: ['/a'],
       theme: 'dark',
       diffPanel: 'open',
+      explorer: 'open',
     };
     load.mockResolvedValue(config);
 
@@ -31,6 +32,7 @@ describe('SettingsService', () => {
       recentRoots: ['/a'],
       theme: 'dark',
       diffPanel: 'open',
+      explorer: 'open',
     });
 
     const result = await service.update({theme: 'light'});
@@ -39,6 +41,7 @@ describe('SettingsService', () => {
       recentRoots: ['/a'],
       theme: 'light',
       diffPanel: 'open',
+      explorer: 'open',
     });
     expect(save).toHaveBeenCalledWith(result);
   });
@@ -48,6 +51,7 @@ describe('SettingsService', () => {
       recentRoots: ['/a'],
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
 
     const result = await service.rememberRoot('/b');
@@ -61,6 +65,7 @@ describe('SettingsService', () => {
       recentRoots: ['/a', '/b', '/c'],
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
 
     const result = await service.rememberRoot('/c');
@@ -74,6 +79,7 @@ describe('SettingsService', () => {
       recentRoots: roots,
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
 
     const result = await service.rememberRoot('/new');
