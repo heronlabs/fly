@@ -607,9 +607,10 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       if (mtime === null) {
         diskState = 'missing';
       } else if (
+        // An older mtime is a poll that stat'ed before the last save (R15).
         mtime !== undefined &&
         file.content.kind === 'text' &&
-        mtime !== file.content.mtimeMs
+        mtime > file.content.mtimeMs
       ) {
         if (!file.dirty) reload.push(file.path);
         else diskState = 'changed';

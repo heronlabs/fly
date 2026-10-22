@@ -1073,6 +1073,28 @@ describe('files', () => {
       expect(fileOf('a', 'b/y#main')).toBe(other);
     });
 
+    it('ignores a stale mtime older than the clean tab saved mtime', () => {
+      useFlyStore.setState({
+        openFiles: [tab('a.ts', {content: textOf('a.ts', 200)})],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({mtimes: {'a.ts': 100}}));
+      expect(result.reload).toEqual([]);
+      expect(fileOf('a.ts')?.diskState).toBe('same');
+    });
+
+    it('ignores a stale mtime older than the dirty tab saved mtime', () => {
+      useFlyStore.setState({
+        openFiles: [tab('a.ts', {dirty: true, content: textOf('a.ts', 200)})],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({mtimes: {'a.ts': 100}}));
+      expect(result.reload).toEqual([]);
+      expect(fileOf('a.ts')?.diskState).toBe('same');
+    });
+
     it('keeps the tabs array when no tab changed', () => {
       const openFiles = [tab('a'), tab('b', {diskState: 'missing'})];
       useFlyStore.setState({openFiles});
