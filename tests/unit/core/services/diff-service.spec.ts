@@ -21,6 +21,8 @@ const workspace: Workspace = {
     wt('b', 'b', null, true, 'deadbeef'),
     wt('b/feat', 'b', 'feat'),
     wt('c/feat', 'c', 'feat'),
+    wt('d', 'd', null, true, 'main'),
+    wt('d/feat', 'd', 'feat'),
   ],
 };
 
@@ -130,6 +132,15 @@ describe('DiffService', () => {
       base: 'deadbeef',
     });
     expect(result.base).toBe('deadbeef');
+  });
+
+  it('Should not resolve a detached head that spells another repo branch', async () => {
+    diff.mockResolvedValue([]);
+
+    const result = await service.read('d/feat', 'branch');
+
+    expect(resolveBase).not.toHaveBeenCalled();
+    expect(result.base).toBe('main');
   });
 
   it('Should turn a resolveBase rejection into an error row', async () => {

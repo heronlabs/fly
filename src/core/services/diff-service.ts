@@ -36,11 +36,11 @@ export class DiffService {
         if (base === null) {
           return {worktreeId, scope, base, diff: null, error: null};
         }
-        const main = workspace.worktrees.find(
-          w => w.repoId === worktree.repoId && w.isMain,
-        );
         // A detached main worktree yields a SHA, which has no remote twin.
-        if (main?.branch === base) {
+        const named = workspace.worktrees.some(
+          w => w.repoId === worktree.repoId && w.isMain && w.branch === base,
+        );
+        if (named) {
           base = await this.vcs.resolveBase(worktree.path, base);
         }
         request = {worktreePath: worktree.path, scope, base};
