@@ -57,8 +57,8 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 
 | Tool | Why |
 |------|-----|
-| `git` | Repo and worktree discovery |
-| `gh` | Pull request status; must be authenticated (`gh auth login`) |
+| `git` | Repo and worktree discovery; `git diff` for the diff panel |
+| `gh` | Pull request status and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
 | `code` | VSCode on `PATH`, used by "Abrir no VSCode" |
@@ -159,6 +159,7 @@ All of this is enforced by `pnpm dep:cruise`.
 | tmux | tests use a private socket `-L fly-test-<hex>` and kill that server afterwards, never the default server |
 | Transcripts | tests use an `mkdtemp` projects dir through `CLAUDE_PROJECTS_DIR`, never the real `~/.claude` |
 | `gh` | always mocked through `CommandRunner` or `PrGateway` |
+| `git` | mocked through `CommandRunner` in unit tests; runs against an `mkdtemp` repo in integration tests |
 
 ```bash
 pnpm test:unit        # vitest run with coverage
