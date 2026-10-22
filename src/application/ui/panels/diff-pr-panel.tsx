@@ -14,7 +14,7 @@ type Props = {
   diff: WorktreeDiff | null;
   queue: WorktreeQueue | null;
   merging: boolean;
-  onLoadDiff(worktreeId: string, scope: DiffScope): void;
+  onLoadDiff(worktreeId: string, scope: DiffScope): Promise<void> | void;
   onMerge(worktreeId: string): void;
   onOpenInEditor(path: string): void;
   onOpenExternal(url: string): void;
@@ -67,8 +67,16 @@ export const DiffPrPanel = ({
 
   useEffect(() => {
     if (!worktreeId || tab !== 'diff') return;
-    onLoadDiff(worktreeId, scope);
-    const id = setInterval(() => onLoadDiff(worktreeId, scope), DIFF_POLL_MS);
+    let pending = false;
+    const poll = () => {
+      if (pending) return;
+      pending = true;
+      void Promise.resolve(onLoadDiff(worktreeId, scope)).finally(() => {
+        pending = false;
+      });
+    };
+    poll();
+    const id = setInterval(poll, DIFF_POLL_MS);
     return () => clearInterval(id);
   }, [worktreeId, tab, scope, onLoadDiff]);
 

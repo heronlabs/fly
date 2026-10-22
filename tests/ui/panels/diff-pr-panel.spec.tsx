@@ -73,7 +73,7 @@ describe('DiffPrPanel', () => {
     vi.useRealTimers();
   });
 
-  it('Should load the live diff at once and every poll interval', () => {
+  it('Should load the live diff at once and every poll interval', async () => {
     const {props} = setup();
     expect(screen.getByRole('tab', {name: 'Diff'})).toHaveAttribute(
       'aria-selected',
@@ -84,13 +84,14 @@ describe('DiffPrPanel', () => {
     ).toHaveAttribute('aria-selected', 'true');
     expect(props.onLoadDiff).toHaveBeenCalledTimes(1);
     expect(props.onLoadDiff).toHaveBeenLastCalledWith('w1', 'live');
+    await act(async () => {});
     act(() => {
       vi.advanceTimersByTime(DIFF_POLL_MS);
     });
     expect(props.onLoadDiff).toHaveBeenCalledTimes(2);
   });
 
-  it('Should poll the branch diff after switching scope', () => {
+  it('Should poll the branch diff after switching scope', async () => {
     const {props} = setup();
     click('Branch');
     expect(screen.getByRole('tab', {name: 'Branch'})).toHaveAttribute(
@@ -99,6 +100,7 @@ describe('DiffPrPanel', () => {
     );
     expect(props.onLoadDiff).toHaveBeenLastCalledWith('w1', 'branch');
     const calls = props.onLoadDiff.mock.calls.length;
+    await act(async () => {});
     act(() => {
       vi.advanceTimersByTime(DIFF_POLL_MS);
     });
@@ -173,5 +175,27 @@ describe('DiffPrPanel', () => {
       />,
     );
     expect(screen.getByText('src/a.ts')).toBeVisible();
+  });
+
+  it('Should skip a poll while the previous one is pending', async () => {
+    let resolve = () => {};
+    const onLoadDiff = vi.fn(
+      () =>
+        new Promise<void>(r => {
+          resolve = r;
+        }),
+    );
+    setup({onLoadDiff});
+    act(() => {
+      vi.advanceTimersByTime(DIFF_POLL_MS * 2);
+    });
+    expect(onLoadDiff).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(DIFF_POLL_MS);
+    });
+    expect(onLoadDiff).toHaveBeenCalledTimes(2);
   });
 });
