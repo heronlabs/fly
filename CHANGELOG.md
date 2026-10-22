@@ -1,3 +1,9 @@
+## v0.1.4 (2026-10-22)
+
+### Documentation
+
+* docs: add the M5 explorer and editor plan (77422aa68402bdcecc61bd15fb6ae52f1e9c37d2)
+
 ## v0.1.3 (2026-10-22)
 
 ### Miscellaneous Chores
