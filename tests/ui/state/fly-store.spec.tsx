@@ -987,8 +987,12 @@ describe('files', () => {
       expect(useFlyStore.getState().error).toBeNull();
     });
 
-    it('toggleDir lists on first expand only', async () => {
-      vi.mocked(window.fly.files.list).mockResolvedValue(entries);
+    it('toggleDir lists on every expand, not on collapse', async () => {
+      // An ignored new file has no flag, so only a new listing shows it.
+      const more = [...entries, {name: 'novo.log', kind: 'file' as const}];
+      vi.mocked(window.fly.files.list)
+        .mockResolvedValueOnce(entries)
+        .mockResolvedValueOnce(more);
       await useFlyStore.getState().toggleDir(W, 'src');
       expect(treeOf()).toEqual({
         expanded: {src: true},
@@ -996,10 +1000,13 @@ describe('files', () => {
       });
       await useFlyStore.getState().toggleDir(W, 'src');
       expect(treeOf()?.expanded.src).toBe(false);
-      await useFlyStore.getState().toggleDir(W, 'src');
-      expect(treeOf()?.expanded.src).toBe(true);
       expect(window.fly.files.list).toHaveBeenCalledTimes(1);
-      expect(window.fly.files.list).toHaveBeenCalledWith(W, 'src');
+      await useFlyStore.getState().toggleDir(W, 'src');
+      expect(treeOf()).toEqual({expanded: {src: true}, entries: {src: more}});
+      expect(vi.mocked(window.fly.files.list).mock.calls).toEqual([
+        [W, 'src'],
+        [W, 'src'],
+      ]);
     });
 
     it('setExplorer persists and stores the config', async () => {

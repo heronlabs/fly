@@ -602,7 +602,8 @@ export const useFlyStore = create<FlyState>((set, get) => ({
         },
       };
     });
-    if (expand && !before.entries[dir]) await get().listDir(worktreeId, dir);
+    // Every expand re-lists: an ignored new file has no flag to trigger it.
+    if (expand) await get().listDir(worktreeId, dir);
   },
 
   async pollFiles(worktreeId) {
