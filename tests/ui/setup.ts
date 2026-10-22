@@ -13,6 +13,7 @@ const fly: FlyApi = {
   settings: {get: vi.fn(), set: vi.fn()},
   shell: {openInEditor: vi.fn(), openExternal: vi.fn()},
   diff: {get: vi.fn()},
+  files: {list: vi.fn(), read: vi.fn(), write: vi.fn(), poll: vi.fn()},
   pullRequests: {merge: vi.fn()},
   sessions: {
     list: vi.fn(),

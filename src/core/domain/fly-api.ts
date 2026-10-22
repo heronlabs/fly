@@ -1,4 +1,11 @@
 import type {DiffScope, WorktreeDiff} from './diff';
+import type {
+  Eol,
+  FileContent,
+  FileEntry,
+  FilesPoll,
+  WriteResult,
+} from './files';
 import type {QueueSnapshot} from './queue';
 import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
@@ -19,6 +26,10 @@ export const channels = {
   queueList: 'queue:list',
   queueChanged: 'queue:changed',
   diffGet: 'diff:get',
+  fileList: 'file:list',
+  fileRead: 'file:read',
+  fileWrite: 'file:write',
+  filePoll: 'file:poll',
   prMerge: 'pr:merge',
   shellOpenExternal: 'shell:open-external',
   taskCreate: 'task:create',
@@ -58,6 +69,18 @@ export type FlyApi = {
     onChanged(listener: (snapshot: QueueSnapshot) => void): () => void;
   };
   diff: {get(worktreeId: string, scope: DiffScope): Promise<WorktreeDiff>};
+  files: {
+    list(worktreeId: string, dir: string): Promise<FileEntry[]>;
+    read(worktreeId: string, path: string): Promise<FileContent>;
+    write(
+      worktreeId: string,
+      path: string,
+      text: string,
+      eol: Eol,
+      expectedMtimeMs: number | null,
+    ): Promise<WriteResult>;
+    poll(worktreeId: string, openPaths: string[]): Promise<FilesPoll>;
+  };
   pullRequests: {merge(worktreeId: string): Promise<void>};
   tasks: {
     create(input: {repoId: string; description: string}): Promise<string>;
