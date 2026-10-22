@@ -1,4 +1,4 @@
-import {basename, dirname, join, sep} from 'node:path';
+import {dirname, join, sep} from 'node:path';
 
 import {Injectable} from '@nestjs/common';
 
@@ -73,19 +73,18 @@ export class FileService {
       this.worktree(worktreeId),
       path,
     );
-    // access() follows links, so a dangling symlink reads as missing; readdir
-    // does not, so any entry under that name means the path is taken.
-    if (!exists && (await this.isListed(absolute))) {
-      throw new Error(NOT_A_FILE);
+    const content = withEol(text, eol);
+    if (exists) {
+      if (
+        expectedMtimeMs !== null &&
+        (await this.files.stat(absolute)).mtimeMs !== expectedMtimeMs
+      ) {
+        throw new Error(CHANGED_ON_DISK);
+      }
+      await this.files.writeText(absolute, content);
+    } else {
+      await this.create(absolute, content);
     }
-    if (
-      exists &&
-      expectedMtimeMs !== null &&
-      (await this.files.stat(absolute)).mtimeMs !== expectedMtimeMs
-    ) {
-      throw new Error(CHANGED_ON_DISK);
-    }
-    await this.files.writeText(absolute, withEol(text, eol));
     return {mtimeMs: (await this.files.stat(absolute)).mtimeMs};
   }
 
@@ -110,9 +109,18 @@ export class FileService {
     return {flags, mtimes, error};
   }
 
-  private async isListed(absolute: string): Promise<boolean> {
-    const entries = await this.files.readDir(dirname(absolute));
-    return entries.some(entry => entry.name === basename(absolute));
+  // access() follows links, so a dangling symlink (in any case or Unicode
+  // form of its name) reads as missing; an exclusive create never follows it.
+  // EEXIST also covers a file that reappeared since the last poll.
+  private async create(absolute: string, content: string): Promise<void> {
+    try {
+      await this.files.createText(absolute, content);
+    } catch (error) {
+      if ((error as {code?: unknown}).code === 'EEXIST') {
+        throw new Error(CHANGED_ON_DISK);
+      }
+      throw error;
+    }
   }
 
   private worktree(worktreeId: string): Worktree {

@@ -1,5 +1,12 @@
 import {realpathSync, statSync} from 'node:fs';
-import {mkdir, mkdtemp, rm, symlink, writeFile} from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -27,15 +34,6 @@ describe('NodeFileStoreService', () => {
     ]);
   });
 
-  it('Should list a dangling symlink as neither a file nor a directory, which does not exist', async () => {
-    await symlink(join(dir, 'missing-target'), join(dir, 'dangling'));
-
-    expect(await store.readDir(dir)).toEqual([
-      {name: 'dangling', isDirectory: false, isFile: false},
-    ]);
-    expect(await store.exists(join(dir, 'dangling'))).toBe(false);
-  });
-
   it('Should report whether a path exists', async () => {
     await writeFile(join(dir, 'a.txt'), 'x');
     expect(await store.exists(join(dir, 'a.txt'))).toBe(true);
@@ -46,6 +44,44 @@ describe('NodeFileStoreService', () => {
     const path = join(dir, 'a', 'b', 'c.json');
     await store.writeText(path, '{"k":1}');
     expect(await store.readText(path)).toBe('{"k":1}');
+  });
+
+  it('Should create a new file with the given content', async () => {
+    const path = join(dir, 'new.txt');
+
+    await store.createText(path, 'fresh');
+
+    expect(await readFile(path, 'utf8')).toBe('fresh');
+  });
+
+  it('Should refuse to create over an existing file and leave it untouched', async () => {
+    const path = join(dir, 'a.txt');
+    await writeFile(path, 'kept');
+
+    await expect(store.createText(path, 'new')).rejects.toMatchObject({
+      code: 'EEXIST',
+    });
+    expect(await readFile(path, 'utf8')).toBe('kept');
+  });
+
+  it('Should refuse to create through a dangling symlink and never create its target', async () => {
+    const target = join(dir, 'outside.txt');
+    await symlink(target, join(dir, 'new.ts'));
+
+    await expect(
+      store.createText(join(dir, 'new.ts'), 'x'),
+    ).rejects.toMatchObject({code: 'EEXIST'});
+    expect(await store.exists(target)).toBe(false);
+  });
+
+  it('Should never create a dangling symlink target through another case of its name', async () => {
+    const target = join(dir, 'outside.txt');
+    await symlink(target, join(dir, 'new.ts'));
+
+    // EEXIST on a case-insensitive volume (APFS); a distinct file otherwise.
+    await store.createText(join(dir, 'NEW.ts'), 'x').catch(() => undefined);
+
+    expect(await store.exists(target)).toBe(false);
   });
 
   it('Should stat a file with its size, mtime and file flag', async () => {

@@ -46,6 +46,10 @@ export class NodeFileStoreService extends FileStore {
     await writeFile(path, content);
   }
 
+  createText(path: string, content: string): Promise<void> {
+    return writeFile(path, content, {flag: 'wx'});
+  }
+
   async stat(path: string): Promise<FileStat> {
     const info = await fsStat(path);
     return {

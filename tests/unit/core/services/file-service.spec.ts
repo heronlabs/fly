@@ -41,6 +41,7 @@ describe('FileService', () => {
   const exists = vi.fn();
   const readText = vi.fn();
   const writeText = vi.fn();
+  const createText = vi.fn();
   const stat = vi.fn();
   const status = vi.fn();
   const files: FileStore = {
@@ -49,6 +50,7 @@ describe('FileService', () => {
     exists,
     readText,
     writeText,
+    createText,
     stat,
   };
   const vcs: VcsGateway = {
@@ -73,6 +75,7 @@ describe('FileService', () => {
     stat.mockResolvedValue(fileStat());
     readText.mockResolvedValue('abc');
     writeText.mockResolvedValue(undefined);
+    createText.mockResolvedValue(undefined);
     readDir.mockResolvedValue([]);
     status.mockResolvedValue({});
   });
@@ -234,6 +237,7 @@ describe('FileService', () => {
         ['/r/a/feat/src/a.ts'],
         ['/r/a/feat/src/a.ts'],
       ]);
+      expect(createText).not.toHaveBeenCalled();
       expect(readDir).not.toHaveBeenCalled();
     });
 
@@ -267,34 +271,51 @@ describe('FileService', () => {
       expect(stat).toHaveBeenCalledOnce();
     });
 
-    it("Should skip the guard and check the parent's real path for a missing file", async () => {
+    it("Should create a missing file exclusively, after checking the parent's real path, without the guard", async () => {
       exists.mockResolvedValue(false);
-      readDir.mockResolvedValue([file('new.tsx'), dir('lib')]);
       stat.mockResolvedValue(fileStat({mtimeMs: 150}));
 
       expect(
-        await service.write('a/feat', 'src/new.ts', 'x', 'lf', 100),
+        await service.write('a/feat', 'src/new.ts', 'x\ny\n', 'crlf', 100),
       ).toEqual({mtimeMs: 150});
       expect(exists).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src/new.ts');
       expect(realPath.mock.calls).toEqual([['/r/a/feat'], ['/r/a/feat/src']]);
-      expect(readDir).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src');
-      expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      expect(createText).toHaveBeenCalledExactlyOnceWith(
         '/r/a/feat/src/new.ts',
-        'x',
+        'x\r\ny\r\n',
       );
+      expect(stat).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src/new.ts');
+      expect(writeText).not.toHaveBeenCalled();
+      expect(readDir).not.toHaveBeenCalled();
     });
 
-    it('Should refuse a missing path whose parent lists an entry of that name (a dangling symlink)', async () => {
+    it('Should report a changed disk when the exclusive create finds the name taken', async () => {
       exists.mockResolvedValue(false);
-      readDir.mockResolvedValue([
-        file('other.ts'),
-        {name: 'new.ts', isDirectory: false, isFile: false},
-      ]);
+      createText.mockRejectedValue(
+        Object.assign(new Error('EEXIST: file already exists'), {
+          code: 'EEXIST',
+        }),
+      );
 
       await expect(
         service.write('a/feat', 'src/new.ts', 'x', 'lf', null),
-      ).rejects.toThrow(new Error('Não é um arquivo'));
-      expect(readDir).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src');
+      ).rejects.toThrow(
+        new Error('Arquivo mudou no disco; recarregue antes de salvar'),
+      );
+      expect(writeText).not.toHaveBeenCalled();
+      expect(stat).not.toHaveBeenCalled();
+    });
+
+    it('Should let any other create failure propagate unchanged', async () => {
+      exists.mockResolvedValue(false);
+      const denied = Object.assign(new Error('EACCES: permission denied'), {
+        code: 'EACCES',
+      });
+      createText.mockRejectedValue(denied);
+
+      await expect(
+        service.write('a/feat', 'src/new.ts', 'x', 'lf', null),
+      ).rejects.toBe(denied);
       expect(writeText).not.toHaveBeenCalled();
     });
 
@@ -305,7 +326,7 @@ describe('FileService', () => {
       await expect(
         service.write('a/feat', 'out/new.ts', 'x', 'lf', null),
       ).rejects.toThrow(new Error('Caminho fora do worktree'));
-      expect(readDir).not.toHaveBeenCalled();
+      expect(createText).not.toHaveBeenCalled();
       expect(writeText).not.toHaveBeenCalled();
     });
   });
