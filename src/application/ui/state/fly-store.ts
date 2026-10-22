@@ -67,7 +67,12 @@ const selectionAfter = (
 
 export const useFlyStore = create<FlyState>((set, get) => ({
   workspace: null,
-  config: {recentRoots: [], theme: 'system', diffPanel: 'open'},
+  config: {
+    recentRoots: [],
+    theme: 'system',
+    diffPanel: 'open',
+    explorer: 'open',
+  },
   selectedWorktreeId: null,
   loading: false,
   error: null,

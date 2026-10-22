@@ -41,6 +41,7 @@ describe('JsonConfigStoreService', () => {
       recentRoots: [],
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
     expect(exists).toHaveBeenCalledWith(configPath);
     expect(readText).not.toHaveBeenCalled();
@@ -62,6 +63,7 @@ describe('JsonConfigStoreService', () => {
       recentRoots: [],
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
   });
 
@@ -73,6 +75,7 @@ describe('JsonConfigStoreService', () => {
       recentRoots: [],
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
   });
 
@@ -85,6 +88,7 @@ describe('JsonConfigStoreService', () => {
         recentRoots: [],
         theme: 'system',
         diffPanel: 'open',
+        explorer: 'open',
       });
     },
   );
@@ -96,6 +100,7 @@ describe('JsonConfigStoreService', () => {
       recentRoots: [],
       theme: 'system',
       diffPanel: 'open',
+      explorer: 'open',
     });
   });
 
@@ -106,6 +111,7 @@ describe('JsonConfigStoreService', () => {
       recentRoots: ['/a', '/b'],
       theme: 'dark',
       diffPanel: 'open',
+      explorer: 'open',
     });
   });
 
@@ -131,6 +137,37 @@ describe('JsonConfigStoreService', () => {
       recentRoots: [],
       theme: 'system' as const,
       diffPanel: 'collapsed' as const,
+      explorer: 'open' as const,
+    };
+    await store.save(config);
+    withFile(writeText.mock.calls[0]![1] as string);
+
+    expect(await store.load()).toEqual(config);
+  });
+
+  it('Should load collapsed explorer and a config saved before the explorer existed', async () => {
+    withFile('{"explorer":"collapsed"}');
+    expect((await store.load()).explorer).toBe('collapsed');
+
+    withFile('{"theme":"dark","recentRoots":[]}');
+    expect((await store.load()).explorer).toBe('open');
+  });
+
+  it.each(['42', '"closed"', 'null', '{}'])(
+    'Should fall back to open for explorer %s',
+    async value => {
+      withFile(`{"explorer":${value}}`);
+
+      expect((await store.load()).explorer).toBe('open');
+    },
+  );
+
+  it('Should round-trip a collapsed explorer through save and load', async () => {
+    const config = {
+      recentRoots: [],
+      theme: 'system' as const,
+      diffPanel: 'open' as const,
+      explorer: 'collapsed' as const,
     };
     await store.save(config);
     withFile(writeText.mock.calls[0]![1] as string);
@@ -155,6 +192,7 @@ describe('JsonConfigStoreService', () => {
       recentRoots: ['/a'],
       theme: 'dark' as const,
       diffPanel: 'open' as const,
+      explorer: 'open' as const,
     };
 
     await store.save(config);
