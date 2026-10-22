@@ -1,3 +1,9 @@
+## v0.1.3 (2026-10-22)
+
+### Miscellaneous Chores
+
+* other: macOS squircle app icon (7ba55eabc2500c6710bf22c2c1a36534adbed510)
+
 ## v0.1.2 (2026-10-22)
 
 ### Features
