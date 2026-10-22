@@ -1,4 +1,4 @@
-import {dirname, join, sep} from 'node:path';
+import {basename, dirname, join, sep} from 'node:path';
 
 import {Injectable} from '@nestjs/common';
 
@@ -73,6 +73,11 @@ export class FileService {
       this.worktree(worktreeId),
       path,
     );
+    // access() follows links, so a dangling symlink reads as missing; readdir
+    // does not, so any entry under that name means the path is taken.
+    if (!exists && (await this.isListed(absolute))) {
+      throw new Error(NOT_A_FILE);
+    }
     if (
       exists &&
       expectedMtimeMs !== null &&
@@ -103,6 +108,11 @@ export class FileService {
       }
     }
     return {flags, mtimes, error};
+  }
+
+  private async isListed(absolute: string): Promise<boolean> {
+    const entries = await this.files.readDir(dirname(absolute));
+    return entries.some(entry => entry.name === basename(absolute));
   }
 
   private worktree(worktreeId: string): Worktree {

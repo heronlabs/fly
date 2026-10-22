@@ -234,6 +234,7 @@ describe('FileService', () => {
         ['/r/a/feat/src/a.ts'],
         ['/r/a/feat/src/a.ts'],
       ]);
+      expect(readDir).not.toHaveBeenCalled();
     });
 
     it('Should write LF text unchanged', async () => {
@@ -268,6 +269,7 @@ describe('FileService', () => {
 
     it("Should skip the guard and check the parent's real path for a missing file", async () => {
       exists.mockResolvedValue(false);
+      readDir.mockResolvedValue([file('new.tsx'), dir('lib')]);
       stat.mockResolvedValue(fileStat({mtimeMs: 150}));
 
       expect(
@@ -275,10 +277,25 @@ describe('FileService', () => {
       ).toEqual({mtimeMs: 150});
       expect(exists).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src/new.ts');
       expect(realPath.mock.calls).toEqual([['/r/a/feat'], ['/r/a/feat/src']]);
+      expect(readDir).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src');
       expect(writeText).toHaveBeenCalledExactlyOnceWith(
         '/r/a/feat/src/new.ts',
         'x',
       );
+    });
+
+    it('Should refuse a missing path whose parent lists an entry of that name (a dangling symlink)', async () => {
+      exists.mockResolvedValue(false);
+      readDir.mockResolvedValue([
+        file('other.ts'),
+        {name: 'new.ts', isDirectory: false, isFile: false},
+      ]);
+
+      await expect(
+        service.write('a/feat', 'src/new.ts', 'x', 'lf', null),
+      ).rejects.toThrow(new Error('Não é um arquivo'));
+      expect(readDir).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src');
+      expect(writeText).not.toHaveBeenCalled();
     });
 
     it('Should refuse a new file whose parent really lives outside the worktree', async () => {
@@ -288,6 +305,7 @@ describe('FileService', () => {
       await expect(
         service.write('a/feat', 'out/new.ts', 'x', 'lf', null),
       ).rejects.toThrow(new Error('Caminho fora do worktree'));
+      expect(readDir).not.toHaveBeenCalled();
       expect(writeText).not.toHaveBeenCalled();
     });
   });

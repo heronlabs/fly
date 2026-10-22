@@ -27,6 +27,15 @@ describe('NodeFileStoreService', () => {
     ]);
   });
 
+  it('Should list a dangling symlink as neither a file nor a directory, which does not exist', async () => {
+    await symlink(join(dir, 'missing-target'), join(dir, 'dangling'));
+
+    expect(await store.readDir(dir)).toEqual([
+      {name: 'dangling', isDirectory: false, isFile: false},
+    ]);
+    expect(await store.exists(join(dir, 'dangling'))).toBe(false);
+  });
+
   it('Should report whether a path exists', async () => {
     await writeFile(join(dir, 'a.txt'), 'x');
     expect(await store.exists(join(dir, 'a.txt'))).toBe(true);
