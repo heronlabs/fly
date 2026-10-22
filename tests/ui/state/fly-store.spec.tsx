@@ -1,12 +1,19 @@
 import {
+  changedDirs,
   errorMessage,
+  type ExplorerTree,
+  FILES_POLL_MS,
   groupsOf,
+  type OpenFile,
+  openFilesOf,
+  pathAncestors,
   queueCounts,
   queueOf,
   statusesOf,
   useFlyStore,
 } from '../../../src/application/ui/state/fly-store';
 import type {WorktreeDiff} from '../../../src/core/domain/diff';
+import type {FileContent, FilesPoll} from '../../../src/core/domain/files';
 import type {QueueSnapshot, QueueStatus} from '../../../src/core/domain/queue';
 import type {SessionsSnapshot} from '../../../src/core/domain/session';
 import type {Workspace} from '../../../src/core/domain/workspace';
@@ -601,6 +608,644 @@ describe('errorMessage', () => {
       };
       expect(queueOf(snapshot, 'a')).toBe(item);
       expect(queueOf(snapshot, 'b')).toBeNull();
+    });
+  });
+});
+
+describe('files', () => {
+  const W = 'a/x#main';
+  const textOf = (
+    path: string,
+    mtimeMs = 1,
+    text = 'x',
+  ): Extract<FileContent, {kind: 'text'}> => ({
+    kind: 'text',
+    path,
+    text,
+    eol: 'lf',
+    mtimeMs,
+  });
+  const tab = (path: string, over: Partial<OpenFile> = {}): OpenFile => ({
+    worktreeId: W,
+    path,
+    content: textOf(path),
+    dirty: false,
+    diskState: 'same',
+    revision: 0,
+    ...over,
+  });
+  const pollOf = (over: Partial<FilesPoll> = {}): FilesPoll => ({
+    flags: {},
+    mtimes: {},
+    error: null,
+    ...over,
+  });
+  const fileOf = (path: string, worktreeId = W) =>
+    useFlyStore
+      .getState()
+      .openFiles.find(
+        file => file.worktreeId === worktreeId && file.path === path,
+      );
+  const treeOf = (worktreeId = W) => useFlyStore.getState().trees[worktreeId];
+
+  it('polls files every 3 s', () => {
+    expect(FILES_POLL_MS).toBe(3000);
+  });
+
+  it('starts with no file state', () => {
+    const state = useFlyStore.getState();
+    expect(state.openFiles).toEqual([]);
+    expect(state.activeFile).toEqual({});
+    expect(state.trees).toEqual({});
+    expect(state.flags).toEqual({});
+    expect(state.filesError).toEqual({});
+    expect(state.saving).toBe(false);
+  });
+
+  describe('tabs', () => {
+    it('openFile reads once and activates; a second openFile only activates', async () => {
+      vi.mocked(window.fly.files.read).mockResolvedValue(textOf('a.ts'));
+      await useFlyStore.getState().openFile(W, 'a.ts');
+      expect(window.fly.files.read).toHaveBeenCalledWith(W, 'a.ts');
+      expect(useFlyStore.getState().openFiles).toEqual([tab('a.ts')]);
+      expect(useFlyStore.getState().activeFile[W]).toBe('a.ts');
+      useFlyStore.getState().activateFile(W, null);
+      expect(useFlyStore.getState().activeFile[W]).toBeNull();
+      await useFlyStore.getState().openFile(W, 'a.ts');
+      expect(window.fly.files.read).toHaveBeenCalledTimes(1);
+      expect(useFlyStore.getState().openFiles).toHaveLength(1);
+      expect(useFlyStore.getState().activeFile[W]).toBe('a.ts');
+    });
+
+    it('openFile does not duplicate a tab opened while reading', async () => {
+      vi.mocked(window.fly.files.read).mockResolvedValue(textOf('a.ts'));
+      await Promise.all([
+        useFlyStore.getState().openFile(W, 'a.ts'),
+        useFlyStore.getState().openFile(W, 'a.ts'),
+      ]);
+      expect(useFlyStore.getState().openFiles).toHaveLength(1);
+    });
+
+    it('openFile reports a rejection and opens no tab', async () => {
+      vi.mocked(window.fly.files.read).mockRejectedValue(
+        new Error('Não é um arquivo'),
+      );
+      await useFlyStore.getState().openFile(W, 'dir');
+      expect(useFlyStore.getState().error).toBe('Não é um arquivo');
+      expect(useFlyStore.getState().openFiles).toEqual([]);
+      expect(useFlyStore.getState().activeFile[W]).toBeUndefined();
+    });
+
+    it('closeFile activates the next tab, then the previous, then null', () => {
+      const other = tab('b', {worktreeId: 'b/y#main'});
+      useFlyStore.setState({
+        openFiles: [tab('a'), tab('b'), other, tab('c')],
+        activeFile: {[W]: 'b', 'b/y#main': 'b'},
+      });
+      useFlyStore.getState().closeFile(W, 'b');
+      expect(useFlyStore.getState().activeFile[W]).toBe('c');
+      useFlyStore.getState().closeFile(W, 'c');
+      expect(useFlyStore.getState().activeFile[W]).toBe('a');
+      useFlyStore.getState().closeFile(W, 'a');
+      expect(useFlyStore.getState().activeFile[W]).toBeNull();
+      expect(useFlyStore.getState().openFiles).toEqual([other]);
+      expect(useFlyStore.getState().activeFile['b/y#main']).toBe('b');
+    });
+
+    it('closeFile of an inactive tab keeps the active one', () => {
+      useFlyStore.setState({
+        openFiles: [tab('a'), tab('b')],
+        activeFile: {[W]: 'a'},
+      });
+      useFlyStore.getState().closeFile(W, 'b');
+      expect(useFlyStore.getState().activeFile[W]).toBe('a');
+      expect(useFlyStore.getState().openFiles).toEqual([tab('a')]);
+    });
+
+    it('closeFile of an unknown tab changes nothing', () => {
+      const openFiles = [tab('a')];
+      useFlyStore.setState({openFiles, activeFile: {[W]: 'a'}});
+      useFlyStore.getState().closeFile(W, 'zzz');
+      expect(useFlyStore.getState().openFiles).toBe(openFiles);
+      expect(useFlyStore.getState().activeFile[W]).toBe('a');
+    });
+
+    it('setDirty flips only the matching tab', () => {
+      const other = tab('a', {worktreeId: 'b/y#main'});
+      useFlyStore.setState({openFiles: [tab('a'), other]});
+      useFlyStore.getState().setDirty(W, 'a', true);
+      expect(fileOf('a')?.dirty).toBe(true);
+      expect(fileOf('a', 'b/y#main')).toBe(other);
+    });
+
+    it('saveFile writes with the eol and mtime, stores the new mtime and clears dirty', async () => {
+      useFlyStore.setState({
+        openFiles: [
+          tab('a.ts', {
+            dirty: true,
+            content: {...textOf('a.ts', 5), eol: 'crlf'},
+          }),
+        ],
+      });
+      vi.mocked(window.fly.files.write).mockResolvedValue({mtimeMs: 9});
+      const ok = await useFlyStore.getState().saveFile(W, 'a.ts', 'novo');
+      expect(ok).toBe(true);
+      expect(window.fly.files.write).toHaveBeenCalledWith(
+        W,
+        'a.ts',
+        'novo',
+        'crlf',
+        5,
+      );
+      expect(fileOf('a.ts')).toEqual(
+        tab('a.ts', {
+          content: {
+            kind: 'text',
+            path: 'a.ts',
+            text: 'novo',
+            eol: 'crlf',
+            mtimeMs: 9,
+          },
+        }),
+      );
+      expect(useFlyStore.getState().saving).toBe(false);
+    });
+
+    it('saveFile passes a null expected mtime when the file is missing', async () => {
+      useFlyStore.setState({
+        openFiles: [tab('a.ts', {dirty: true, diskState: 'missing'})],
+      });
+      vi.mocked(window.fly.files.write).mockResolvedValue({mtimeMs: 3});
+      await useFlyStore.getState().saveFile(W, 'a.ts', 'de volta');
+      expect(window.fly.files.write).toHaveBeenCalledWith(
+        W,
+        'a.ts',
+        'de volta',
+        'lf',
+        null,
+      );
+      expect(fileOf('a.ts')?.diskState).toBe('same');
+    });
+
+    it('saveFile ignores a second call while saving', async () => {
+      useFlyStore.setState({openFiles: [tab('a.ts', {dirty: true})]});
+      let finish: (result: {mtimeMs: number}) => void = () => undefined;
+      vi.mocked(window.fly.files.write).mockReturnValueOnce(
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+      );
+      const first = useFlyStore.getState().saveFile(W, 'a.ts', 'um');
+      expect(useFlyStore.getState().saving).toBe(true);
+      expect(await useFlyStore.getState().saveFile(W, 'a.ts', 'dois')).toBe(
+        false,
+      );
+      expect(window.fly.files.write).toHaveBeenCalledTimes(1);
+      finish({mtimeMs: 2});
+      expect(await first).toBe(true);
+      expect(useFlyStore.getState().saving).toBe(false);
+    });
+
+    it('saveFile reports a rejection, keeps the tab dirty and returns false', async () => {
+      useFlyStore.setState({openFiles: [tab('a.ts', {dirty: true})]});
+      vi.mocked(window.fly.files.write).mockRejectedValue(
+        new Error('Arquivo mudou no disco; recarregue antes de salvar'),
+      );
+      const ok = await useFlyStore.getState().saveFile(W, 'a.ts', 'novo');
+      expect(ok).toBe(false);
+      expect(useFlyStore.getState().error).toBe(
+        'Arquivo mudou no disco; recarregue antes de salvar',
+      );
+      expect(fileOf('a.ts')?.dirty).toBe(true);
+      expect(useFlyStore.getState().saving).toBe(false);
+    });
+
+    it('saveFile of a non-text or unknown tab returns false without writing', async () => {
+      useFlyStore.setState({
+        openFiles: [
+          tab('img.png', {content: {kind: 'binary', path: 'img.png'}}),
+        ],
+      });
+      expect(await useFlyStore.getState().saveFile(W, 'img.png', 'x')).toBe(
+        false,
+      );
+      expect(await useFlyStore.getState().saveFile(W, 'nope', 'x')).toBe(false);
+      expect(window.fly.files.write).not.toHaveBeenCalled();
+      expect(useFlyStore.getState().saving).toBe(false);
+    });
+
+    it('reloadFile replaces the content, clears dirty and bumps revision', async () => {
+      useFlyStore.setState({
+        openFiles: [
+          tab('a.ts', {dirty: true, diskState: 'changed', revision: 2}),
+        ],
+      });
+      vi.mocked(window.fly.files.read).mockResolvedValue(
+        textOf('a.ts', 7, 'disco'),
+      );
+      await useFlyStore.getState().reloadFile(W, 'a.ts');
+      expect(window.fly.files.read).toHaveBeenCalledWith(W, 'a.ts');
+      expect(fileOf('a.ts')).toEqual(
+        tab('a.ts', {content: textOf('a.ts', 7, 'disco'), revision: 3}),
+      );
+    });
+
+    it('reloadFile reports a rejection', async () => {
+      useFlyStore.setState({openFiles: [tab('a.ts')]});
+      vi.mocked(window.fly.files.read).mockRejectedValue(new Error('sumiu'));
+      await useFlyStore.getState().reloadFile(W, 'a.ts');
+      expect(useFlyStore.getState().error).toBe('sumiu');
+      expect(fileOf('a.ts')).toEqual(tab('a.ts'));
+    });
+
+    it('keepFile adopts the disk mtime and the next save expects it', async () => {
+      useFlyStore.setState({
+        openFiles: [tab('a.ts', {dirty: true, diskState: 'changed'})],
+      });
+      useFlyStore.getState().keepFile(W, 'a.ts', 7);
+      expect(fileOf('a.ts')).toEqual(
+        tab('a.ts', {dirty: true, content: textOf('a.ts', 7)}),
+      );
+      vi.mocked(window.fly.files.write).mockResolvedValue({mtimeMs: 8});
+      await useFlyStore.getState().saveFile(W, 'a.ts', 'meu');
+      expect(window.fly.files.write).toHaveBeenCalledWith(
+        W,
+        'a.ts',
+        'meu',
+        'lf',
+        7,
+      );
+    });
+
+    it('keepFile with a null mtime keeps the previous mtime', () => {
+      useFlyStore.setState({
+        openFiles: [tab('a.ts', {dirty: true, diskState: 'changed'})],
+      });
+      useFlyStore.getState().keepFile(W, 'a.ts', null);
+      expect(fileOf('a.ts')).toEqual(tab('a.ts', {dirty: true}));
+    });
+
+    it('keepFile on a non-text tab only clears the disk state', () => {
+      const content: FileContent = {kind: 'large', path: 'big', bytes: 2e6};
+      useFlyStore.setState({
+        openFiles: [tab('big', {content, diskState: 'changed'})],
+      });
+      useFlyStore.getState().keepFile(W, 'big', 4);
+      expect(fileOf('big')).toEqual(tab('big', {content}));
+    });
+  });
+
+  describe('tree', () => {
+    const entries = [{name: 'a.ts', kind: 'file' as const}];
+
+    it('listDir stores the entries of the directory', async () => {
+      vi.mocked(window.fly.files.list).mockResolvedValue(entries);
+      await useFlyStore.getState().listDir(W, '');
+      expect(window.fly.files.list).toHaveBeenCalledWith(W, '');
+      expect(treeOf()).toEqual({expanded: {}, entries: {'': entries}});
+    });
+
+    it('listDir keeps the same tree for an identical listing', async () => {
+      vi.mocked(window.fly.files.list).mockResolvedValue(entries);
+      await useFlyStore.getState().listDir(W, '');
+      const first = treeOf();
+      vi.mocked(window.fly.files.list).mockResolvedValue([{...entries[0]!}]);
+      await useFlyStore.getState().listDir(W, '');
+      expect(treeOf()).toBe(first);
+    });
+
+    it('listDir reports a rejection in filesError', async () => {
+      vi.mocked(window.fly.files.list).mockRejectedValue(new Error('EACCES'));
+      await useFlyStore.getState().listDir(W, 'src');
+      expect(useFlyStore.getState().filesError[W]).toBe(
+        'Erro ao listar: EACCES',
+      );
+      expect(useFlyStore.getState().error).toBeNull();
+    });
+
+    it('toggleDir lists on first expand only', async () => {
+      vi.mocked(window.fly.files.list).mockResolvedValue(entries);
+      await useFlyStore.getState().toggleDir(W, 'src');
+      expect(treeOf()).toEqual({
+        expanded: {src: true},
+        entries: {src: entries},
+      });
+      await useFlyStore.getState().toggleDir(W, 'src');
+      expect(treeOf()?.expanded.src).toBe(false);
+      await useFlyStore.getState().toggleDir(W, 'src');
+      expect(treeOf()?.expanded.src).toBe(true);
+      expect(window.fly.files.list).toHaveBeenCalledTimes(1);
+      expect(window.fly.files.list).toHaveBeenCalledWith(W, 'src');
+    });
+
+    it('setExplorer persists and stores the config', async () => {
+      vi.mocked(window.fly.settings.set).mockResolvedValue({
+        recentRoots: [],
+        theme: 'system',
+        diffPanel: 'open',
+        explorer: 'collapsed',
+      });
+      await useFlyStore.getState().setExplorer('collapsed');
+      expect(window.fly.settings.set).toHaveBeenCalledWith({
+        explorer: 'collapsed',
+      });
+      expect(useFlyStore.getState().config.explorer).toBe('collapsed');
+    });
+
+    it('setExplorer reports a failure', async () => {
+      vi.mocked(window.fly.settings.set).mockRejectedValue(new Error('no'));
+      await useFlyStore.getState().setExplorer('collapsed');
+      expect(useFlyStore.getState().error).toBe('no');
+    });
+  });
+
+  describe('applyPoll', () => {
+    beforeEach(() => {
+      useFlyStore.setState({workspace: workspace()});
+    });
+
+    it('stores the flags and keeps the same object for equal flags', () => {
+      useFlyStore.getState().applyPoll(W, pollOf({flags: {'a.ts': 'M'}}));
+      const first = useFlyStore.getState().flags[W];
+      expect(first).toEqual({'a.ts': 'M'});
+      useFlyStore.getState().applyPoll(W, pollOf({flags: {'a.ts': 'M'}}));
+      expect(useFlyStore.getState().flags[W]).toBe(first);
+      useFlyStore.getState().applyPoll(W, pollOf({flags: {'a.ts': 'A'}}));
+      expect(useFlyStore.getState().flags[W]).toEqual({'a.ts': 'A'});
+    });
+
+    it('stores the error in filesError and clears it', () => {
+      useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({error: 'git falhou: not a repo'}));
+      expect(useFlyStore.getState().filesError[W]).toBe(
+        'git falhou: not a repo',
+      );
+      useFlyStore.getState().applyPoll(W, pollOf());
+      expect(useFlyStore.getState().filesError[W]).toBeNull();
+    });
+
+    it('a changed flag set auto-expands untouched ancestors and lists every expanded dir', () => {
+      const tree: ExplorerTree = {
+        expanded: {docs: true, lib: false},
+        entries: {},
+      };
+      useFlyStore.setState({trees: {[W]: tree}});
+      const result = useFlyStore
+        .getState()
+        .applyPoll(
+          W,
+          pollOf({flags: {'src/core/a.ts': 'A', 'lib/b.ts': 'M', 'c.ts': 'M'}}),
+        );
+      expect(treeOf()?.expanded).toEqual({
+        docs: true,
+        lib: false,
+        src: true,
+        'src/core': true,
+      });
+      expect(result).toEqual({
+        reload: [],
+        list: ['', 'docs', 'src', 'src/core'],
+      });
+    });
+
+    it('creates the tree of a worktree that has none', () => {
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({flags: {'src/a.ts': 'A'}}));
+      expect(treeOf()).toEqual({expanded: {src: true}, entries: {}});
+      expect(result.list).toEqual(['', 'src']);
+    });
+
+    it('an unchanged flag set lists nothing', () => {
+      useFlyStore.getState().applyPoll(W, pollOf({flags: {'src/a.ts': 'A'}}));
+      const tree = treeOf();
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({flags: {'src/a.ts': 'M'}}));
+      expect(result.list).toEqual([]);
+      expect(treeOf()).toBe(tree);
+      expect(useFlyStore.getState().flags[W]).toEqual({'src/a.ts': 'M'});
+    });
+
+    it('an empty first poll lists nothing', () => {
+      const result = useFlyStore.getState().applyPoll(W, pollOf());
+      expect(result).toEqual({reload: [], list: []});
+      expect(treeOf()).toBeUndefined();
+    });
+
+    it('a deleted path does not auto-expand its ancestors', () => {
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({flags: {'old/x.ts': 'D'}}));
+      expect(treeOf()?.expanded.old).toBeUndefined();
+      expect(result.list).toEqual(['']);
+    });
+
+    it('a clean tab with a new mtime is reloaded, a dirty one becomes changed, null becomes missing', () => {
+      const other = tab('a', {worktreeId: 'b/y#main'});
+      useFlyStore.setState({
+        openFiles: [
+          tab('a'),
+          tab('b', {dirty: true}),
+          tab('c'),
+          tab('d', {content: textOf('d', 4)}),
+          tab('e', {content: {kind: 'binary', path: 'e'}}),
+          tab('f', {content: {kind: 'binary', path: 'f'}}),
+          tab('g'),
+          other,
+        ],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(
+          W,
+          pollOf({mtimes: {a: 2, b: 2, c: null, d: 4, e: 9, f: null}}),
+        );
+      expect(result).toEqual({reload: ['a'], list: []});
+      expect(fileOf('a')).toEqual(tab('a'));
+      expect(fileOf('b')?.diskState).toBe('changed');
+      expect(fileOf('c')?.diskState).toBe('missing');
+      expect(fileOf('d')?.diskState).toBe('same');
+      expect(fileOf('e')?.diskState).toBe('same');
+      expect(fileOf('f')?.diskState).toBe('missing');
+      expect(fileOf('g')?.diskState).toBe('same');
+      expect(fileOf('a', 'b/y#main')).toBe(other);
+    });
+
+    it('keeps the tabs array when no tab changed', () => {
+      const openFiles = [tab('a'), tab('b', {diskState: 'missing'})];
+      useFlyStore.setState({openFiles});
+      useFlyStore.getState().applyPoll(W, pollOf({mtimes: {a: 1, b: null}}));
+      expect(useFlyStore.getState().openFiles).toBe(openFiles);
+    });
+
+    it('ignores a worktree that is not in the workspace', () => {
+      const openFiles = [tab('a', {worktreeId: 'gone'})];
+      useFlyStore.setState({openFiles});
+      const result = useFlyStore.getState().applyPoll(
+        'gone',
+        pollOf({
+          flags: {'src/a.ts': 'M'},
+          mtimes: {a: null},
+          error: 'git falhou: x',
+        }),
+      );
+      expect(result).toEqual({reload: [], list: []});
+      const state = useFlyStore.getState();
+      expect(state.openFiles).toBe(openFiles);
+      expect(state.flags).toEqual({});
+      expect(state.trees).toEqual({});
+      expect(state.filesError).toEqual({});
+    });
+
+    it('ignores every worktree when no workspace is open', () => {
+      useFlyStore.setState({workspace: null});
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({flags: {'a.ts': 'M'}}));
+      expect(result).toEqual({reload: [], list: []});
+      expect(useFlyStore.getState().flags).toEqual({});
+    });
+  });
+
+  describe('pollFiles', () => {
+    beforeEach(() => {
+      useFlyStore.setState({workspace: workspace()});
+    });
+
+    it('polls the open paths of the worktree and runs the follow-ups', async () => {
+      useFlyStore.setState({
+        openFiles: [tab('a.ts'), tab('z', {worktreeId: 'b/y#main'})],
+      });
+      vi.mocked(window.fly.files.poll).mockResolvedValue(
+        pollOf({flags: {'src/b.ts': 'A'}, mtimes: {'a.ts': 2}}),
+      );
+      vi.mocked(window.fly.files.read).mockResolvedValue(
+        textOf('a.ts', 2, 'novo'),
+      );
+      vi.mocked(window.fly.files.list).mockResolvedValue([]);
+      await useFlyStore.getState().pollFiles(W);
+      expect(window.fly.files.poll).toHaveBeenCalledWith(W, ['a.ts']);
+      expect(fileOf('a.ts')).toEqual(
+        tab('a.ts', {content: textOf('a.ts', 2, 'novo'), revision: 1}),
+      );
+      expect(vi.mocked(window.fly.files.list).mock.calls).toEqual([
+        [W, ''],
+        [W, 'src'],
+      ]);
+    });
+
+    it('does not reload a tab that became dirty while reading', async () => {
+      useFlyStore.setState({openFiles: [tab('a.ts')]});
+      vi.mocked(window.fly.files.poll).mockResolvedValue(
+        pollOf({mtimes: {'a.ts': 2}}),
+      );
+      let finish: (content: FileContent) => void = () => undefined;
+      vi.mocked(window.fly.files.read).mockReturnValueOnce(
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+      );
+      const pending = useFlyStore.getState().pollFiles(W);
+      await vi.waitFor(() => expect(window.fly.files.read).toHaveBeenCalled());
+      useFlyStore.getState().setDirty(W, 'a.ts', true);
+      finish(textOf('a.ts', 2, 'disco'));
+      await pending;
+      expect(fileOf('a.ts')).toEqual(
+        tab('a.ts', {dirty: true, diskState: 'changed'}),
+      );
+    });
+
+    it('reports a reload rejection', async () => {
+      useFlyStore.setState({openFiles: [tab('a.ts')]});
+      vi.mocked(window.fly.files.poll).mockResolvedValue(
+        pollOf({mtimes: {'a.ts': 2}}),
+      );
+      vi.mocked(window.fly.files.read).mockRejectedValue(new Error('sumiu'));
+      await useFlyStore.getState().pollFiles(W);
+      expect(useFlyStore.getState().error).toBe('sumiu');
+    });
+
+    it('reports a poll rejection in filesError', async () => {
+      vi.mocked(window.fly.files.poll).mockRejectedValue(
+        new Error('Worktree não encontrado'),
+      );
+      await useFlyStore.getState().pollFiles(W);
+      expect(useFlyStore.getState().filesError[W]).toBe(
+        'Worktree não encontrado',
+      );
+    });
+  });
+
+  describe('workspace and selection', () => {
+    const tree: ExplorerTree = {expanded: {}, entries: {'': []}};
+
+    it('applyWorkspace drops the file state of a removed worktree', () => {
+      useFlyStore.setState({
+        openFiles: [tab('a'), tab('b', {worktreeId: 'gone', dirty: true})],
+        activeFile: {[W]: 'a', gone: 'b'},
+        trees: {[W]: tree, gone: tree},
+        flags: {[W]: {a: 'M'}, gone: {b: 'A'}},
+        filesError: {[W]: null, gone: 'x'},
+      });
+      useFlyStore.getState().applyWorkspace(workspace());
+      const state = useFlyStore.getState();
+      expect(state.openFiles).toEqual([tab('a')]);
+      expect(state.activeFile).toEqual({[W]: 'a'});
+      expect(state.trees).toEqual({[W]: tree});
+      expect(state.flags).toEqual({[W]: {a: 'M'}});
+      expect(state.filesError).toEqual({[W]: null});
+    });
+
+    it('applyWorkspace keeps the file state when nothing was dropped', () => {
+      const before = {
+        openFiles: [tab('a')],
+        activeFile: {[W]: 'a'},
+        trees: {[W]: tree},
+        flags: {[W]: {}},
+        filesError: {[W]: null},
+      };
+      useFlyStore.setState(before);
+      useFlyStore.getState().applyWorkspace(workspace());
+      const state = useFlyStore.getState();
+      expect(state.openFiles).toBe(before.openFiles);
+      expect(state.activeFile).toBe(before.activeFile);
+      expect(state.trees).toBe(before.trees);
+      expect(state.flags).toBe(before.flags);
+      expect(state.filesError).toBe(before.filesError);
+    });
+
+    it('select keeps the tabs of every worktree', () => {
+      const openFiles = [tab('a'), tab('b', {worktreeId: 'b/y#main'})];
+      const activeFile = {[W]: 'a', 'b/y#main': 'b'};
+      useFlyStore.setState({openFiles, activeFile, selectedWorktreeId: W});
+      useFlyStore.getState().select('b/y#main');
+      expect(useFlyStore.getState().openFiles).toBe(openFiles);
+      expect(useFlyStore.getState().activeFile).toBe(activeFile);
+    });
+  });
+
+  describe('helpers', () => {
+    it('pathAncestors lists the directories above a path, root excluded', () => {
+      expect(pathAncestors('')).toEqual([]);
+      expect(pathAncestors('a.ts')).toEqual([]);
+      expect(pathAncestors('a/b/c.ts')).toEqual(['a', 'a/b']);
+    });
+
+    it('changedDirs collects every ancestor of a flagged path, deletions included', () => {
+      expect(
+        changedDirs({'a/b/c.ts': 'M', 'd/e.ts': 'D', 'f.ts': 'A'}),
+      ).toEqual(new Set(['a', 'a/b', 'd']));
+      expect(changedDirs({})).toEqual(new Set());
+    });
+
+    it('openFilesOf keeps the tabs of one worktree in order', () => {
+      const tabs = [tab('b'), tab('x', {worktreeId: 'b/y#main'}), tab('a')];
+      useFlyStore.setState({openFiles: tabs});
+      expect(
+        openFilesOf(useFlyStore.getState(), W).map(file => file.path),
+      ).toEqual(['b', 'a']);
     });
   });
 });
