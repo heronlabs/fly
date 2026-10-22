@@ -4,13 +4,14 @@ import {
   readdir,
   readFile,
   realpath,
+  stat as fsStat,
   writeFile,
 } from 'node:fs/promises';
 import {dirname} from 'node:path';
 
 import {Injectable} from '@nestjs/common';
 
-import {DirEntry, FileStore} from '../../core/interfaces/file-store';
+import {DirEntry, FileStat, FileStore} from '../../core/interfaces/file-store';
 
 @Injectable()
 export class NodeFileStoreService extends FileStore {
@@ -43,5 +44,15 @@ export class NodeFileStoreService extends FileStore {
   async writeText(path: string, content: string): Promise<void> {
     await mkdir(dirname(path), {recursive: true});
     await writeFile(path, content);
+  }
+
+  async stat(path: string): Promise<FileStat> {
+    const info = await fsStat(path);
+    return {
+      size: info.size,
+      mtimeMs: info.mtimeMs,
+      isFile: info.isFile(),
+      isDirectory: info.isDirectory(),
+    };
   }
 }

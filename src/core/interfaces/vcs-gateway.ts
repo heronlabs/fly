@@ -1,4 +1,5 @@
 import type {DiffFile} from '../domain/diff';
+import type {FileFlag} from '../domain/files';
 
 export const GIT_TIMEOUT_MESSAGE = 'git não respondeu em 15 s';
 
@@ -19,4 +20,5 @@ export abstract class VcsGateway {
   // origin/<branch> when that remote-tracking ref exists, else <branch>.
   abstract resolveBase(worktreePath: string, branch: string): Promise<string>;
   abstract diff(request: DiffRequest): Promise<DiffFile[]>;
+  abstract status(worktreePath: string): Promise<Record<string, FileFlag>>;
 }

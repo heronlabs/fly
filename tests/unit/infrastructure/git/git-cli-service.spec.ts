@@ -197,6 +197,58 @@ describe('GitCliService', () => {
     });
   });
 
+  describe('status', () => {
+    const args = [
+      '-c',
+      'core.quotepath=false',
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+    ];
+
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should run git status --porcelain=v1 -z in the worktree and parse it', async () => {
+      run.mockResolvedValue({
+        code: 0,
+        stdout: ' M mod.txt\0R  moved.txt\0ren.txt\0?? newdir/a.txt\0',
+        stderr: '',
+      });
+
+      expect(await service.status('/w')).toEqual({
+        'mod.txt': 'M',
+        'moved.txt': 'A',
+        'ren.txt': 'D',
+        'newdir/a.txt': 'A',
+      });
+      expect(run).toHaveBeenCalledExactlyOnceWith('git', args, {
+        cwd: '/w',
+        timeoutMs: 15_000,
+      });
+    });
+
+    it('Should throw git falhou with the trimmed stderr on exit 128', async () => {
+      run.mockResolvedValue({
+        code: 128,
+        stdout: '',
+        stderr: 'fatal: not a git repository\n',
+      });
+
+      await expect(service.status('/w')).rejects.toThrow(
+        new Error('git falhou: fatal: not a git repository'),
+      );
+    });
+
+    it('Should map a killed child to the timeout message', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.status('/w')).rejects.toThrow(GIT_TIMEOUT_MESSAGE);
+    });
+  });
+
   describe('resolveBase', () => {
     beforeEach(() => {
       run.mockReset();

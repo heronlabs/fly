@@ -135,4 +135,47 @@ describe('GitCliService (real git)', () => {
       expect(await service().resolveBase(dir, 'main')).toBe('main');
     });
   });
+
+  describe('status', () => {
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=fly-test',
+          '-c',
+          'user.email=fly-test@example.com',
+          '-c',
+          'commit.gpgsign=false',
+          ...args,
+        ],
+        {cwd: dir, stdio: 'pipe'},
+      );
+    const service = () => new GitCliService(new ExecCommandRunnerService());
+
+    beforeEach(() => {
+      git('init', '-b', 'main');
+      writeFileSync(join(dir, 'mod.txt'), 'one\n');
+      writeFileSync(join(dir, 'old.txt'), 'old\n');
+      git('add', 'mod.txt', 'old.txt');
+      git('commit', '-m', 'init');
+    });
+
+    it('Should flag a modified, an untracked and a renamed file', async () => {
+      writeFileSync(join(dir, 'mod.txt'), 'one\ntwo\n');
+      writeFileSync(join(dir, 'fresh.txt'), 'new\n');
+      git('mv', 'old.txt', 'renamed.txt');
+
+      expect(await service().status(dir)).toEqual({
+        'mod.txt': 'M',
+        'fresh.txt': 'A',
+        'renamed.txt': 'A',
+        'old.txt': 'D',
+      });
+    });
+
+    it('Should return no flags for a clean repo', async () => {
+      expect(await service().status(dir)).toEqual({});
+    });
+  });
 });

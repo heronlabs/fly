@@ -1,4 +1,4 @@
-import {realpathSync} from 'node:fs';
+import {realpathSync, statSync} from 'node:fs';
 import {mkdir, mkdtemp, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -37,6 +37,31 @@ describe('NodeFileStoreService', () => {
     const path = join(dir, 'a', 'b', 'c.json');
     await store.writeText(path, '{"k":1}');
     expect(await store.readText(path)).toBe('{"k":1}');
+  });
+
+  it('Should stat a file with its size, mtime and file flag', async () => {
+    const path = join(dir, 'a.txt');
+    await writeFile(path, 'hello');
+
+    expect(await store.stat(path)).toEqual({
+      size: 5,
+      mtimeMs: statSync(path).mtimeMs,
+      isFile: true,
+      isDirectory: false,
+    });
+  });
+
+  it('Should stat a directory with its directory flag', async () => {
+    await mkdir(join(dir, 'sub'));
+
+    expect(await store.stat(join(dir, 'sub'))).toMatchObject({
+      isFile: false,
+      isDirectory: true,
+    });
+  });
+
+  it('Should reject the stat of a missing path', async () => {
+    await expect(store.stat(join(dir, 'missing'))).rejects.toThrow(/ENOENT/);
   });
 
   it('Should resolve a symlinked directory to its real path', async () => {

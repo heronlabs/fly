@@ -15,6 +15,7 @@ const fileStore: FileStore = {
   exists,
   readText,
   writeText,
+  stat: vi.fn(),
 };
 let store: JsonConfigStoreService;
 
