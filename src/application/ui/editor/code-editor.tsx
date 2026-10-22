@@ -117,6 +117,7 @@ export const CodeEditor = ({
   const shown = useRef<{stateKey: string; revision: number} | null>(null);
   // The last value given to onDirty.
   const dirty = useRef(false);
+  const mounted = useRef(false);
   const latest = useRef({text, kind, theme, onDirty});
   latest.current = {text, kind, theme, onDirty};
 
@@ -163,6 +164,7 @@ export const CodeEditor = ({
       editor.destroy();
       view.current = null;
       shown.current = null;
+      mounted.current = false;
     };
   }, []);
 
@@ -185,7 +187,6 @@ export const CodeEditor = ({
     editor.setState(state);
     // A cached state keeps the chrome of the theme it was built under.
     followTheme(editor);
-    report(editor.state);
   }, [stateKey, revision]);
 
   useEffect(() => {
@@ -194,12 +195,22 @@ export const CodeEditor = ({
     }
   }, [theme]);
 
-  // The saved text changes without a reload after a save.
+  // Another file, a reload or a save: the store's flag for the shown file
+  // may differ from the last report (a save marks the tab clean even when
+  // the doc moved on during the write), so the flag is re-derived against
+  // the new text and always reported. On mount only a dirty doc is.
   useEffect(() => {
-    if (view.current) {
-      report(view.current.state);
+    const editor = view.current;
+    if (!editor) {
+      return;
     }
-  }, [text]);
+    const next = editor.state.doc.toString() !== text;
+    if (mounted.current || next) {
+      dirty.current = next;
+      latest.current.onDirty(next);
+    }
+    mounted.current = true;
+  }, [stateKey, revision, text]);
 
   return <div ref={host} style={{width: '100%', height: '100%'}} />;
 };

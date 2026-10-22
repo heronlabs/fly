@@ -104,6 +104,35 @@ describe('CodeEditor', () => {
     expect(onDirty.mock.calls).toEqual([[true], [false]]);
   });
 
+  it('Should re-derive dirty against the new saved text, not the last report', () => {
+    const stateKey = freshKey('a.ts');
+    const {onDirty, insert, rerender} = setup({stateKey, text: 'a'});
+    insert('x');
+    // ⌘S writes 'xa'; 'y' is typed while the write is in flight, then the
+    // store marks the tab clean and the saved text becomes 'xa'.
+    insert('y');
+    rerender({stateKey, text: 'xa'});
+    expect(onDirty.mock.calls).toEqual([[true], [true]]);
+    rerender({stateKey, text: 'yxa'});
+    expect(onDirty.mock.calls).toEqual([[true], [true], [false]]);
+    rerender({stateKey, text: 'other'});
+    expect(onDirty.mock.calls).toEqual([[true], [true], [false], [true]]);
+  });
+
+  it('Should re-derive dirty when switching back to a file saved meanwhile', () => {
+    const first = freshKey('a.ts');
+    const second = freshKey('b.ts');
+    const {onDirty, insert, rerender} = setup({stateKey: first, text: 'a'});
+    // ⌘S writes 'xa', 'z' is typed, and the second (then dirty) file is
+    // shown before the write resolves: the store marks the first one clean.
+    insert('x');
+    insert('z');
+    rerender({stateKey: second, text: 'b'});
+    insert('y');
+    rerender({stateKey: first, text: 'xa'});
+    expect(onDirty.mock.calls).toEqual([[true], [false], [true], [true]]);
+  });
+
   it('Should reset the doc to the text on a new revision', () => {
     const stateKey = freshKey('a.ts');
     const {onDirty, insert, rerender, getText} = setup({stateKey, text: 'a'});
