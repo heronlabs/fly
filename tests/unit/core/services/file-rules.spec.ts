@@ -97,6 +97,8 @@ describe('eol helpers', () => {
     expect(detectEol('a\nb')).toBe('lf');
     expect(detectEol('a')).toBe('lf');
     expect(detectEol('a\rb\r\n')).toBe('crlf');
+    expect(detectEol('a\nb\r\n')).toBe('lf');
+    expect(detectEol('a\r\nb\n')).toBe('crlf');
   });
 
   it('Should normalise to lf', () => {

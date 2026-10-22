@@ -46,7 +46,7 @@ export const isBinary = (text: string): boolean =>
   text.slice(0, BINARY_SNIFF_CHARS).includes('\0');
 
 export const detectEol = (text: string): Eol =>
-  text.includes('\r\n') ? 'crlf' : 'lf';
+  /\r?\n/.exec(text)?.[0] === '\r\n' ? 'crlf' : 'lf';
 
 export const toLf = (text: string): string => text.replace(/\r\n/g, '\n');
 
