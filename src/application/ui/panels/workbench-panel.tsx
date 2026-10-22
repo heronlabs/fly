@@ -75,15 +75,16 @@ export const WorkbenchPanel = ({
     return () => clearInterval(id);
   }, [worktreeId, onPoll]);
 
-  // ⌘S works wherever the focus is; CodeMirror has no Mod-s (P12).
+  // ⌘S works wherever the focus is; CodeMirror has no Mod-s (P12). A clean
+  // tab saves only to re-create its missing file (P8).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.metaKey || event.key !== 's') return;
       event.preventDefault();
-      const handle = editorRef.current;
-      if (active?.dirty && active.content.kind === 'text' && handle) {
-        onSave(active.path, handle.getText());
-      }
+      if (!active || active.content.kind !== 'text') return;
+      if (!active.dirty && active.diskState !== 'missing') return;
+      const text = editorRef.current?.getText() ?? null;
+      if (text !== null) onSave(active.path, text);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

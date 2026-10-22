@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   // A call counter only: mockReset clears it before each test.
   terminalMounted: vi.fn(),
   editor: null as EditorProps | null,
+  // The mocked handle's getText returns null, as without a view.
+  noView: false,
 }));
 
 vi.mock('../../../src/application/ui/terminal/terminal-view', async () => {
@@ -44,7 +46,9 @@ vi.mock('../../../src/application/ui/editor/code-editor', async () => {
       mocks.editor = props;
       useImperativeHandle(
         props.editorRef,
-        () => ({getText: () => `live ${props.stateKey}`}),
+        () => ({
+          getText: () => (mocks.noView ? null : `live ${props.stateKey}`),
+        }),
         [props.stateKey],
       );
       return <div data-testid="code-editor">{props.stateKey}</div>;
@@ -145,6 +149,7 @@ describe('WorkbenchPanel', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mocks.editor = null;
+    mocks.noView = false;
   });
 
   afterEach(() => {
@@ -255,6 +260,22 @@ describe('WorkbenchPanel', () => {
     const {props} = setup({activePath: 'src/b.ts'});
     expect(commandS()).toBe(false);
     expect(props.onSave).toHaveBeenCalledWith('src/b.ts', 'live w1\0src/b.ts');
+  });
+
+  it('Should re-create a clean missing text tab on ⌘S', () => {
+    const {props} = setup({
+      activePath: 'src/a.ts',
+      tabs: [tab('src/a.ts', {diskState: 'missing'})],
+    });
+    expect(commandS()).toBe(false);
+    expect(props.onSave).toHaveBeenCalledWith('src/a.ts', 'live w1\0src/a.ts');
+  });
+
+  it('Should swallow ⌘S without saving when the editor has no view', () => {
+    mocks.noView = true;
+    const {props} = setup({activePath: 'src/b.ts'});
+    expect(commandS()).toBe(false);
+    expect(props.onSave).not.toHaveBeenCalled();
   });
 
   it('Should swallow ⌘S without saving a clean tab, a binary tab or Sessão', () => {

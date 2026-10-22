@@ -15,9 +15,11 @@ type EditorProps = {
   editorRef?: Ref<CodeEditorHandle>;
 };
 
-// The last props given to the mocked editor and the text its handle returns.
+// The last props given to the mocked editor, the text its handle returns
+// (null: no view) and whether it sets the handle at all.
 const editor = vi.hoisted(() => ({
-  text: 'live text',
+  text: 'live text' as string | null,
+  attach: true,
   props: null as EditorProps | null,
 }));
 
@@ -28,7 +30,7 @@ vi.mock('../../../src/application/ui/editor/code-editor', async () => {
     CodeEditor: (props: EditorProps) => {
       editor.props = props;
       useImperativeHandle(
-        props.editorRef,
+        editor.attach ? props.editorRef : undefined,
         () => ({getText: () => editor.text}),
         [],
       );
@@ -79,6 +81,7 @@ const setup = (overrides: Partial<Parameters<typeof EditorPanel>[0]> = {}) => {
 describe('EditorPanel', () => {
   beforeEach(() => {
     editor.text = 'live text';
+    editor.attach = true;
     editor.props = null;
   });
 
@@ -127,6 +130,29 @@ describe('EditorPanel', () => {
     expect(screen.getByText('Modificado')).toBeVisible();
     await userEvent.setup().click(screen.getByRole('button', {name: 'Salvar'}));
     expect(props.onSave).toHaveBeenCalledWith('live text');
+  });
+
+  it('Should enable Salvar on a clean tab whose file is missing', async () => {
+    const props = setup({file: file({diskState: 'missing'})});
+    const save = screen.getByRole('button', {name: 'Salvar'});
+    expect(save).toBeEnabled();
+    await userEvent.setup().click(save);
+    expect(props.onSave).toHaveBeenCalledWith('live text');
+  });
+
+  it('Should not save without an editor handle', async () => {
+    editor.attach = false;
+    const props = setup({file: file({dirty: true})});
+    expect(props.editorRef.current).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', {name: 'Salvar'}));
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
+
+  it('Should not save when the editor has no view', async () => {
+    editor.text = null;
+    const props = setup({file: file({dirty: true})});
+    await userEvent.setup().click(screen.getByRole('button', {name: 'Salvar'}));
+    expect(props.onSave).not.toHaveBeenCalled();
   });
 
   it('Should say Salvando… while a save is running', () => {

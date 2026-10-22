@@ -76,6 +76,25 @@ describe('CodeEditor', () => {
     expect(getText()).toBe('const a = 1;');
   });
 
+  it('Should return null from a handle whose view is gone', () => {
+    const editorRef = createRef<CodeEditorHandle>();
+    const {unmount} = render(
+      <CodeEditor
+        stateKey={freshKey('a.ts')}
+        text="a"
+        revision={0}
+        kind={fileKind('a.ts')}
+        theme="dark"
+        onDirty={vi.fn()}
+        editorRef={editorRef}
+      />,
+    );
+    const handle = editorRef.current as CodeEditorHandle;
+    expect(handle.getText()).toBe('a');
+    unmount();
+    expect(handle.getText()).toBeNull();
+  });
+
   it('Should report dirty after an edit and clean after reverting, only on flips', () => {
     const {onDirty, view, insert, getText} = setup({
       stateKey: freshKey('a.ts'),

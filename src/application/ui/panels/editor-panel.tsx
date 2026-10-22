@@ -63,6 +63,12 @@ export const EditorPanel = ({
   const kind = fileKind(file.path.split('/').pop() ?? file.path);
   const openInEditor = () => onOpenInEditor(`${worktreePath}/${file.path}`);
   const status = statusOf(file, saving);
+  // A clean tab saves only to re-create its missing file (P8).
+  const saveable = file.dirty || file.diskState === 'missing';
+  const save = () => {
+    const text = editorRef.current?.getText() ?? null;
+    if (text !== null) onSave(text);
+  };
 
   return (
     <section
@@ -107,8 +113,8 @@ export const EditorPanel = ({
             <button
               type="button"
               aria-keyshortcuts="Meta+S"
-              disabled={!file.dirty || saving}
-              onClick={() => onSave(editorRef.current?.getText() ?? '')}
+              disabled={!saveable || saving}
+              onClick={save}
               style={buttonStyle}
             >
               Salvar{' '}

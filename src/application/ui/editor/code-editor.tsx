@@ -35,7 +35,8 @@ import type {FileKind} from './file-kinds';
 import {syntaxHighlighting} from './highlight-style';
 import {indentUnitOf, languageExtension} from './languages';
 
-export type CodeEditorHandle = {getText(): string};
+// getText is null without a view: nothing to save.
+export type CodeEditorHandle = {getText(): string | null};
 
 type CodeEditorProps = {
   stateKey: string;
@@ -138,7 +139,7 @@ export const CodeEditor = ({
 
   useImperativeHandle(
     editorRef,
-    () => ({getText: () => view.current?.state.doc.toString() ?? ''}),
+    () => ({getText: () => view.current?.state.doc.toString() ?? null}),
     [],
   );
 
