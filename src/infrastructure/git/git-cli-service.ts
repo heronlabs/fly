@@ -104,7 +104,9 @@ export class GitCliService extends VcsGateway {
       if ((error as {killed?: unknown}).killed === true) {
         throw new Error(GIT_TIMEOUT_MESSAGE);
       }
-      throw error;
+      throw new Error(
+        `git falhou: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

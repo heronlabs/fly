@@ -178,13 +178,22 @@ describe('GitCliService', () => {
       expect(GIT_TIMEOUT_MESSAGE).toBe('git não respondeu em 15 s');
     });
 
-    it('Should rethrow other rejections untouched', async () => {
-      const failure = Object.assign(new Error('maxBuffer'), {killed: false});
-      run.mockRejectedValue(failure);
+    it('Should prefix other rejections in Portuguese', async () => {
+      run.mockRejectedValue(
+        Object.assign(new Error('maxBuffer'), {killed: false}),
+      );
 
       await expect(
         service.diff({worktreePath: '/w', scope: 'live'}),
-      ).rejects.toBe(failure);
+      ).rejects.toThrow(new Error('git falhou: maxBuffer'));
+    });
+
+    it('Should prefix a non-Error rejection by stringifying it', async () => {
+      run.mockRejectedValue('spawn git ENOENT');
+
+      await expect(
+        service.diff({worktreePath: '/w', scope: 'live'}),
+      ).rejects.toThrow(new Error('git falhou: spawn git ENOENT'));
     });
   });
 
