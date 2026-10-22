@@ -668,7 +668,9 @@ describe('files', () => {
       vi.mocked(window.fly.files.read).mockResolvedValue(textOf('a.ts'));
       await useFlyStore.getState().openFile(W, 'a.ts');
       expect(window.fly.files.read).toHaveBeenCalledWith(W, 'a.ts');
-      expect(useFlyStore.getState().openFiles).toEqual([tab('a.ts')]);
+      expect(useFlyStore.getState().openFiles).toEqual([
+        tab('a.ts', {revision: expect.any(Number)}),
+      ]);
       expect(useFlyStore.getState().activeFile[W]).toBe('a.ts');
       useFlyStore.getState().activateFile(W, null);
       expect(useFlyStore.getState().activeFile[W]).toBeNull();
@@ -676,6 +678,21 @@ describe('files', () => {
       expect(window.fly.files.read).toHaveBeenCalledTimes(1);
       expect(useFlyStore.getState().openFiles).toHaveLength(1);
       expect(useFlyStore.getState().activeFile[W]).toBe('a.ts');
+    });
+
+    it('openFile gives a file reopened after a close or a prune a new revision', async () => {
+      vi.mocked(window.fly.files.read).mockResolvedValue(textOf('a.ts'));
+      useFlyStore.setState({workspace: workspace()});
+      await useFlyStore.getState().openFile(W, 'a.ts');
+      const first = fileOf('a.ts')?.revision;
+      useFlyStore.getState().closeFile(W, 'a.ts');
+      await useFlyStore.getState().openFile(W, 'a.ts');
+      const second = fileOf('a.ts')?.revision;
+      useFlyStore.getState().applyWorkspace(workspace(['b/y']));
+      expect(fileOf('a.ts')).toBeUndefined();
+      await useFlyStore.getState().openFile(W, 'a.ts');
+      const third = fileOf('a.ts')?.revision;
+      expect(new Set([first, second, third]).size).toBe(3);
     });
 
     it('openFile does not duplicate a tab opened while reading', async () => {
@@ -855,19 +872,25 @@ describe('files', () => {
     });
 
     it('reloadFile replaces the content, clears dirty and bumps revision', async () => {
-      useFlyStore.setState({
-        openFiles: [
-          tab('a.ts', {dirty: true, diskState: 'changed', revision: 2}),
-        ],
-      });
+      vi.mocked(window.fly.files.read).mockResolvedValueOnce(textOf('a.ts'));
+      await useFlyStore.getState().openFile(W, 'a.ts');
+      const opened = fileOf('a.ts')?.revision as number;
+      useFlyStore.getState().setDirty(W, 'a.ts', true);
       vi.mocked(window.fly.files.read).mockResolvedValue(
         textOf('a.ts', 7, 'disco'),
       );
       await useFlyStore.getState().reloadFile(W, 'a.ts');
-      expect(window.fly.files.read).toHaveBeenCalledWith(W, 'a.ts');
+      expect(window.fly.files.read).toHaveBeenLastCalledWith(W, 'a.ts');
       expect(fileOf('a.ts')).toEqual(
-        tab('a.ts', {content: textOf('a.ts', 7, 'disco'), revision: 3}),
+        tab('a.ts', {
+          content: textOf('a.ts', 7, 'disco'),
+          revision: expect.any(Number),
+        }),
       );
+      const reloaded = fileOf('a.ts')?.revision as number;
+      expect(reloaded).toBeGreaterThan(opened);
+      await useFlyStore.getState().reloadFile(W, 'a.ts');
+      expect(fileOf('a.ts')?.revision).toBeGreaterThan(reloaded);
     });
 
     it('reloadFile reports a rejection', async () => {
@@ -1141,8 +1164,9 @@ describe('files', () => {
       vi.mocked(window.fly.files.read).mockResolvedValue(textOf('p', 9));
       await useFlyStore.getState().reloadFile(W, 'p');
       expect(fileOf('p')).toEqual(
-        tab('p', {content: textOf('p', 9), revision: 1}),
+        tab('p', {content: textOf('p', 9), revision: expect.any(Number)}),
       );
+      expect(fileOf('p')?.revision).toBeGreaterThan(0);
     });
 
     it('a missing dirty tab with a newer mtime becomes changed', () => {
@@ -1240,8 +1264,12 @@ describe('files', () => {
       await useFlyStore.getState().pollFiles(W);
       expect(window.fly.files.poll).toHaveBeenCalledWith(W, ['a.ts']);
       expect(fileOf('a.ts')).toEqual(
-        tab('a.ts', {content: textOf('a.ts', 2, 'novo'), revision: 1}),
+        tab('a.ts', {
+          content: textOf('a.ts', 2, 'novo'),
+          revision: expect.any(Number),
+        }),
       );
+      expect(fileOf('a.ts')?.revision).toBeGreaterThan(0);
       expect(vi.mocked(window.fly.files.list).mock.calls).toEqual([
         [W, ''],
         [W, 'src'],

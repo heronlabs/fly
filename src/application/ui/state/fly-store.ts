@@ -144,6 +144,11 @@ const pruned = <T>(record: Record<string, T>, ids: Set<string>) =>
     ? record
     : Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)));
 
+// Every tab content gets a revision no tab had before: the editor reuses a
+// cached state of the same revision, and a closed or pruned tab's state may
+// still be cached when its file is opened again.
+let revisionSeq = 0;
+
 // The poll decides "clean" before the read resolves; a keystroke in between
 // makes the tab dirty, and then the disk content must not replace the edit.
 const reread = async (
@@ -163,7 +168,7 @@ const reread = async (
               content,
               dirty: false,
               diskState: 'same',
-              revision: file.revision + 1,
+              revision: ++revisionSeq,
             },
       ),
     }));
@@ -425,7 +430,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
                     content,
                     dirty: false,
                     diskState: 'same',
-                    revision: 0,
+                    revision: ++revisionSeq,
                   },
                 ],
               },
