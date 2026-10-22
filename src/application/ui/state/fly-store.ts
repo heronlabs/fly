@@ -55,6 +55,7 @@ export type FlyState = {
   trees: Record<string, ExplorerTree>;
   flags: Record<string, Record<string, FileFlag>>;
   filesError: Record<string, string | null>;
+  diskMtimes: Record<string, Record<string, number | null>>;
   saving: boolean;
   bootstrap(): Promise<void>;
   pickAndOpen(): Promise<void>;
@@ -193,6 +194,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   trees: {},
   flags: {},
   filesError: {},
+  diskMtimes: {},
   saving: false,
 
   async bootstrap() {
@@ -269,6 +271,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
         trees: pruned(state.trees, ids),
         flags: pruned(state.flags, ids),
         filesError: pruned(state.filesError, ids),
+        diskMtimes: pruned(state.diskMtimes, ids),
       };
     });
   },
@@ -442,6 +445,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       if (index === -1) return state;
       const active = state.activeFile[worktreeId] ?? null;
       const neighbour = (tabs[index + 1] ?? tabs[index - 1])?.path ?? null;
+      const mtimes = state.diskMtimes[worktreeId];
       return {
         openFiles: state.openFiles.filter(
           file => !isTab(file, worktreeId, path),
@@ -450,6 +454,14 @@ export const useFlyStore = create<FlyState>((set, get) => ({
           ...state.activeFile,
           [worktreeId]: active === path ? neighbour : active,
         },
+        diskMtimes: mtimes
+          ? {
+              ...state.diskMtimes,
+              [worktreeId]: Object.fromEntries(
+                Object.entries(mtimes).filter(([key]) => key !== path),
+              ),
+            }
+          : state.diskMtimes,
       };
     });
   },
@@ -587,6 +599,10 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     if (JSON.stringify(result.flags) !== JSON.stringify(before)) {
       patch.flags = {...state.flags, [worktreeId]: result.flags};
     }
+    const mtimes = state.diskMtimes[worktreeId];
+    if (JSON.stringify(result.mtimes) !== JSON.stringify(mtimes)) {
+      patch.diskMtimes = {...state.diskMtimes, [worktreeId]: result.mtimes};
+    }
     let list: string[] = [];
     if (pathSet(result.flags) !== pathSet(before)) {
       // A deleted path is not on disk: listing its vanished ancestors fails.
@@ -604,16 +620,19 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       const mtime =
         file.worktreeId === worktreeId ? result.mtimes[file.path] : undefined;
       let diskState = file.diskState;
+      // undefined: not polled, the tab opened after the poll started.
       if (mtime === null) {
         diskState = 'missing';
-      } else if (
-        // An older mtime is a poll that stat'ed before the last save (R15).
-        mtime !== undefined &&
-        file.content.kind === 'text' &&
-        mtime > file.content.mtimeMs
-      ) {
-        if (!file.dirty) reload.push(file.path);
-        else diskState = 'changed';
+      } else if (mtime !== undefined) {
+        // An equal or older mtime is unchanged, or a poll that stat'ed before
+        // the last save (R15); only a newer one is a change on disk.
+        if (file.content.kind === 'text' && mtime > file.content.mtimeMs) {
+          if (!file.dirty) reload.push(file.path);
+          else diskState = 'changed';
+        } else if (diskState === 'missing') {
+          // A number proves the file exists again (R16).
+          diskState = 'same';
+        }
       }
       return diskState === file.diskState ? file : {...file, diskState};
     });

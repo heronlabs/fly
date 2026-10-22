@@ -659,6 +659,7 @@ describe('files', () => {
     expect(state.trees).toEqual({});
     expect(state.flags).toEqual({});
     expect(state.filesError).toEqual({});
+    expect(state.diskMtimes).toEqual({});
     expect(state.saving).toBe(false);
   });
 
@@ -710,6 +711,25 @@ describe('files', () => {
       expect(useFlyStore.getState().activeFile[W]).toBeNull();
       expect(useFlyStore.getState().openFiles).toEqual([other]);
       expect(useFlyStore.getState().activeFile['b/y#main']).toBe('b');
+    });
+
+    it('closeFile drops the polled mtime of the closed path', () => {
+      useFlyStore.setState({
+        openFiles: [tab('a'), tab('b')],
+        diskMtimes: {[W]: {a: 1, b: null}, 'b/y#main': {a: 2}},
+      });
+      useFlyStore.getState().closeFile(W, 'a');
+      expect(useFlyStore.getState().diskMtimes).toEqual({
+        [W]: {b: null},
+        'b/y#main': {a: 2},
+      });
+    });
+
+    it('closeFile without polled mtimes leaves them alone', () => {
+      const diskMtimes = {'b/y#main': {a: 2}};
+      useFlyStore.setState({openFiles: [tab('a')], diskMtimes});
+      useFlyStore.getState().closeFile(W, 'a');
+      expect(useFlyStore.getState().diskMtimes).toBe(diskMtimes);
     });
 
     it('closeFile of an inactive tab keeps the active one', () => {
@@ -1095,6 +1115,75 @@ describe('files', () => {
       expect(fileOf('a.ts')?.diskState).toBe('same');
     });
 
+    it('a missing tab whose file exists again with an equal or older mtime is same', () => {
+      useFlyStore.setState({
+        openFiles: [
+          tab('p', {content: textOf('p', 5), diskState: 'missing'}),
+          tab('q', {content: textOf('q', 5), diskState: 'missing'}),
+        ],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({mtimes: {p: 5, q: 3}}));
+      expect(result.reload).toEqual([]);
+      expect(fileOf('p')).toEqual(tab('p', {content: textOf('p', 5)}));
+      expect(fileOf('q')).toEqual(tab('q', {content: textOf('q', 5)}));
+    });
+
+    it('a missing clean tab with a newer mtime is reloaded back to same', async () => {
+      useFlyStore.setState({
+        openFiles: [tab('p', {content: textOf('p', 5), diskState: 'missing'})],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({mtimes: {p: 9}}));
+      expect(result.reload).toEqual(['p']);
+      vi.mocked(window.fly.files.read).mockResolvedValue(textOf('p', 9));
+      await useFlyStore.getState().reloadFile(W, 'p');
+      expect(fileOf('p')).toEqual(
+        tab('p', {content: textOf('p', 9), revision: 1}),
+      );
+    });
+
+    it('a missing dirty tab with a newer mtime becomes changed', () => {
+      useFlyStore.setState({
+        openFiles: [
+          tab('p', {
+            content: textOf('p', 5),
+            dirty: true,
+            diskState: 'missing',
+          }),
+        ],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({mtimes: {p: 9}}));
+      expect(result.reload).toEqual([]);
+      expect(fileOf('p')?.diskState).toBe('changed');
+    });
+
+    it('a missing non-text tab whose file exists again is same', () => {
+      const content: FileContent = {kind: 'binary', path: 'img.png'};
+      useFlyStore.setState({
+        openFiles: [tab('img.png', {content, diskState: 'missing'})],
+      });
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({mtimes: {'img.png': 4}}));
+      expect(result.reload).toEqual([]);
+      expect(fileOf('img.png')).toEqual(tab('img.png', {content}));
+    });
+
+    it('stores the polled mtimes and keeps the same object for equal mtimes', () => {
+      useFlyStore.getState().applyPoll(W, pollOf({mtimes: {a: 1, b: null}}));
+      const first = useFlyStore.getState().diskMtimes[W];
+      expect(first).toEqual({a: 1, b: null});
+      useFlyStore.getState().applyPoll(W, pollOf({mtimes: {a: 1, b: null}}));
+      expect(useFlyStore.getState().diskMtimes[W]).toBe(first);
+      useFlyStore.getState().applyPoll(W, pollOf({mtimes: {a: 2}}));
+      expect(useFlyStore.getState().diskMtimes[W]).toEqual({a: 2});
+    });
+
     it('keeps the tabs array when no tab changed', () => {
       const openFiles = [tab('a'), tab('b', {diskState: 'missing'})];
       useFlyStore.setState({openFiles});
@@ -1119,6 +1208,7 @@ describe('files', () => {
       expect(state.flags).toEqual({});
       expect(state.trees).toEqual({});
       expect(state.filesError).toEqual({});
+      expect(state.diskMtimes).toEqual({});
     });
 
     it('ignores every worktree when no workspace is open', () => {
@@ -1210,9 +1300,11 @@ describe('files', () => {
         trees: {[W]: tree, gone: tree},
         flags: {[W]: {a: 'M'}, gone: {b: 'A'}},
         filesError: {[W]: null, gone: 'x'},
+        diskMtimes: {[W]: {a: 1}, gone: {b: null}},
       });
       useFlyStore.getState().applyWorkspace(workspace());
       const state = useFlyStore.getState();
+      expect(state.diskMtimes).toEqual({[W]: {a: 1}});
       expect(state.openFiles).toEqual([tab('a')]);
       expect(state.activeFile).toEqual({[W]: 'a'});
       expect(state.trees).toEqual({[W]: tree});
@@ -1227,10 +1319,12 @@ describe('files', () => {
         trees: {[W]: tree},
         flags: {[W]: {}},
         filesError: {[W]: null},
+        diskMtimes: {[W]: {a: 1}},
       };
       useFlyStore.setState(before);
       useFlyStore.getState().applyWorkspace(workspace());
       const state = useFlyStore.getState();
+      expect(state.diskMtimes).toBe(before.diskMtimes);
       expect(state.openFiles).toBe(before.openFiles);
       expect(state.activeFile).toBe(before.activeFile);
       expect(state.trees).toBe(before.trees);
