@@ -12,8 +12,10 @@ vi.mock('electron', () => ({
   BrowserWindow: {getAllWindows: () => []},
   dialog: {},
   ipcMain: {handle: vi.fn(), on: vi.fn()},
+  shell: {openExternal: vi.fn()},
 }));
 
+import {DiffHandler} from '../../src/application/ipc/handlers/diff-handler';
 import {QueueHandler} from '../../src/application/ipc/handlers/queue-handler';
 import {SessionHandler} from '../../src/application/ipc/handlers/session-handler';
 import {SettingsHandler} from '../../src/application/ipc/handlers/settings-handler';
@@ -67,6 +69,7 @@ describe('IpcModule (real Nest DI)', () => {
       expect(() => queue.register()).not.toThrow();
       queue.stop();
 
+      expect(() => context.get(DiffHandler).register()).not.toThrow();
       expect(() => context.get(TerminalHandler).register()).not.toThrow();
     } finally {
       await context.close();

@@ -23,6 +23,7 @@ const host: IpcHost = {
 const send = vi.fn();
 const snapshot = vi.fn();
 const refreshPullRequests = vi.fn();
+const mergePullRequest = vi.fn();
 
 const invoke = (channel: string, ...args: unknown[]) =>
   listeners.get(channel)!({}, ...args);
@@ -36,12 +37,14 @@ beforeEach(() => {
   logged = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
   snapshot.mockResolvedValue(snap(1));
   refreshPullRequests.mockResolvedValue(undefined);
+  mergePullRequest.mockReset();
   handler = new QueueHandler(
     host,
     {send} as Broadcaster,
     {
       snapshot,
       refreshPullRequests,
+      mergePullRequest,
     } as unknown as QueueService,
   );
   handler.register();
@@ -55,7 +58,10 @@ afterEach(() => {
 
 describe('QueueHandler', () => {
   it('Should register the list channel and do no work up front', async () => {
-    expect([...listeners.keys()]).toEqual([channels.queueList]);
+    expect([...listeners.keys()]).toEqual([
+      channels.queueList,
+      channels.prMerge,
+    ]);
     expect(snapshot).not.toHaveBeenCalled();
     expect(refreshPullRequests).not.toHaveBeenCalled();
   });
@@ -199,5 +205,23 @@ describe('QueueHandler', () => {
     expect(refreshPullRequests).toHaveBeenCalledTimes(1);
     // 9 ticks from the 3 s interval plus 1 after the refresh.
     expect(snapshot).toHaveBeenCalledTimes(PR_POLL_MS / QUEUE_POLL_MS + 1);
+  });
+
+  it('Should merge the PR then broadcast the refreshed snapshot once', async () => {
+    mergePullRequest.mockResolvedValue(undefined);
+
+    await invoke(channels.prMerge, 'wt-1');
+
+    expect(mergePullRequest).toHaveBeenCalledWith('wt-1');
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(channels.queueChanged, snap(1));
+  });
+
+  it('Should propagate a merge failure and broadcast nothing', async () => {
+    mergePullRequest.mockRejectedValue(new Error('conflito'));
+
+    await expect(invoke(channels.prMerge, 'wt-1')).rejects.toThrow('conflito');
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 });

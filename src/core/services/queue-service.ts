@@ -17,6 +17,7 @@ import {
   SessionService,
 } from './session-service';
 
+export const NO_OPEN_PR = 'Sem PR aberto para fazer merge';
 export const GH_MISSING = 'gh não encontrado — instale com: brew install gh';
 
 type GithubStatus = Pick<QueueSnapshot, 'github' | 'message'>;
@@ -72,6 +73,18 @@ export class QueueService {
     }
     this.pullRequests = next;
     this.github = githubStatus(failures);
+  }
+
+  async mergePullRequest(worktreeId: string): Promise<void> {
+    const workspace = this.sessions.currentWorkspace();
+    const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
+    if (!workspace || !worktree) throw new Error('Worktree não encontrado');
+    const repo = workspace.repos.find(r => r.id === worktree.repoId);
+    if (!repo) throw new Error('Worktree não encontrado');
+    const pullRequest = this.pullRequestOf(workspace, worktree);
+    if (pullRequest?.state !== 'open') throw new Error(NO_OPEN_PR);
+    await this.prs.merge(repo.path, pullRequest.number);
+    await this.refreshPullRequests();
   }
 
   async snapshot(now = Date.now()): Promise<QueueSnapshot> {

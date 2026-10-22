@@ -29,6 +29,10 @@ export class QueueHandler {
 
   register(): void {
     this.host.handle(channels.queueList, () => this.list());
+    this.host.handle(channels.prMerge, async (_event, worktreeId: string) => {
+      await this.queue.mergePullRequest(worktreeId);
+      await this.tick();
+    });
     this.stop();
     this.tickTimer = setInterval(() => void this.tick(), QUEUE_POLL_MS);
     this.tickTimer.unref();

@@ -51,13 +51,14 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 2. **Session.** "Iniciar sessão" creates a tmux session on the default server named after the worktree and runs `claude` in it, attached to an xterm.js terminal through node-pty. Closing fly detaches; opening it again reconciles the sessions that are still running.
 3. **Task.** "Nova tarefa" starts a session in the repo's main worktree with `/supera:ship <descrição>` as the initial prompt, then follows the transcript until ship creates the worktree and moves the session there.
 4. **Queue.** A poller tails `~/.claude/projects/<cwd>/<session>.jsonl` and asks `gh` for the pull requests of each worktree, then applies the queue rules and broadcasts a snapshot to the renderer, which shows a badge per worktree and the counts in the footer.
+5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button and the engineer's receipt; the panel collapses from the top bar.
 
 ## Prerequisites
 
 | Tool | Why |
 |------|-----|
-| `git` | Repo and worktree discovery |
-| `gh` | Pull request status; must be authenticated (`gh auth login`) |
+| `git` | Repo and worktree discovery; `git diff` for the diff panel |
+| `gh` | Pull request status and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
 | `code` | VSCode on `PATH`, used by "Abrir no VSCode" |
@@ -107,8 +108,8 @@ running, CI running and failed.
 | M1 | Shell: scaffold, design system, theming, workspace discovery, tree | Done |
 | M2 | Terminal: tmux + node-pty + xterm.js, session lifecycle, reconciliation | Done |
 | M3 | Queue state: transcript parser, PR polling, state machine | Done |
-| M4 | Diff / PR panel | Next |
-| M5 | Explorer + editor | Planned |
+| M4 | Diff / PR panel | Done |
+| M5 | Explorer + editor | Next |
 | M6 | First-run flow, supera install, `.dmg` packaging, macOS CD | Planned |
 
 The design spec and the plan of each milestone live in
@@ -128,9 +129,9 @@ src/
 │   ├── ipc/                  # composition root: IpcModule + one handler per channel
 │   └── ui/                   # React renderer: panels, components, terminal, theme, state
 ├── core/
-│   ├── domain/               # queue, session, transcript, workspace, settings, fly-api types
+│   ├── domain/               # queue, session, transcript, diff, workspace, settings, fly-api types
 │   ├── interfaces/           # ports: VcsGateway, PrGateway, SessionLauncher, TranscriptSource…
-│   └── services/             # workspace, session, task, terminal, queue (+ queue-rules), settings
+│   └── services/             # workspace, session, task, terminal, queue (+ queue-rules), diff (+ diff-rules), settings
 └── infrastructure/
     ├── claude/               # transcript reader and parser (~/.claude/projects)
     ├── git/ github/          # worktree discovery (git), pull requests (gh)
@@ -158,6 +159,7 @@ All of this is enforced by `pnpm dep:cruise`.
 | tmux | tests use a private socket `-L fly-test-<hex>` and kill that server afterwards, never the default server |
 | Transcripts | tests use an `mkdtemp` projects dir through `CLAUDE_PROJECTS_DIR`, never the real `~/.claude` |
 | `gh` | always mocked through `CommandRunner` or `PrGateway` |
+| `git` | mocked through `CommandRunner` in unit tests; runs against an `mkdtemp` repo in integration tests |
 
 ```bash
 pnpm test:unit        # vitest run with coverage

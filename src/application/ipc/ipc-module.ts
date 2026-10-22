@@ -2,7 +2,7 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 
 import {Module} from '@nestjs/common';
-import {app, BrowserWindow, dialog, ipcMain} from 'electron';
+import {app, BrowserWindow, dialog, ipcMain, shell} from 'electron';
 
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {ConfigStore} from '../../core/interfaces/config-store';
@@ -15,6 +15,7 @@ import {TerminalSpawner} from '../../core/interfaces/terminal-spawner';
 import {TranscriptSource} from '../../core/interfaces/transcript-source';
 import {VcsGateway} from '../../core/interfaces/vcs-gateway';
 import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
+import {DiffService} from '../../core/services/diff-service';
 import {QueueService} from '../../core/services/queue-service';
 import {SessionService} from '../../core/services/session-service';
 import {SettingsService} from '../../core/services/settings-service';
@@ -35,14 +36,15 @@ import {ExecCommandRunnerService} from '../../infrastructure/process/exec-comman
 import {NodePtyTerminalService} from '../../infrastructure/pty/node-pty-terminal-service';
 import {TmuxSessionService} from '../../infrastructure/tmux/tmux-session-service';
 import {TMUX_SOCKET} from '../../infrastructure/tmux/tokens';
+import {DiffHandler} from './handlers/diff-handler';
 import {QueueHandler} from './handlers/queue-handler';
 import {SessionHandler} from './handlers/session-handler';
 import {SettingsHandler} from './handlers/settings-handler';
 import {ShellHandler} from './handlers/shell-handler';
 import {TerminalHandler} from './handlers/terminal-handler';
 import {WorkspaceHandler} from './handlers/workspace-handler';
-import type {Broadcaster, FolderPicker} from './ipc-types';
-import {BROADCASTER, FOLDER_PICKER, IPC_HOST} from './ipc-types';
+import type {Broadcaster, FolderPicker, LinkOpener} from './ipc-types';
+import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
 
 @Module({
   providers: [
@@ -77,6 +79,12 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST} from './ipc-types';
       } satisfies FolderPicker,
     },
     {
+      provide: LINK_OPENER,
+      useValue: {
+        open: url => shell.openExternal(url),
+      } satisfies LinkOpener,
+    },
+    {
       provide: BROADCASTER,
       useFactory: (): Broadcaster => ({
         send: (channel, payload) =>
@@ -90,12 +98,14 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST} from './ipc-types';
     SessionService,
     TaskService,
     QueueService,
+    DiffService,
     TerminalService,
     WorkspaceHandler,
     SettingsHandler,
     ShellHandler,
     SessionHandler,
     QueueHandler,
+    DiffHandler,
     TerminalHandler,
   ],
 })

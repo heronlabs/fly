@@ -1,9 +1,20 @@
 import {create} from 'zustand';
 
-import type {QueueSnapshot, QueueStatus} from '../../../core/domain/queue';
+import type {DiffScope, WorktreeDiff} from '../../../core/domain/diff';
+import type {
+  QueueSnapshot,
+  QueueStatus,
+  WorktreeQueue,
+} from '../../../core/domain/queue';
 import type {SessionsSnapshot} from '../../../core/domain/session';
-import type {AppConfig, ThemeMode} from '../../../core/domain/settings';
+import type {
+  AppConfig,
+  DiffPanelMode,
+  ThemeMode,
+} from '../../../core/domain/settings';
 import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
+
+export const DIFF_POLL_MS = 3000;
 
 export type FlyState = {
   workspace: Workspace | null;
@@ -15,6 +26,8 @@ export type FlyState = {
   activeSessionName: string | null;
   startingSession: boolean;
   queue: QueueSnapshot;
+  diff: WorktreeDiff | null;
+  merging: boolean;
   bootstrap(): Promise<void>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
@@ -30,6 +43,11 @@ export type FlyState = {
   killSession(name: string): Promise<void>;
   createTask(input: {repoId: string; description: string}): Promise<boolean>;
   setActiveSession(name: string | null): void;
+  loadDiff(worktreeId: string, scope: DiffScope): Promise<void>;
+  applyDiff(result: WorktreeDiff): void;
+  clearDiff(): void;
+  mergePullRequest(worktreeId: string): Promise<void>;
+  setDiffPanel(mode: DiffPanelMode): Promise<void>;
 };
 
 const ipcPrefix = /^Error invoking remote method '[^']*': (?:Error: )?/;
@@ -49,7 +67,7 @@ const selectionAfter = (
 
 export const useFlyStore = create<FlyState>((set, get) => ({
   workspace: null,
-  config: {recentRoots: [], theme: 'system'},
+  config: {recentRoots: [], theme: 'system', diffPanel: 'open'},
   selectedWorktreeId: null,
   loading: false,
   error: null,
@@ -57,6 +75,8 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   activeSessionName: null,
   startingSession: false,
   queue: {github: 'ok', message: null, worktrees: []},
+  diff: null,
+  merging: false,
 
   async bootstrap() {
     try {
@@ -102,7 +122,9 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   },
 
   select(worktreeId) {
+    const changed = get().selectedWorktreeId !== worktreeId;
     set({selectedWorktreeId: worktreeId});
+    if (changed) get().clearDiff();
   },
 
   async setTheme(theme) {
@@ -208,6 +230,48 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   setActiveSession(name) {
     set({activeSessionName: name});
   },
+
+  async loadDiff(worktreeId, scope) {
+    try {
+      get().applyDiff(await window.fly.diff.get(worktreeId, scope));
+    } catch (error) {
+      set({error: errorMessage(error)});
+    }
+  },
+
+  applyDiff(result) {
+    set(state => {
+      if (result.worktreeId !== state.selectedWorktreeId) return state;
+      if (JSON.stringify(result) === JSON.stringify(state.diff)) return state;
+      return {diff: result};
+    });
+  },
+
+  clearDiff() {
+    set({diff: null});
+  },
+
+  async mergePullRequest(worktreeId) {
+    // A double click must not merge twice.
+    if (get().merging) return;
+    set({merging: true, error: null});
+    try {
+      await window.fly.pullRequests.merge(worktreeId);
+      await get().loadQueue();
+    } catch (error) {
+      set({error: errorMessage(error)});
+    } finally {
+      set({merging: false});
+    }
+  },
+
+  async setDiffPanel(mode) {
+    try {
+      set({config: await window.fly.settings.set({diffPanel: mode})});
+    } catch (error) {
+      set({error: errorMessage(error)});
+    }
+  },
 }));
 
 export const groupsOf = (
@@ -247,3 +311,9 @@ export const statusesOf = (
   Object.fromEntries(
     snapshot.worktrees.map(item => [item.worktreeId, item.status]),
   );
+
+export const queueOf = (
+  snapshot: QueueSnapshot,
+  worktreeId: string,
+): WorktreeQueue | null =>
+  snapshot.worktrees.find(item => item.worktreeId === worktreeId) ?? null;

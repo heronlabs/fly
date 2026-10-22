@@ -12,6 +12,12 @@ export type QueueStatus =
 
 export type ChecksState = 'none' | 'pending' | 'passing' | 'failing';
 
+export type CheckRun = {
+  name: string;
+  state: 'passing' | 'pending' | 'failing';
+  url: string | null;
+};
+
 export type PullRequest = {
   number: number;
   url: string;
@@ -21,6 +27,8 @@ export type PullRequest = {
   mergeable: 'mergeable' | 'conflicting' | 'unknown';
   review: 'approved' | 'changes-requested' | 'required' | 'none';
   checks: ChecksState;
+  title: string;
+  checkRuns: CheckRun[];
 };
 
 export type WorktreeQueue = {

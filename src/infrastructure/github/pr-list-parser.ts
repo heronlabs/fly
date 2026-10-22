@@ -1,4 +1,4 @@
-import type {ChecksState, PullRequest} from '../../core/domain/queue';
+import type {CheckRun, ChecksState, PullRequest} from '../../core/domain/queue';
 
 const INVALID = 'Resposta inválida do gh';
 
@@ -48,6 +48,29 @@ const classifyCheck = (entry: unknown): Check | null => {
   return null;
 };
 
+const stringOrNull = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null;
+
+const mapCheckRun = (entry: unknown): CheckRun | null => {
+  const state = classifyCheck(entry);
+  if (!state || !isRecord(entry)) {
+    return null;
+  }
+  const isRun = entry.__typename === 'CheckRun';
+  const name = stringOrNull(isRun ? entry.name : entry.context);
+  if (name === null) {
+    return null;
+  }
+  return {
+    name,
+    state,
+    url: stringOrNull(isRun ? entry.detailsUrl : entry.targetUrl),
+  };
+};
+
+const mapCheckRuns = (rollup: unknown): CheckRun[] =>
+  Array.isArray(rollup) ? rollup.flatMap(e => mapCheckRun(e) ?? []) : [];
+
 const aggregateChecks = (rollup: unknown): ChecksState => {
   if (!Array.isArray(rollup)) {
     return 'none';
@@ -95,6 +118,8 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
     mergeable: mapMergeable(entry.mergeable),
     review: mapReview(entry.reviewDecision),
     checks: aggregateChecks(entry.statusCheckRollup),
+    title: stringOrNull(entry.title) ?? '',
+    checkRuns: mapCheckRuns(entry.statusCheckRollup),
   };
 };
 

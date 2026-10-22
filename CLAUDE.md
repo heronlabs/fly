@@ -27,6 +27,8 @@ Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJ
 
 `gh` is always mocked in tests, through `CommandRunner` or `PrGateway`. Never the real `gh`.
 
+`git` is mocked through `CommandRunner` in unit tests and runs against an `mkdtemp` repo in integration tests. Never the user's repos.
+
 ## Mutation testing
 
 Kill a surviving mutant with a test first; if that is not possible, with a behaviour-preserving simplification; only for a genuine equivalent mutant, with `// Stryker disable next-line <Mutator>: <reason>`. Never disable whole files, blocks or `all`. `vitest.stryker.config.ts` mirrors the `node` project of `vitest.config.ts` by hand, so change both together.
