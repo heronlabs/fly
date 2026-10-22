@@ -1,3 +1,34 @@
+## v0.1.2 (2026-10-22)
+
+### Features
+
+* feat(ui): add the collapsible diff and pull request panel (098ce8bd3f5e0af33d16e02e4a27e56574ef5a2d)
+* feat(ui): render diffs and pull requests (041a8ea031bc4063b7858873c11ed05a66820cac)
+* feat(ipc): expose diffs, merge and external links to the renderer (549f0b4b55b5eb3253b2868c84f13b714b66d0c5)
+* feat(settings): remember whether the diff panel is collapsed (77f6152bc59cf939bac627aaa5fbc37748b3b7f9)
+* feat(github): list check rows and merge a worktree's pull request (edfbe35b8aa6cda5b2e1c8c7c603cf5f062be0ac)
+* feat(git): read live and branch diffs of a worktree (2ae0ac2e44e57f6647b5394442fa2915dee0c101)
+* feat(git): parse unified diffs into a capped domain diff (36beb47c5f4d2ec4d96682fb1dbd2f8e0ee298c2)
+
+### Bug Fixes
+
+* fix(git): prefix unexpected git failures in Portuguese (d251167830a53846aaf159c3999f5903ac7ac315)
+* fix(git): diff the branch against origin/<base> when the remote ref exists (c136ea61781a196529e14043218a72779945b767)
+* fix(ui): hide the big-file note on zero-line truncated rows (d6d040351c0535d9d94a60aba7453807bb26b5b9)
+* fix(ui): skip a diff poll while the previous one is pending (4672876ae6c2c085042e3f280b007c52aec353f7)
+* fix(ui): show only the selected scope's diff in the panel (d9c0ef8b58a207c10bd4b8271f48695f27fb82ed)
+* fix(ui): reset the merge confirmation when the pull request or status changes (87126189ea30733af509b8f2f9272db40dff9c58)
+* fix(git): parse quoted paths and split identical diff headers safely (c751b45c8b2670c3edbcc356f1f09c249e036476)
+
+### Documentation
+
+* docs: mention git diff and gh merge in the README tables (c93f04c82af3215ebc7db488c8d117dd111ade10)
+* docs: describe the diff panel and the git test rules (1504b31671ab52bd4f9011b66d54714c94de1438)
+
+### Miscellaneous Chores
+
+* other(git): pin the base-branch detection in DiffService (3c4a27a95f313cd4d18be20ae803b312fefaf4d3)
+
 ## v0.1.1 (2026-10-21)
 
 ### Documentation
