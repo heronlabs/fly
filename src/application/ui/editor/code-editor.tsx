@@ -49,8 +49,10 @@ type CodeEditorProps = {
 
 // States are cached per stateKey for every CodeEditor and outlive the view
 // that edited them, so the compartments and the update listener they carry
-// are module-level too: a cached state may come back in another view.
-const states = new Map<string, EditorState>();
+// are module-level too: a cached state may come back in another view. Each
+// entry remembers the revision it was built from.
+type Cached = {state: EditorState; revision: number};
+const states = new Map<string, Cached>();
 const language = new Compartment();
 const chrome = new Compartment();
 const owners = new WeakMap<EditorView, (update: ViewUpdate) => void>();
@@ -72,6 +74,7 @@ const createState = (text: string, kind: FileKind, theme: ResolvedTheme) =>
       highlightSpecialChars(),
       history(),
       foldGutter(),
+      EditorState.allowMultipleSelections.of(true),
       drawSelection(),
       dropCursor(),
       indentOnInput(),
@@ -110,8 +113,8 @@ export const CodeEditor = ({
 }: CodeEditorProps) => {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  // The stateKey the view shows; null until the first state is set.
-  const shown = useRef<string | null>(null);
+  // What the view shows; null until the first state is set.
+  const shown = useRef<{stateKey: string; revision: number} | null>(null);
   // The last value given to onDirty.
   const dirty = useRef(false);
   const latest = useRef({text, kind, theme, onDirty});
@@ -145,8 +148,11 @@ export const CodeEditor = ({
     }
     const editor = new EditorView({parent});
     owners.set(editor, update => {
-      if (shown.current !== null) {
-        states.set(shown.current, update.state);
+      if (shown.current) {
+        states.set(shown.current.stateKey, {
+          state: update.state,
+          revision: shown.current.revision,
+        });
       }
       if (update.docChanged) {
         report(update.state);
@@ -165,13 +171,17 @@ export const CodeEditor = ({
     if (!editor) {
       return;
     }
-    // Another stateKey reuses its cached state; a new revision of the shown
-    // one (a reload) starts over from the text.
+    // Another stateKey reuses its cached state if it was built from this
+    // revision; a new revision (a reload, of the shown file or of one in the
+    // background) starts over from the text.
     const cached =
-      shown.current === stateKey ? undefined : states.get(stateKey);
-    const state = cached ?? createState(text, kind, theme);
-    states.set(stateKey, state);
-    shown.current = stateKey;
+      shown.current?.stateKey === stateKey ? undefined : states.get(stateKey);
+    const state =
+      cached?.revision === revision
+        ? cached.state
+        : createState(text, kind, theme);
+    states.set(stateKey, {state, revision});
+    shown.current = {stateKey, revision};
     editor.setState(state);
     // A cached state keeps the chrome of the theme it was built under.
     followTheme(editor);

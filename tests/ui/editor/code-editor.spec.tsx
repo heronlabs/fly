@@ -1,5 +1,5 @@
 import {indentUnit} from '@codemirror/language';
-import {EditorState} from '@codemirror/state';
+import {EditorSelection, EditorState} from '@codemirror/state';
 import {EditorView, keymap} from '@codemirror/view';
 import {render} from '@testing-library/react';
 import {createRef} from 'react';
@@ -128,6 +128,18 @@ describe('CodeEditor', () => {
     expect(onDirty.mock.calls).toEqual([[true], [false], [true]]);
   });
 
+  it('Should rebuild a cached stateKey from the text when its revision moved on', () => {
+    const first = freshKey('a.ts');
+    const second = freshKey('b.ts');
+    const {insert, rerender, getText} = setup({stateKey: first, text: 'a'});
+    insert('x');
+    rerender({stateKey: second, text: 'b'});
+    // The panel reloads the background file while the other one is shown.
+    rerender({stateKey: second, text: 'b'});
+    rerender({stateKey: first, text: 'reloaded', revision: 1});
+    expect(getText()).toBe('reloaded');
+  });
+
   it('Should keep the cached doc across a remount', () => {
     const stateKey = freshKey('a.ts');
     const {insert, unmount} = setup({stateKey, text: 'a'});
@@ -191,6 +203,17 @@ describe('CodeEditor', () => {
     expect(keys).toContain('Mod-z');
     expect(keys).toContain('Tab');
     expect(keys).not.toContain('Mod-s');
+  });
+
+  it('Should allow multiple selection ranges', () => {
+    const {view} = setup({stateKey: freshKey('a.ts'), text: 'abcd'});
+    view().dispatch({
+      selection: EditorSelection.create([
+        EditorSelection.range(0, 1),
+        EditorSelection.range(2, 3),
+      ]),
+    });
+    expect(view().state.selection.ranges).toHaveLength(2);
   });
 
   it('Should destroy the view on unmount', () => {
