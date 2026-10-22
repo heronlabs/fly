@@ -1,7 +1,9 @@
 import {act, fireEvent, render, screen} from '@testing-library/react';
+import type {Mock} from 'vitest';
 
 import {DiffPrPanel} from '../../../src/application/ui/panels/diff-pr-panel';
 import {DIFF_POLL_MS} from '../../../src/application/ui/state/fly-store';
+import type {DiffScope, WorktreeDiff} from '../../../src/core/domain/diff';
 import type {Worktree} from '../../../src/core/domain/workspace';
 
 const worktree: Worktree = {
@@ -13,7 +15,12 @@ const worktree: Worktree = {
   isMain: true,
 };
 
-const setup = (overrides: {worktree?: Worktree | null} = {}) => {
+const setup = (
+  overrides: {
+    worktree?: Worktree | null;
+    onLoadDiff?: Mock;
+  } = {},
+) => {
   const props = {
     worktree,
     diff: null,
@@ -28,6 +35,29 @@ const setup = (overrides: {worktree?: Worktree | null} = {}) => {
   const view = render(<DiffPrPanel {...props} />);
   return {props, view};
 };
+
+const diffOf = (scope: DiffScope): WorktreeDiff => ({
+  worktreeId: 'w1',
+  scope,
+  base: 'main',
+  error: null,
+  diff: {
+    truncated: false,
+    files: [
+      {
+        path: 'src/a.ts',
+        oldPath: null,
+        status: 'modified',
+        binary: false,
+        additions: 1,
+        deletions: 0,
+        lines: 1,
+        hunks: [],
+        truncated: false,
+      },
+    ],
+  },
+});
 
 const click = (name: string) =>
   act(() => {
@@ -111,5 +141,37 @@ describe('DiffPrPanel', () => {
       vi.advanceTimersByTime(DIFF_POLL_MS * 3);
     });
     expect(props.onLoadDiff).not.toHaveBeenCalled();
+  });
+
+  it('Should show only the diff of the selected scope', () => {
+    const {view} = setup();
+    view.rerender(
+      <DiffPrPanel
+        worktree={worktree}
+        diff={diffOf('live')}
+        queue={null}
+        merging={false}
+        onLoadDiff={vi.fn()}
+        onMerge={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        onOpenExternal={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('src/a.ts')).toBeVisible();
+    click('Branch');
+    expect(screen.queryByText('src/a.ts')).not.toBeInTheDocument();
+    view.rerender(
+      <DiffPrPanel
+        worktree={worktree}
+        diff={diffOf('branch')}
+        queue={null}
+        merging={false}
+        onLoadDiff={vi.fn()}
+        onMerge={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        onOpenExternal={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('src/a.ts')).toBeVisible();
   });
 });

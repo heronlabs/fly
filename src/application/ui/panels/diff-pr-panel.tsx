@@ -119,7 +119,7 @@ export const DiffPrPanel = ({
       <div style={{flex: 1, minHeight: 0, marginTop: 8}}>
         {tab === 'diff' ? (
           <DiffView
-            diff={diff}
+            diff={diff?.scope === scope ? diff : null}
             onOpenInEditor={onOpenInEditor}
             worktreePath={worktree.path}
           />
