@@ -52,12 +52,13 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 3. **Task.** "Nova tarefa" starts a session in the repo's main worktree with `/supera:ship <descrição>` as the initial prompt, then follows the transcript until ship creates the worktree and moves the session there.
 4. **Queue.** A poller tails `~/.claude/projects/<cwd>/<session>.jsonl` and asks `gh` for the pull requests of each worktree, then applies the queue rules and broadcasts a snapshot to the renderer, which shows a badge per worktree and the counts in the footer.
 5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button and the engineer's receipt; the panel collapses from the top bar.
+6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; ⌘S saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note and "Abrir no VSCode".
 
 ## Prerequisites
 
 | Tool | Why |
 |------|-----|
-| `git` | Repo and worktree discovery; `git diff` for the diff panel |
+| `git` | Repo and worktree discovery; `git diff` for the diff panel, `git status` for the explorer |
 | `gh` | Pull request status and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
@@ -109,8 +110,8 @@ running, CI running and failed.
 | M2 | Terminal: tmux + node-pty + xterm.js, session lifecycle, reconciliation | Done |
 | M3 | Queue state: transcript parser, PR polling, state machine | Done |
 | M4 | Diff / PR panel | Done |
-| M5 | Explorer + editor | Next |
-| M6 | First-run flow, supera install, `.dmg` packaging, macOS CD | Planned |
+| M5 | Explorer + editor | Done |
+| M6 | First-run flow, supera install, `.dmg` packaging, macOS CD | Next |
 
 The design spec and the plan of each milestone live in
 [`docs/superpowers/`](docs/superpowers/).
@@ -127,14 +128,14 @@ src/
 ├── preload.ts                # contextBridge → window.fly (channels in core/domain/fly-api.ts)
 ├── application/
 │   ├── ipc/                  # composition root: IpcModule + one handler per channel
-│   └── ui/                   # React renderer: panels, components, terminal, theme, state
+│   └── ui/                   # React renderer: panels, components, editor (CodeMirror), terminal, theme, state
 ├── core/
-│   ├── domain/               # queue, session, transcript, diff, workspace, settings, fly-api types
+│   ├── domain/               # queue, session, transcript, diff, files, workspace, settings, fly-api types
 │   ├── interfaces/           # ports: VcsGateway, PrGateway, SessionLauncher, TranscriptSource…
-│   └── services/             # workspace, session, task, terminal, queue (+ queue-rules), diff (+ diff-rules), settings
+│   └── services/             # workspace, session, task, terminal, queue (+ queue-rules), diff (+ diff-rules), files (+ file-rules), settings
 └── infrastructure/
     ├── claude/               # transcript reader and parser (~/.claude/projects)
-    ├── git/ github/          # worktree discovery (git), pull requests (gh)
+    ├── git/ github/          # worktree discovery, diff and status (git), pull requests (gh)
     ├── tmux/ pty/ process/   # sessions, node-pty terminals, command runner
     ├── supera/               # engineer receipt parser
     └── environment/ filesystem/
@@ -160,6 +161,7 @@ All of this is enforced by `pnpm dep:cruise`.
 | Transcripts | tests use an `mkdtemp` projects dir through `CLAUDE_PROJECTS_DIR`, never the real `~/.claude` |
 | `gh` | always mocked through `CommandRunner` or `PrGateway` |
 | `git` | mocked through `CommandRunner` in unit tests; runs against an `mkdtemp` repo in integration tests |
+| Files | `FileStore` is tested against `mkdtemp` directories |
 
 ```bash
 pnpm test:unit        # vitest run with coverage

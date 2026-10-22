@@ -29,13 +29,17 @@ Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJ
 
 `git` is mocked through `CommandRunner` in unit tests and runs against an `mkdtemp` repo in integration tests. Never the user's repos.
 
+Panel specs mock `CodeEditor` (`src/application/ui/editor/code-editor`) the same way they mock `TerminalView`. `tests/ui/editor` runs real CodeMirror in jsdom with three stubs in `tests/ui/setup.ts`.
+
+Every path the renderer sends over `file:*` is worktree-relative POSIX. `FileService` resolves it inside the worktree's real path and refuses anything else (`Caminho fora do worktree`); new files are created exclusively (`wx`) so symlinks are never followed.
+
 ## Mutation testing
 
 Kill a surviving mutant with a test first; if that is not possible, with a behaviour-preserving simplification; only for a genuine equivalent mutant, with `// Stryker disable next-line <Mutator>: <reason>`. Never disable whole files, blocks or `all`. `vitest.stryker.config.ts` mirrors the `node` project of `vitest.config.ts` by hand, so change both together.
 
 ## Layout and layer rules
 
-`src/{application,core,infrastructure}` plus `src/main.ts` and `src/preload.ts`; the renderer lives under `src/application/ui`. Kebab-case files with `-service.ts` / `-handler.ts` / `-module.ts` suffixes.
+`src/{application,core,infrastructure}` plus `src/main.ts` and `src/preload.ts`; the renderer lives under `src/application/ui`. `src/application/ui/editor` holds the CodeMirror host, languages and the VSCode-like palette (`--ed*` variables). Kebab-case files with `-service.ts` / `-handler.ts` / `-module.ts` suffixes.
 
 - `core` never imports `application`.
 - `application` never imports `infrastructure`, except `src/application/ipc/ipc-module.ts` (composition root).
