@@ -775,8 +775,9 @@ describe('files', () => {
       expect(fileOf('a', 'b/y#main')).toBe(other);
     });
 
-    it('saveFile writes with the eol and mtime, stores the new mtime and clears dirty', async () => {
+    it('saveFile writes with the eol and mtime, stores the new mtime and clears dirty and the error', async () => {
       useFlyStore.setState({
+        error: 'Arquivo mudou no disco; recarregue antes de salvar',
         openFiles: [
           tab('a.ts', {
             dirty: true,
@@ -806,9 +807,10 @@ describe('files', () => {
         }),
       );
       expect(useFlyStore.getState().saving).toBe(false);
+      expect(useFlyStore.getState().error).toBeNull();
     });
 
-    it('saveFile passes a null expected mtime when the file is missing', async () => {
+    it('saveFile sends the saved mtime even when the file is missing', async () => {
       useFlyStore.setState({
         openFiles: [tab('a.ts', {dirty: true, diskState: 'missing'})],
       });
@@ -819,7 +821,7 @@ describe('files', () => {
         'a.ts',
         'de volta',
         'lf',
-        null,
+        1,
       );
       expect(fileOf('a.ts')?.diskState).toBe('same');
     });
@@ -843,17 +845,36 @@ describe('files', () => {
       expect(useFlyStore.getState().saving).toBe(false);
     });
 
-    it('saveFile reports a rejection, keeps the tab dirty and returns false', async () => {
-      useFlyStore.setState({openFiles: [tab('a.ts', {dirty: true})]});
+    it('saveFile reports an mtime conflict, marks the dirty tab changed and returns false', async () => {
+      const other = tab('a.ts', {worktreeId: 'b/y#main'});
+      useFlyStore.setState({openFiles: [tab('a.ts', {dirty: true}), other]});
       vi.mocked(window.fly.files.write).mockRejectedValue(
-        new Error('Arquivo mudou no disco; recarregue antes de salvar'),
+        new Error(
+          "Error invoking remote method 'file:write': Error: Arquivo mudou no disco; recarregue antes de salvar",
+        ),
       );
       const ok = await useFlyStore.getState().saveFile(W, 'a.ts', 'novo');
       expect(ok).toBe(false);
       expect(useFlyStore.getState().error).toBe(
         'Arquivo mudou no disco; recarregue antes de salvar',
       );
-      expect(fileOf('a.ts')?.dirty).toBe(true);
+      expect(fileOf('a.ts')).toEqual(
+        tab('a.ts', {dirty: true, diskState: 'changed'}),
+      );
+      expect(fileOf('a.ts', 'b/y#main')).toBe(other);
+      expect(useFlyStore.getState().saving).toBe(false);
+    });
+
+    it('saveFile reports another rejection and leaves the tab alone', async () => {
+      const openFiles = [tab('a.ts', {dirty: true, diskState: 'missing'})];
+      useFlyStore.setState({openFiles});
+      vi.mocked(window.fly.files.write).mockRejectedValue(
+        new Error('EACCES: permission denied'),
+      );
+      const ok = await useFlyStore.getState().saveFile(W, 'a.ts', 'novo');
+      expect(ok).toBe(false);
+      expect(useFlyStore.getState().error).toBe('EACCES: permission denied');
+      expect(useFlyStore.getState().openFiles).toBe(openFiles);
       expect(useFlyStore.getState().saving).toBe(false);
     });
 

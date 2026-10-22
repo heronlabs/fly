@@ -96,6 +96,9 @@ export type FlyState = {
 
 const ipcPrefix = /^Error invoking remote method '[^']*': (?:Error: )?/;
 
+// FileService's CHANGED_ON_DISK: the write found a newer file on disk.
+const CHANGED_ON_DISK = 'Arquivo mudou no disco; recarregue antes de salvar';
+
 export const errorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(ipcPrefix, '');
@@ -493,9 +496,10 @@ export const useFlyStore = create<FlyState>((set, get) => ({
         path,
         text,
         content.eol,
-        file?.diskState === 'missing' ? null : content.mtimeMs,
+        content.mtimeMs,
       );
       set(state => ({
+        error: null,
         openFiles: updateTab(state, worktreeId, path, tab => ({
           ...tab,
           content: {...content, text, mtimeMs},
@@ -505,7 +509,19 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       }));
       return true;
     } catch (error) {
-      set({error: errorMessage(error)});
+      const message = errorMessage(error);
+      // A conflict shows the reload bar, so the edit can be kept or dropped.
+      set(state =>
+        message === CHANGED_ON_DISK
+          ? {
+              error: message,
+              openFiles: updateTab(state, worktreeId, path, tab => ({
+                ...tab,
+                diskState: 'changed',
+              })),
+            }
+          : {error: message},
+      );
       return false;
     } finally {
       set({saving: false});
@@ -516,8 +532,9 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     return reread(set, worktreeId, path, false);
   },
 
-  // A null mtime (the file is gone) keeps the old one: the write of a
-  // missing file skips the guard, and the next poll flags it missing.
+  // A null mtime (the file is gone) keeps the old one: the write creates a
+  // missing file whatever mtime it gets, checks it only against a file that
+  // exists again, and the next poll flags it missing.
   keepFile(worktreeId, path, mtimeMs) {
     set(state => ({
       openFiles: updateTab(state, worktreeId, path, file => ({
