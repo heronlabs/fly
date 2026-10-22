@@ -113,35 +113,51 @@ export const WorkbenchPanel = ({
           onClose={close}
         />
       )}
-      {/* Always mounted, so the terminal is never re-attached (P10). */}
-      <div hidden={active !== undefined} style={{height: '100%', minHeight: 0}}>
-        <SessionPanel
-          worktree={worktree}
-          snapshot={session.snapshot}
-          activeSessionName={session.activeSessionName}
-          theme={theme}
-          onStart={session.onStart}
-          onKill={session.onKill}
-          onSelectSession={session.onSelectSession}
-        />
-      </div>
-      {worktree && active && (
-        <div style={{height: '100%', minHeight: 0}}>
-          <EditorPanel
-            file={active}
-            worktreePath={worktree.path}
+      <div style={{position: 'relative', flex: 1, minHeight: 0}}>
+        {/* Always mounted and always sized, so the terminal is never
+            re-attached nor refitted (P10; R18): a hidden host makes FitAddon
+            shrink it to 10x6 and resize the tmux pane. The editor covers it
+            and inert keeps focus, clicks and keys off it. Isolation keeps
+            xterm's z-indexed layers below the overlay. */}
+        <div
+          inert={active !== undefined}
+          style={{height: '100%', minHeight: 0, isolation: 'isolate'}}
+        >
+          <SessionPanel
+            worktree={worktree}
+            snapshot={session.snapshot}
+            activeSessionName={session.activeSessionName}
             theme={theme}
-            saving={saving}
-            diskMtime={mtimes[active.path]}
-            onDirty={dirty => onDirty(active.path, dirty)}
-            onSave={text => onSave(active.path, text)}
-            onReload={() => onReload(active.path)}
-            onKeep={mtimeMs => onKeep(active.path, mtimeMs)}
-            onOpenInEditor={onOpenInEditor}
-            editorRef={editorRef}
+            onStart={session.onStart}
+            onKill={session.onKill}
+            onSelectSession={session.onSelectSession}
           />
         </div>
-      )}
+        {worktree && active && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 1,
+              background: 'var(--page)',
+            }}
+          >
+            <EditorPanel
+              file={active}
+              worktreePath={worktree.path}
+              theme={theme}
+              saving={saving}
+              diskMtime={mtimes[active.path]}
+              onDirty={dirty => onDirty(active.path, dirty)}
+              onSave={text => onSave(active.path, text)}
+              onReload={() => onReload(active.path)}
+              onKeep={mtimeMs => onKeep(active.path, mtimeMs)}
+              onOpenInEditor={onOpenInEditor}
+              editorRef={editorRef}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 };

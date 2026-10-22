@@ -137,6 +137,10 @@ const sessionContainer = () =>
   screen.getByTestId('terminal').closest('section')
     ?.parentElement as HTMLElement;
 
+const editorOverlay = () =>
+  screen.queryByTestId('code-editor')?.closest('section')?.parentElement ??
+  null;
+
 describe('WorkbenchPanel', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -215,17 +219,36 @@ describe('WorkbenchPanel', () => {
     expect(props.onPoll).not.toHaveBeenCalled();
   });
 
-  it('Should keep one terminal mounted across Sessão, a file and Sessão', () => {
+  it('Should keep the session mounted and sized under the editor overlay', () => {
     const {rerender} = setup();
-    expect(sessionContainer()).not.toHaveAttribute('hidden');
-    expect(screen.queryByTestId('code-editor')).not.toBeInTheDocument();
+    const session = sessionContainer();
+    expect(session).not.toHaveAttribute('hidden');
+    expect(session).not.toHaveAttribute('inert');
+    expect(editorOverlay()).toBeNull();
     rerender({activePath: 'src/a.ts'});
-    expect(sessionContainer()).toHaveAttribute('hidden');
+    expect(sessionContainer()).toBe(session);
+    expect(session).not.toHaveAttribute('hidden');
+    expect(session).toHaveAttribute('inert');
+    const overlay = editorOverlay() as HTMLElement;
+    expect(overlay).toHaveStyle({position: 'absolute', inset: '0'});
+    expect(overlay.parentElement).toBe(session.parentElement);
+    expect(overlay.parentElement).toHaveStyle({position: 'relative'});
     expect(screen.getByTestId('code-editor')).toHaveTextContent('w1\0src/a.ts');
     rerender({activePath: null});
-    expect(sessionContainer()).not.toHaveAttribute('hidden');
-    expect(screen.queryByTestId('code-editor')).not.toBeInTheDocument();
+    expect(sessionContainer()).toBe(session);
+    expect(session).not.toHaveAttribute('inert');
+    expect(editorOverlay()).toBeNull();
+    rerender({activePath: 'src/b.ts'});
+    expect(sessionContainer()).toBe(session);
+    expect(session).toHaveAttribute('inert');
+    expect(editorOverlay()).not.toBeNull();
     expect(mocks.terminalMounted).toHaveBeenCalledTimes(1);
+  });
+
+  it('Should cover the session for a binary tab too', () => {
+    setup({activePath: 'icon.png'});
+    expect(sessionContainer()).toHaveAttribute('inert');
+    expect(screen.getByText('Arquivo binário')).toBeVisible();
   });
 
   it('Should save the live editor text of a dirty text tab on ⌘S', () => {
