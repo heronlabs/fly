@@ -1,3 +1,38 @@
+## v0.1.5 (2026-10-22)
+
+### Features
+
+* feat(ui): add file tabs and the editor to the center column (bc9718d330eb415be53c3a7cd13e00603f077e7b)
+* feat(ui): add the explorer tree and file state (1874fec106c013520f7b036ca2f5464083872aba)
+* feat(editor): add CodeMirror with the VSCode-like syntax palette (932cc1fbcdbf02b634911a3c75c18e9717fa1f73)
+* feat(ipc): expose worktree files to the renderer (712f18dbdb69eaf67d73ea22f6ec1b7b3488d5ce)
+* feat(settings): persist the explorer column state (a9c8909026c4ff9e96f030eeaa2a3d6b432565d4)
+* feat(files): read, write, list and poll worktree files (475656e90e5700a25390b3b0db9412e823ef1ea8)
+* feat(files): add file domain, rules and the git status parser (931b29eecc345a7425a467c9c6fd78f341152dc5)
+
+### Bug Fixes
+
+* fix(editor): keep CodeMirror's default line splitting (004d5d2df78db2da19f5e7c6cfda61d684004489)
+* fix(editor): treat a lone CR as text, not a line break (9b53bd19820d29c4b39f50bed20d5c9696b094f7)
+* fix(ui): re-list a directory on every expand (686ed72ef89bebb4af0977c18a3a032a1ebd6a12)
+* fix(ui): keep file state through a transient discovery failure (624c2751757438330fe8205583054522d4bb7621)
+* fix(ui): let ⌘S re-create a deleted file and never save without a view (0d0631649a1dd362b507072aa3421611407141b9)
+* fix(ui): always send the saved mtime and surface mtime conflicts (9ae6b740680f343562374fed898aa442392eacdb)
+* fix(ui): give every open file a unique revision (473b8be80ec67e3723850f34a892c6be83a98bb8)
+* fix(ui): key file tabs by worktree so a close prompt never crosses worktrees (c33d75b6c86c92c1bd2c111975fd1f6caf236102)
+* fix(ui): overlay the editor on the session so the terminal never refits (8243b0fa5ef8c9ba356aa52cac222ec974abd45f)
+* fix(ui): recover missing tabs on poll and keep the polled disk mtimes (166bdff0c4589a7b487b5a3c219f6129d25cabfe)
+* fix(ui): ignore poll results older than the tab's saved mtime (9c6095488ff3b5c5eae9b6401829b47a9b70864d)
+* fix(editor): allow multiple selections and rebuild stale cached states (b7c89fb3782b7ee04d7dd731d8b4e1e52de9fac3)
+* fix(files): create new files exclusively so symlinks are never followed (635859c310b165cfd4d6077d084e6887be9a944b)
+* fix(files): refuse to write through a dangling symlink (59679add6dd7ea0d3597d9c6eae1f26d8ecb73ef)
+* fix(files): detect the EOL from the first line break (f743fe1f2ba7bc829f80014cebba86436d619293)
+
+### Documentation
+
+* docs: describe the symlink rule precisely (a7745efe4f41e57f537157a1fb4db826a9a71ff0)
+* docs: describe the explorer and editor (37e79511061e49195f88295136610ccdadfafb61)
+
 ## v0.1.4 (2026-10-22)
 
 ### Documentation
