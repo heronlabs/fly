@@ -187,4 +187,35 @@ describe('GitCliService', () => {
       ).rejects.toBe(failure);
     });
   });
+
+  describe('resolveBase', () => {
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should return origin/<branch> when the remote-tracking ref exists', async () => {
+      run.mockResolvedValue({code: 0, stdout: 'abc\n', stderr: ''});
+
+      expect(await service.resolveBase('/w', 'main')).toBe('origin/main');
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main'],
+        {cwd: '/w', timeoutMs: 15_000},
+      );
+    });
+
+    it('Should fall back to the branch when the remote ref is missing', async () => {
+      run.mockResolvedValue({code: 128, stdout: '', stderr: ''});
+
+      expect(await service.resolveBase('/w', 'x')).toBe('x');
+    });
+
+    it('Should map a killed child to the timeout message', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.resolveBase('/w', 'main')).rejects.toThrow(
+        GIT_TIMEOUT_MESSAGE,
+      );
+    });
+  });
 });

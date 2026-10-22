@@ -60,13 +60,15 @@ describe('baseOf', () => {
 describe('DiffService', () => {
   const diff = vi.fn();
   const currentWorkspace = vi.fn();
+  const resolveBase = vi.fn();
   const service = new DiffService(
     {currentWorkspace} as unknown as SessionService,
-    {diff} as unknown as VcsGateway,
+    {diff, resolveBase} as unknown as VcsGateway,
   );
 
   beforeEach(() => {
     diff.mockReset();
+    resolveBase.mockReset().mockImplementation(async (_p, b) => b);
     currentWorkspace.mockReset().mockReturnValue(workspace);
   });
 
@@ -95,23 +97,60 @@ describe('DiffService', () => {
     expect(diff).not.toHaveBeenCalled();
   });
 
-  it('Should read the branch diff against the base', async () => {
+  it('Should read the branch diff against the resolved base', async () => {
     diff.mockResolvedValue([file(2)]);
+    resolveBase.mockResolvedValue('origin/main');
 
     const result = await service.read('a/feat', 'branch');
 
+    expect(resolveBase).toHaveBeenCalledExactlyOnceWith('/r/a/feat', 'main');
     expect(diff).toHaveBeenCalledWith({
       worktreePath: '/r/a/feat',
       scope: 'branch',
-      base: 'main',
+      base: 'origin/main',
     });
     expect(result).toEqual({
       worktreeId: 'a/feat',
       scope: 'branch',
-      base: 'main',
+      base: 'origin/main',
       diff: {files: [file(2)], truncated: false},
       error: null,
     });
+  });
+
+  it('Should not resolve a detached main head', async () => {
+    diff.mockResolvedValue([]);
+
+    const result = await service.read('b/feat', 'branch');
+
+    expect(resolveBase).not.toHaveBeenCalled();
+    expect(diff).toHaveBeenCalledWith({
+      worktreePath: '/r/b/feat',
+      scope: 'branch',
+      base: 'deadbeef',
+    });
+    expect(result.base).toBe('deadbeef');
+  });
+
+  it('Should turn a resolveBase rejection into an error row', async () => {
+    resolveBase.mockRejectedValue(new Error('git não respondeu em 15 s'));
+
+    expect(await service.read('a/feat', 'branch')).toEqual({
+      worktreeId: 'a/feat',
+      scope: 'branch',
+      base: 'main',
+      diff: null,
+      error: 'git não respondeu em 15 s',
+    });
+    expect(diff).not.toHaveBeenCalled();
+  });
+
+  it('Should not resolve the base for the live scope', async () => {
+    diff.mockResolvedValue([]);
+
+    await service.read('a/feat', 'live');
+
+    expect(resolveBase).not.toHaveBeenCalled();
   });
 
   it('Should read the live diff, reporting the base too', async () => {

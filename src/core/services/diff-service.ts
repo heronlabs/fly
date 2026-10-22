@@ -29,15 +29,22 @@ export class DiffService {
     const workspace = this.sessions.currentWorkspace();
     const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
     if (!workspace || !worktree) throw new Error('Worktree não encontrado');
-    const base = baseOf(workspace, worktree);
+    let base = baseOf(workspace, worktree);
     let request: DiffRequest = {worktreePath: worktree.path, scope: 'live'};
-    if (scope === 'branch') {
-      if (base === null) {
-        return {worktreeId, scope, base, diff: null, error: null};
-      }
-      request = {worktreePath: worktree.path, scope, base};
-    }
     try {
+      if (scope === 'branch') {
+        if (base === null) {
+          return {worktreeId, scope, base, diff: null, error: null};
+        }
+        const main = workspace.worktrees.find(
+          w => w.repoId === worktree.repoId && w.isMain,
+        );
+        // A detached main worktree yields a SHA, which has no remote twin.
+        if (main?.branch === base) {
+          base = await this.vcs.resolveBase(worktree.path, base);
+        }
+        request = {worktreePath: worktree.path, scope, base};
+      }
       const files = await this.vcs.diff(request);
       return {worktreeId, scope, base, diff: capDiff(files), error: null};
     } catch (error) {

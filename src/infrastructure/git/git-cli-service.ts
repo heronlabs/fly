@@ -41,6 +41,16 @@ export class GitCliService extends VcsGateway {
     return parseWorktreePorcelain(result.stdout);
   }
 
+  async resolveBase(worktreePath: string, branch: string): Promise<string> {
+    const result = await this.run(worktreePath, [
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      `refs/remotes/origin/${branch}`,
+    ]);
+    return result.code === 0 ? `origin/${branch}` : branch;
+  }
+
   async diff(request: DiffRequest): Promise<DiffFile[]> {
     const {worktreePath} = request;
     if (request.scope === 'branch') {

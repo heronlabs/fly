@@ -101,5 +101,38 @@ describe('GitCliService (real git)', () => {
         ['feature.txt', 'added'],
       ]);
     });
+
+    it('Should diff the branch against origin/<base> when the remote ref exists', async () => {
+      // origin/main is ahead of the local main (a CD bump commit); the feature
+      // forks from it, so the local main would make the bump look like branch work.
+      git('checkout', '-b', 'feature');
+      writeFileSync(join(dir, 'bump.txt'), 'b\n');
+      git('add', 'bump.txt');
+      git('commit', '-m', 'bump');
+      git('update-ref', 'refs/remotes/origin/main', 'feature');
+      writeFileSync(join(dir, 'feature.txt'), 'f\n');
+      git('add', 'feature.txt');
+      git('commit', '-m', 'feature');
+
+      const base = await service().resolveBase(dir, 'main');
+      const files = await service().diff({
+        worktreePath: dir,
+        scope: 'branch',
+        base,
+      });
+      const localFiles = await service().diff({
+        worktreePath: dir,
+        scope: 'branch',
+        base: 'main',
+      });
+
+      expect(base).toBe('origin/main');
+      expect(files.map(f => f.path)).toEqual(['feature.txt']);
+      expect(localFiles.map(f => f.path)).toEqual(['bump.txt', 'feature.txt']);
+    });
+
+    it('Should keep the branch as base without a remote ref', async () => {
+      expect(await service().resolveBase(dir, 'main')).toBe('main');
+    });
   });
 });
