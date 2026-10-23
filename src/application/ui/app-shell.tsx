@@ -66,6 +66,7 @@ export const AppShell = () => {
     keepFile,
     listDir,
     toggleDir,
+    collapseDirs,
     pollFiles,
     setExplorer,
   } = useFlyStore();
@@ -167,10 +168,13 @@ export const AppShell = () => {
     null;
   const panelOpen = config.diffPanel === 'open';
   const explorerOpen = selected !== null && config.explorer === 'open';
+  // minmax(0, 1fr), not 1fr (= minmax(auto, 1fr)): the centre column must
+  // not grow to its tab strip's width, or the window scrolls sideways and
+  // the terminal is fitted (and its tmux pane resized) wider than visible.
   const columns = [
     '320px',
     explorerOpen && '260px',
-    '1fr',
+    'minmax(0, 1fr)',
     panelOpen && '380px',
   ]
     .filter(Boolean)
@@ -250,6 +254,7 @@ export const AppShell = () => {
               error={filesError[selected.id] ?? null}
               activePath={activeFile[selected.id] ?? null}
               onToggleDir={dir => void toggleDir(selected.id, dir)}
+              onCollapseDirs={() => collapseDirs(selected.id)}
               onOpenFile={path => void openFile(selected.id, path)}
               onClose={() => void setExplorer('collapsed')}
             />

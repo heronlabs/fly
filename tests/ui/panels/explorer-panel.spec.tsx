@@ -51,6 +51,7 @@ const setup = (
     error: null,
     activePath: null,
     onToggleDir: vi.fn(),
+    onCollapseDirs: vi.fn(),
     onOpenFile: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
@@ -85,6 +86,19 @@ describe('ExplorerPanel', () => {
       screen.getByRole('button', {name: 'Fechar explorer'}),
     );
     expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapses every folder from the button beside the close button', async () => {
+    const props = setup();
+    const collapse = screen.getByRole('button', {name: 'Recolher pastas'});
+    expect(collapse).toHaveAttribute('title', 'Recolher pastas');
+    expect(collapse.nextElementSibling).toBe(
+      screen.getByRole('button', {name: 'Fechar explorer'}),
+    );
+    await userEvent.click(collapse);
+    expect(props.onCollapseDirs).toHaveBeenCalledTimes(1);
+    expect(props.onToggleDir).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
   });
 
   it('toggles a directory by click, Enter and Space', async () => {

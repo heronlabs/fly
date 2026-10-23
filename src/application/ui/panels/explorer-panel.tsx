@@ -2,6 +2,7 @@ import {
   FolderOpenOutlined,
   FolderOutlined,
   LeftOutlined,
+  MinusSquareOutlined,
   RightOutlined,
 } from '@ant-design/icons';
 import {
@@ -25,6 +26,7 @@ type Props = {
   error: string | null;
   activePath: string | null;
   onToggleDir(dir: string): void;
+  onCollapseDirs(): void;
   onOpenFile(path: string): void;
   onClose(): void;
 };
@@ -228,6 +230,7 @@ export const ExplorerPanel = ({
   error,
   activePath,
   onToggleDir,
+  onCollapseDirs,
   onOpenFile,
   onClose,
 }: Props) => {
@@ -277,11 +280,26 @@ export const ExplorerPanel = ({
         </span>
         <button
           type="button"
+          aria-label="Recolher pastas"
+          title="Recolher pastas"
+          onClick={onCollapseDirs}
+          style={{
+            marginLeft: 'auto',
+            background: 'none',
+            border: 0,
+            padding: '4px 6px',
+            cursor: 'pointer',
+            color: 'var(--muted)',
+          }}
+        >
+          <MinusSquareOutlined />
+        </button>
+        <button
+          type="button"
           aria-label="Fechar explorer"
           title="Fechar explorer"
           onClick={onClose}
           style={{
-            marginLeft: 'auto',
             background: 'none',
             border: 0,
             padding: '4px 10px',

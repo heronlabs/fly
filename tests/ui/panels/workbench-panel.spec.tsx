@@ -316,6 +316,41 @@ describe('WorkbenchPanel', () => {
     expect(props.onClose).toHaveBeenCalledWith('src/b.ts');
   });
 
+  it('Should forget the editor state of a tab closed with the middle button', () => {
+    const {props} = setup();
+    act(() => {
+      fireEvent(
+        screen.getByRole('tab', {name: 'a.ts'}),
+        new MouseEvent('auxclick', {bubbles: true, button: 1}),
+      );
+    });
+    expect(forgetEditorState).toHaveBeenCalledWith('w1\0src/a.ts');
+    expect(props.onClose).toHaveBeenCalledWith('src/a.ts');
+  });
+
+  it('Should forget the editor state of every tab the tab menu closes', () => {
+    const {props} = setup();
+    fireEvent.contextMenu(screen.getByRole('tab', {name: 'a.ts'}));
+    click(screen.getByRole('menuitem', {name: 'Fechar salvas'}));
+    expect(vi.mocked(forgetEditorState).mock.calls).toEqual([
+      ['w1\0src/a.ts'],
+      ['w1\0icon.png'],
+    ]);
+    expect(vi.mocked(props.onClose).mock.calls).toEqual([
+      ['src/a.ts'],
+      ['icon.png'],
+    ]);
+    fireEvent.contextMenu(screen.getByRole('tab', {name: 'a.ts'}));
+    click(screen.getByRole('menuitem', {name: 'Fechar todas'}));
+    click(screen.getByRole('menuitem', {name: 'Descartar'}));
+    expect(vi.mocked(forgetEditorState).mock.calls.slice(2)).toEqual([
+      ['w1\0src/a.ts'],
+      ['w1\0src/b.ts'],
+      ['w1\0icon.png'],
+    ]);
+    expect(props.onClose).toHaveBeenLastCalledWith('icon.png');
+  });
+
   it('Should not carry a close prompt to another worktree with the same path', () => {
     const {props, rerender} = setup();
     click(screen.getByRole('button', {name: 'Fechar b.ts'}));

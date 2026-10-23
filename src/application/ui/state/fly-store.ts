@@ -86,6 +86,7 @@ export type FlyState = {
   keepFile(worktreeId: string, path: string, mtimeMs: number | null): void;
   listDir(worktreeId: string, dir: string): Promise<void>;
   toggleDir(worktreeId: string, dir: string): Promise<void>;
+  collapseDirs(worktreeId: string): void;
   pollFiles(worktreeId: string): Promise<void>;
   applyPoll(
     worktreeId: string,
@@ -604,6 +605,21 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     });
     // Every expand re-lists: an ignored new file has no flag to trigger it.
     if (expand) await get().listDir(worktreeId, dir);
+  },
+
+  // Collapsed, not dropped: a poll auto-expands only untouched ancestors,
+  // lists only expanded dirs, and the next expand re-lists anyway.
+  collapseDirs(worktreeId) {
+    set(state => {
+      const tree = treeOf(state, worktreeId);
+      if (!Object.values(tree.expanded).includes(true)) return state;
+      const expanded = Object.fromEntries(
+        Object.keys(tree.expanded).map(dir => [dir, false]),
+      );
+      return {
+        trees: {...state.trees, [worktreeId]: {...tree, expanded}},
+      };
+    });
   },
 
   async pollFiles(worktreeId) {
