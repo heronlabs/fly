@@ -2,6 +2,8 @@
 
 Electron desktop app (main process runs NestJS, renderer is React) for driving agent-based development across many repositories. Spec and plan live in `docs/superpowers/`.
 
+`CONTRIBUTING.md` (workflow, test isolation, CI gates) and `SECURITY.md` (private vulnerability reporting, scope, secrets) repeat some rules of this file; a rule changed here changes there too.
+
 ## Commands
 
 | Command | Purpose |
