@@ -202,7 +202,7 @@ describe('AppShell', () => {
       .parentElement as HTMLElement;
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(columns).toHaveStyle({
-      gridTemplateColumns: '320px 1fr 380px',
+      gridTemplateColumns: '320px minmax(0, 1fr) 380px',
       gridRow: '2',
     });
     act(() => useFlyStore.setState({error: 'falhou'}));
@@ -217,7 +217,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('tab', {name: 'Diff'})).toBeVisible();
     expect(
       screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
-    ).toHaveStyle({gridTemplateColumns: '320px 260px 1fr 380px'});
+    ).toHaveStyle({gridTemplateColumns: '320px 260px minmax(0, 1fr) 380px'});
   });
 
   it('Should drop the panel and its column when collapsed', async () => {
@@ -231,19 +231,19 @@ describe('AppShell', () => {
     expect(screen.queryByRole('tab', {name: 'Diff'})).not.toBeInTheDocument();
     expect(
       screen.getByRole('navigation', {name: 'Worktrees'}).parentElement,
-    ).toHaveStyle({gridTemplateColumns: '320px 260px 1fr'});
+    ).toHaveStyle({gridTemplateColumns: '320px 260px minmax(0, 1fr)'});
     expect(screen.getByRole('button', {name: /Mostrar painel/})).toBeVisible();
   });
 
   it.each([
-    ['w1', 'open', 'open', '320px 260px 1fr 380px'],
-    ['w1', 'open', 'collapsed', '320px 260px 1fr'],
-    ['w1', 'collapsed', 'open', '320px 1fr 380px'],
-    ['w1', 'collapsed', 'collapsed', '320px 1fr'],
-    [null, 'open', 'open', '320px 1fr 380px'],
-    [null, 'open', 'collapsed', '320px 1fr'],
-    [null, 'collapsed', 'open', '320px 1fr 380px'],
-    [null, 'collapsed', 'collapsed', '320px 1fr'],
+    ['w1', 'open', 'open', '320px 260px minmax(0, 1fr) 380px'],
+    ['w1', 'open', 'collapsed', '320px 260px minmax(0, 1fr)'],
+    ['w1', 'collapsed', 'open', '320px minmax(0, 1fr) 380px'],
+    ['w1', 'collapsed', 'collapsed', '320px minmax(0, 1fr)'],
+    [null, 'open', 'open', '320px minmax(0, 1fr) 380px'],
+    [null, 'open', 'collapsed', '320px minmax(0, 1fr)'],
+    [null, 'collapsed', 'open', '320px minmax(0, 1fr) 380px'],
+    [null, 'collapsed', 'collapsed', '320px minmax(0, 1fr)'],
   ] as const)(
     'Should lay out selection %s, explorer %s, panel %s as %s',
     async (selectedWorktreeId, explorer, diffPanel, columns) => {
@@ -349,6 +349,67 @@ describe('AppShell', () => {
       'aria-selected',
       'true',
     );
+  });
+
+  it('Should collapse every folder of the selected worktree from the explorer', async () => {
+    const user = userEvent.setup();
+    seed({
+      workspace,
+      selectedWorktreeId: 'w1',
+      trees: {
+        w1: {
+          expanded: {src: true},
+          entries: {
+            '': [{name: 'src', kind: 'dir'}],
+            src: [{name: 'a.ts', kind: 'file'}],
+          },
+        },
+      },
+    });
+    await renderShell();
+    expect(screen.getByRole('treeitem', {name: /a\.ts/})).toBeVisible();
+    await user.click(screen.getByRole('button', {name: 'Recolher pastas'}));
+    expect(
+      screen.queryByRole('treeitem', {name: /a\.ts/}),
+    ).not.toBeInTheDocument();
+    expect(useFlyStore.getState().trees.w1?.expanded).toEqual({src: false});
+  });
+
+  it('Should close the saved, then all tabs of the selected worktree from the tab menu', async () => {
+    const user = userEvent.setup();
+    const rightClick = (name: string) =>
+      user.pointer({
+        keys: '[MouseRight]',
+        target: screen.getByRole('tab', {name}),
+      });
+    seed({
+      workspace: twoWorktrees,
+      selectedWorktreeId: 'w1',
+      openFiles: [
+        openTab('w1', 'a.ts'),
+        {...openTab('w1', 'b.ts'), dirty: true},
+        openTab('w2', 'c.ts'),
+      ],
+      activeFile: {w1: 'a.ts', w2: 'c.ts'},
+    });
+    await renderShell();
+    await rightClick('a.ts');
+    await user.click(screen.getByRole('menuitem', {name: 'Fechar salvas'}));
+    expect(screen.queryByRole('tab', {name: 'a.ts'})).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: 'b.ts'})).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await rightClick('b.ts');
+    await user.click(screen.getByRole('menuitem', {name: 'Fechar todas'}));
+    await user.click(screen.getByRole('menuitem', {name: 'Descartar'}));
+    expect(screen.queryByRole('tab', {name: 'b.ts'})).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: 'Sessão'})).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(useFlyStore.getState().openFiles).toEqual([openTab('w2', 'c.ts')]);
+    expect(useFlyStore.getState().activeFile).toEqual({w1: null, w2: 'c.ts'});
   });
 
   it('Should open a file from the explorer, save it with ⌘S and go back to the session', async () => {

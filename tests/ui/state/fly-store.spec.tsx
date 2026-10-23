@@ -1009,6 +1009,48 @@ describe('files', () => {
       ]);
     });
 
+    it('collapseDirs collapses every dir of one worktree and keeps its entries', () => {
+      const other: ExplorerTree = {expanded: {src: true}, entries: {}};
+      useFlyStore.setState({
+        trees: {
+          [W]: {
+            expanded: {src: true, 'src/core': true, docs: false},
+            entries: {src: entries},
+          },
+          other,
+        },
+      });
+      useFlyStore.getState().collapseDirs(W);
+      expect(treeOf()).toEqual({
+        expanded: {src: false, 'src/core': false, docs: false},
+        entries: {src: entries},
+      });
+      expect(treeOf('other')).toBe(other);
+    });
+
+    it('collapseDirs keeps the same trees when nothing is expanded', () => {
+      useFlyStore.setState({
+        trees: {[W]: {expanded: {src: false}, entries: {}}},
+      });
+      const trees = useFlyStore.getState().trees;
+      useFlyStore.getState().collapseDirs(W);
+      useFlyStore.getState().collapseDirs('none');
+      expect(useFlyStore.getState().trees).toBe(trees);
+    });
+
+    it('collapseDirs keeps collapsed dirs out of the next poll', () => {
+      useFlyStore.setState({
+        workspace: workspace(),
+        trees: {[W]: {expanded: {src: true}, entries: {}}},
+      });
+      useFlyStore.getState().collapseDirs(W);
+      const result = useFlyStore
+        .getState()
+        .applyPoll(W, pollOf({flags: {'src/a.ts': 'M', 'lib/b.ts': 'A'}}));
+      expect(treeOf()?.expanded).toEqual({src: false, lib: true});
+      expect(result.list).toEqual(['', 'lib']);
+    });
+
     it('setExplorer persists and stores the config', async () => {
       vi.mocked(window.fly.settings.set).mockResolvedValue({
         recentRoots: [],
