@@ -9,6 +9,7 @@ import {ConfigStore} from '../../core/interfaces/config-store';
 import {EditorLauncher} from '../../core/interfaces/editor-launcher';
 import {FileStore} from '../../core/interfaces/file-store';
 import {IdGenerator} from '../../core/interfaces/id-generator';
+import {ImageStore} from '../../core/interfaces/image-store';
 import {PrGateway} from '../../core/interfaces/pr-gateway';
 import {SessionLauncher} from '../../core/interfaces/session-launcher';
 import {TerminalSpawner} from '../../core/interfaces/terminal-spawner';
@@ -31,12 +32,15 @@ import {USER_DATA_DIR} from '../../infrastructure/environment/tokens';
 import {VscodeEditorLauncherService} from '../../infrastructure/environment/vscode-editor-launcher-service';
 import {GitDirWatcherService} from '../../infrastructure/filesystem/git-dir-watcher-service';
 import {NodeFileStoreService} from '../../infrastructure/filesystem/node-file-store-service';
+import {TempImageStoreService} from '../../infrastructure/filesystem/temp-image-store-service';
+import {TEMP_DIR} from '../../infrastructure/filesystem/tokens';
 import {GitCliService} from '../../infrastructure/git/git-cli-service';
 import {GhCliService} from '../../infrastructure/github/gh-cli-service';
 import {ExecCommandRunnerService} from '../../infrastructure/process/exec-command-runner-service';
 import {NodePtyTerminalService} from '../../infrastructure/pty/node-pty-terminal-service';
 import {TmuxSessionService} from '../../infrastructure/tmux/tmux-session-service';
 import {TMUX_SOCKET} from '../../infrastructure/tmux/tokens';
+import {AttachmentHandler} from './handlers/attachment-handler';
 import {DiffHandler} from './handlers/diff-handler';
 import {FileHandler} from './handlers/file-handler';
 import {QueueHandler} from './handlers/queue-handler';
@@ -52,6 +56,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
   providers: [
     {provide: CommandRunner, useClass: ExecCommandRunnerService},
     {provide: FileStore, useClass: NodeFileStoreService},
+    {provide: ImageStore, useClass: TempImageStoreService},
     {provide: VcsGateway, useClass: GitCliService},
     {provide: PrGateway, useClass: GhCliService},
     {provide: ConfigStore, useClass: JsonConfigStoreService},
@@ -71,6 +76,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
         ),
     },
     {provide: USER_DATA_DIR, useFactory: () => app.getPath('userData')},
+    {provide: TEMP_DIR, useFactory: () => app.getPath('temp')},
     {provide: IPC_HOST, useValue: ipcMain},
     {
       provide: FOLDER_PICKER,
@@ -111,6 +117,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
     DiffHandler,
     FileHandler,
     TerminalHandler,
+    AttachmentHandler,
   ],
 })
 export class IpcModule {}

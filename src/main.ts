@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {NestFactory} from '@nestjs/core';
 import {app, BrowserWindow, nativeImage} from 'electron';
 
+import {AttachmentHandler} from './application/ipc/handlers/attachment-handler';
 import {DiffHandler} from './application/ipc/handlers/diff-handler';
 import {FileHandler} from './application/ipc/handlers/file-handler';
 import {QueueHandler} from './application/ipc/handlers/queue-handler';
@@ -97,6 +98,7 @@ app
     context.get(QueueHandler).register();
     context.get(DiffHandler).register();
     context.get(FileHandler).register();
+    context.get(AttachmentHandler).register();
     const terminalHandler = context.get(TerminalHandler);
     terminalHandler.register();
     const onReset = () => terminalHandler.reset();

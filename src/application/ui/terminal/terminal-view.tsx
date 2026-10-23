@@ -13,6 +13,10 @@ interface TerminalViewProps {
   onExit?(exitCode: number): void;
 }
 
+// Backslash-escapes the way Terminal.app types a dropped path; non-ASCII stays.
+const shellEscape = (path: string): string =>
+  path.replace(/[^\w./,:@%+\u0080-\uffff-]/g, '\\$&');
+
 export const TerminalView = ({
   sessionName,
   theme,
@@ -33,6 +37,7 @@ export const TerminalView = ({
       return undefined;
     }
     const api = window.fly.terminal;
+    const attachments = window.fly.attachments;
     setExited(false);
 
     const xterm = new Terminal({
@@ -94,6 +99,47 @@ export const TerminalView = ({
     });
     observer.observe(element);
 
+    const onDragOver = (event: DragEvent) => event.preventDefault();
+    const onDrop = (event: DragEvent) => {
+      event.preventDefault();
+      const paths = Array.from(event.dataTransfer?.files ?? [], file =>
+        attachments.pathForFile(file),
+      ).filter(path => path !== '');
+      if (paths.length > 0) {
+        xterm.paste(paths.map(shellEscape).join(' '));
+      }
+    };
+    // Capture phase: an image-only paste never reaches xterm's own handler,
+    // which would send an empty paste; any paste with text stays with xterm.
+    const onPaste = (event: ClipboardEvent) => {
+      const data = event.clipboardData;
+      if (!data || data.getData('text/plain') !== '') {
+        return;
+      }
+      const image = Array.from(data.files).find(
+        file => file.type === 'image/png',
+      );
+      if (!image) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      image
+        .arrayBuffer()
+        .then(bytes => attachments.saveImage(new Uint8Array(bytes)))
+        .then(
+          path => {
+            if (!disposed) {
+              xterm.paste(shellEscape(path));
+            }
+          },
+          () => undefined,
+        );
+    };
+    element.addEventListener('dragover', onDragOver);
+    element.addEventListener('drop', onDrop);
+    element.addEventListener('paste', onPaste, true);
+
     api.attach(sessionName, size).then(
       attached => {
         if (disposed) {
@@ -121,6 +167,9 @@ export const TerminalView = ({
       unExit();
       input.dispose();
       observer.disconnect();
+      element.removeEventListener('dragover', onDragOver);
+      element.removeEventListener('drop', onDrop);
+      element.removeEventListener('paste', onPaste, true);
       if (id !== null) {
         api.detach(id).catch(() => undefined);
       }

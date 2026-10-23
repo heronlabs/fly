@@ -31,6 +31,7 @@ const fly: FlyApi = {
     onData: vi.fn(),
     onExit: vi.fn(),
   },
+  attachments: {pathForFile: vi.fn(), saveImage: vi.fn()},
 };
 
 Object.defineProperty(window, 'fly', {value: fly, configurable: true});

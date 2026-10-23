@@ -1,4 +1,4 @@
-import {contextBridge, ipcRenderer} from 'electron';
+import {contextBridge, ipcRenderer, webUtils} from 'electron';
 
 import {channels, type FlyApi} from './core/domain/fly-api';
 
@@ -110,6 +110,10 @@ const api: FlyApi = {
         ipcRenderer.removeListener(channels.terminalExit, handler);
       };
     },
+  },
+  attachments: {
+    pathForFile: file => webUtils.getPathForFile(file),
+    saveImage: png => ipcRenderer.invoke(channels.attachmentSaveImage, png),
   },
 };
 
