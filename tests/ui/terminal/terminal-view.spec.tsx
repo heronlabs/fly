@@ -1,4 +1,5 @@
 import {act, fireEvent, render, screen} from '@testing-library/react';
+import type {ILinkHandler} from '@xterm/xterm';
 
 import {TerminalView} from '../../../src/application/ui/terminal/terminal-view';
 
@@ -16,8 +17,11 @@ interface FakeTerm {
   paste: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   textarea: HTMLTextAreaElement;
+  addons: Array<{open?: LinkHandler}>;
   emitData(data: string): void;
 }
+
+type LinkHandler = (event: MouseEvent, uri: string) => void;
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -30,6 +34,7 @@ vi.mock('@xterm/xterm', () => ({
     write = vi.fn();
     paste = vi.fn();
     dispose = vi.fn();
+    addons: unknown[] = [];
     listener: ((d: string) => void) | undefined;
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -37,6 +42,7 @@ vi.mock('@xterm/xterm', () => ({
     }
     loadAddon(addon: {term?: unknown}) {
       addon.term = this;
+      this.addons.push(addon);
     }
     onData(cb: (d: string) => void) {
       this.listener = cb;
@@ -57,6 +63,12 @@ vi.mock('@xterm/addon-fit', () => ({
         this.term.rows = h.fitSize.rows;
       }
     }
+  },
+}));
+
+vi.mock('@xterm/addon-web-links', () => ({
+  WebLinksAddon: class {
+    constructor(readonly open: LinkHandler) {}
   },
 }));
 
@@ -85,6 +97,18 @@ const pasteOn = (target: Element, text: string, files: File[]) =>
       files,
     },
   });
+const openExternal = () => vi.mocked(window.fly.shell.openExternal);
+const clickWebLink = (uri: string) =>
+  h.terms[0]!.addons.find(addon => addon.open)!.open!(
+    new MouseEvent('click'),
+    uri,
+  );
+const clickOscLink = (uri: string) =>
+  (h.terms[0]!.options['linkHandler'] as ILinkHandler).activate(
+    new MouseEvent('click'),
+    uri,
+    {start: {x: 1, y: 1}, end: {x: uri.length, y: 1}},
+  );
 
 beforeEach(() => {
   h.terms.length = 0;
@@ -467,5 +491,47 @@ describe('TerminalView', () => {
     pasteOn(textarea(), '', [png()]);
     expect(attachments().pathForFile).not.toHaveBeenCalled();
     expect(attachments().saveImage).not.toHaveBeenCalled();
+  });
+
+  it('Should open a clicked plain URL in the browser', async () => {
+    openExternal().mockResolvedValue(undefined);
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    clickWebLink('http://localhost:5173/');
+    expect(openExternal()).toHaveBeenCalledWith('http://localhost:5173/');
+  });
+
+  it('Should open a clicked OSC 8 hyperlink in the browser', async () => {
+    openExternal().mockResolvedValue(undefined);
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    clickOscLink('https://github.com/o/r/pull/1');
+    expect(openExternal()).toHaveBeenCalledWith(
+      'https://github.com/o/r/pull/1',
+    );
+  });
+
+  it('Should swallow a refused link', async () => {
+    const opened: string[] = [];
+    // A plain function: vi.fn() handles its own rejections, hiding a leak.
+    vi.stubGlobal('fly', {
+      ...window.fly,
+      shell: {
+        ...window.fly.shell,
+        openExternal: (url: string) => {
+          opened.push(url);
+          return Promise.reject(new Error('URL não permitida'));
+        },
+      },
+    });
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    clickWebLink('http://localhost:5173/');
+    clickOscLink('https://github.com/o/r/pull/1');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(opened).toEqual([
+      'http://localhost:5173/',
+      'https://github.com/o/r/pull/1',
+    ]);
   });
 });
