@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   editor: null as EditorProps | null,
   // The mocked handle's getText returns null, as without a view.
   noView: false,
+  // A call counter only: the stateKey shown, then the line and range.
+  revealed: vi.fn(),
 }));
 
 vi.mock('../../../src/application/ui/terminal/terminal-view', async () => {
@@ -48,6 +50,8 @@ vi.mock('../../../src/application/ui/editor/code-editor', async () => {
         props.editorRef,
         () => ({
           getText: () => (mocks.noView ? null : `live ${props.stateKey}`),
+          reveal: (line: number, range: [number, number] | null) =>
+            mocks.revealed(props.stateKey, line, range),
         }),
         [props.stateKey],
       );
@@ -99,6 +103,8 @@ const setup = (overrides: Partial<Props> = {}) => {
     onKeep: vi.fn(),
     onPoll: vi.fn(),
     onOpenInEditor: vi.fn(),
+    reveal: null,
+    onRevealed: vi.fn(),
     session: {
       snapshot: {
         tmux: 'ok' as const,
@@ -409,5 +415,44 @@ describe('WorkbenchPanel', () => {
   it('Should show Salvando… on the active tab while saving', () => {
     setup({activePath: 'src/b.ts', saving: true});
     expect(screen.getByText('Salvando…')).toBeVisible();
+  });
+
+  it('Should reveal a search hit in the active file once, then report it', () => {
+    const reveal = {
+      worktreeId: 'w1',
+      path: 'src/a.ts',
+      line: 7,
+      range: [2, 5] as [number, number],
+    };
+    const {props, rerender} = setup({activePath: 'src/a.ts', reveal});
+    expect(mocks.revealed).toHaveBeenCalledExactlyOnceWith(
+      'w1\0src/a.ts',
+      7,
+      [2, 5],
+    );
+    expect(props.onRevealed).toHaveBeenCalledTimes(1);
+    rerender({activePath: 'src/a.ts', reveal, saving: true});
+    expect(mocks.revealed).toHaveBeenCalledTimes(1);
+  });
+
+  it('Should wait for the hit file to be the active tab', () => {
+    const reveal = {worktreeId: 'w1', path: 'src/b.ts', line: 1, range: null};
+    const {props, rerender} = setup({activePath: 'src/a.ts', reveal});
+    expect(mocks.revealed).not.toHaveBeenCalled();
+    expect(props.onRevealed).not.toHaveBeenCalled();
+    rerender({activePath: 'src/b.ts', reveal});
+    expect(mocks.revealed).toHaveBeenCalledExactlyOnceWith(
+      'w1\0src/b.ts',
+      1,
+      null,
+    );
+    expect(props.onRevealed).toHaveBeenCalledTimes(1);
+  });
+
+  it('Should drop a hit in a file the editor cannot show', () => {
+    const reveal = {worktreeId: 'w1', path: 'icon.png', line: 1, range: null};
+    const {props} = setup({activePath: 'icon.png', reveal});
+    expect(mocks.revealed).not.toHaveBeenCalled();
+    expect(props.onRevealed).toHaveBeenCalledTimes(1);
   });
 });

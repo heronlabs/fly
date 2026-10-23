@@ -1,6 +1,7 @@
 import '@xterm/xterm/css/xterm.css';
 
 import {FitAddon} from '@xterm/addon-fit';
+import {WebLinksAddon} from '@xterm/addon-web-links';
 import {Terminal} from '@xterm/xterm';
 import {useEffect, useRef, useState} from 'react';
 
@@ -16,6 +17,11 @@ interface TerminalViewProps {
 // Backslash-escapes the way Terminal.app types a dropped path; non-ASCII stays.
 const shellEscape = (path: string): string =>
   path.replace(/[^\w./,:@%+\u0080-\uffff-]/g, '\\$&');
+
+// xterm's default opens links with window.open, which the main process denies.
+const openLink = (url: string) => {
+  window.fly.shell.openExternal(url).catch(() => undefined);
+};
 
 export const TerminalView = ({
   sessionName,
@@ -48,9 +54,11 @@ export const TerminalView = ({
       macOptionClickForcesSelection: true,
       scrollback: 1000,
       theme: terminalTheme(themeRef.current),
+      linkHandler: {activate: (_event, text) => openLink(text)},
     });
     const fit = new FitAddon();
     xterm.loadAddon(fit);
+    xterm.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)));
     xterm.open(element);
     fit.fit();
     term.current = xterm;

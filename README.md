@@ -31,6 +31,7 @@ and xterm.js. macOS first.
 - [Architecture](#architecture)
 - [Testing](#testing)
 - [Contributing](#contributing)
+- [Security](#security)
 - [License](#license)
 
 ## Why This Project
@@ -53,12 +54,13 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 4. **Queue.** A poller tails `~/.claude/projects/<cwd>/<session>.jsonl` and asks `gh` for the pull requests of each worktree, then applies the queue rules and broadcasts a snapshot to the renderer, which shows a badge per worktree and the counts in the footer.
 5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button and the engineer's receipt; the panel collapses from the top bar.
 6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded; "Recolher pastas" collapses every open folder. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; the middle button closes a tab, and a right click offers "Fechar todas" and "Fechar salvas" (a dirty tab always asks `Descartar` first). ⌘S saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note and "Abrir no VSCode".
+7. **Search.** The magnifier on a worktree row, or ⇧⌘F for the selected one, swaps the explorer for a Search view of that worktree: `git grep` over its tracked and untracked text files (`.gitignore` honoured) as you type, with case, whole-word and regex toggles. Hits are grouped by file with the line number and a highlighted preview, capped at 100 per file and 2000 in all; a click opens the file in a tab with the match selected. Each worktree keeps its last search.
 
 ## Prerequisites
 
 | Tool | Why |
 |------|-----|
-| `git` | Repo and worktree discovery; `git diff` for the diff panel, `git status` for the explorer |
+| `git` | Repo and worktree discovery; `git diff` for the diff panel, `git status` for the explorer, `git grep` for the search |
 | `gh` | Pull request status and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
@@ -171,6 +173,9 @@ pnpm test:mutation    # stryker mutation testing
 
 ## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the test isolation
+rules and the CI gates.
+
 ```bash
 pnpm lint:check       # gts + json/yml lint
 pnpm lint:fix         # auto-fix
@@ -190,6 +195,11 @@ test(core): kill surviving mutants in the core services
 
 - All work branches from `main`; PRs target `main`. Never commit directly to `main`.
 - `version.txt` is managed by [action-tag-release-build](https://github.com/heronlabs/action-tag-release-build) on merge; never edit it by hand.
+
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md),
+never in a public issue.
 
 ## License
 

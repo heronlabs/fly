@@ -21,6 +21,7 @@
     "@nestjs/common": "^12.2.0",
     "@nestjs/core": "^12.2.0",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
     "electron": "^44.9.0",
     "node-pty": "^1.1.0",
@@ -94,5 +95,5 @@
     "test:unit": "vitest run --coverage --project node --project ui",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
-  "version": "0.1.5"
+  "version": "0.2.0"
 }

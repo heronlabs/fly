@@ -12,25 +12,28 @@ const list = vi.fn();
 const read = vi.fn();
 const write = vi.fn();
 const poll = vi.fn();
+const search = vi.fn();
 
 beforeEach(() => {
   listeners.clear();
-  for (const fn of [list, read, write, poll]) fn.mockReset();
+  for (const fn of [list, read, write, poll, search]) fn.mockReset();
   new FileHandler(host, {
     list,
     read,
     write,
     poll,
+    search,
   } as unknown as FileService).register();
 });
 
 describe('FileHandler', () => {
-  it('Should register only the four file channels', () => {
+  it('Should register only the five file channels', () => {
     expect([...listeners.keys()]).toEqual([
       channels.fileList,
       channels.fileRead,
       channels.fileWrite,
       channels.filePoll,
+      channels.fileSearch,
     ]);
   });
 
@@ -81,11 +84,28 @@ describe('FileHandler', () => {
     expect(result).toBe(polled);
   });
 
+  it('Should pass search arguments through and return the result', async () => {
+    const query = {
+      text: 'foo',
+      caseSensitive: true,
+      wholeWord: false,
+      regex: false,
+    };
+    const found = {files: [], total: 0, truncated: false};
+    search.mockResolvedValue(found);
+
+    const result = await listeners.get(channels.fileSearch)!({}, 'wt-1', query);
+
+    expect(search).toHaveBeenCalledWith('wt-1', query);
+    expect(result).toBe(found);
+  });
+
   it.each([
     [channels.fileList, list],
     [channels.fileRead, read],
     [channels.fileWrite, write],
     [channels.filePoll, poll],
+    [channels.fileSearch, search],
   ])('Should propagate a rejection on %s', async (channel, fn) => {
     fn.mockRejectedValue(new Error('sem worktree'));
 

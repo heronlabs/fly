@@ -2,6 +2,7 @@ import {Inject, Injectable} from '@nestjs/common';
 
 import type {Eol} from '../../../core/domain/files';
 import {channels} from '../../../core/domain/fly-api';
+import type {SearchQuery} from '../../../core/domain/search';
 import {FileService} from '../../../core/services/file-service';
 import type {IpcHost} from '../ipc-types';
 import {IPC_HOST} from '../ipc-types';
@@ -39,6 +40,11 @@ export class FileHandler {
       channels.filePoll,
       (_event, worktreeId: string, openPaths: string[]) =>
         this.files.poll(worktreeId, openPaths),
+    );
+    this.host.handle(
+      channels.fileSearch,
+      (_event, worktreeId: string, query: SearchQuery) =>
+        this.files.search(worktreeId, query),
     );
   }
 }

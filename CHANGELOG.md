@@ -1,3 +1,24 @@
+## v0.2.0 (2026-10-23)
+
+### Features
+
+* feat: add VSCode-like content search per worktree (53ffeb85a5007a57ef8d05ebe6da7cdd709f6eaa)
+* feat: add tab close actions and collapse-all, fix tab-strip overflow (2977163918715b006964501792e538e8f476691e)
+* feat: attach dropped and pasted images in the session terminal (71b1cfe2af47326209d003f7fd665c48aa06ed15)
+
+### Bug Fixes
+
+* fix: open terminal links in the browser on click (ca978261ff5d73c2134b0430a37e924ffd6a1563)
+* fix: return to the start screen after ending a session (22a3e21893eaf6de7fa8f20f57ff367fba5c6d68)
+
+### Documentation
+
+* docs: prepare the repository for public visibility (3f1be886f36b3a8ca0d184d0dfd95e97f250a74b)
+
+### Miscellaneous Chores
+
+* other: run CI jobs on self-hosted runners (31c728de5ad058207ee2f72a8873029a0e5213f2)
+
 ## v0.1.5 (2026-10-22)
 
 ### Features

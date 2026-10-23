@@ -29,14 +29,19 @@ import {
 } from '@codemirror/view';
 import {type Ref, useEffect, useImperativeHandle, useRef} from 'react';
 
+import type {SearchRange} from '../../../core/domain/search';
 import type {ResolvedTheme} from '../theme/theme';
 import {editorTheme} from './editor-theme';
 import type {FileKind} from './file-kinds';
 import {syntaxHighlighting} from './highlight-style';
 import {indentUnitOf, languageExtension} from './languages';
 
-// getText is null without a view: nothing to save.
-export type CodeEditorHandle = {getText(): string | null};
+// getText is null without a view: nothing to save. reveal selects a range
+// of a line (clamped to the doc) and scrolls it to the middle.
+export type CodeEditorHandle = {
+  getText(): string | null;
+  reveal(line: number, range: SearchRange | null): void;
+};
 
 type CodeEditorProps = {
   stateKey: string;
@@ -139,7 +144,24 @@ export const CodeEditor = ({
 
   useImperativeHandle(
     editorRef,
-    () => ({getText: () => view.current?.state.doc.toString() ?? null}),
+    () => ({
+      getText: () => view.current?.state.doc.toString() ?? null,
+      reveal: (line, range) => {
+        const editor = view.current;
+        if (!editor) {
+          return;
+        }
+        const {doc} = editor.state;
+        const target = doc.line(Math.min(line, doc.lines));
+        const at = (offset: number) =>
+          Math.min(target.from + offset, target.to);
+        const anchor = at(range?.[0] ?? 0);
+        editor.dispatch({
+          selection: {anchor, head: at(range?.[1] ?? 0)},
+          effects: EditorView.scrollIntoView(anchor, {y: 'center'}),
+        });
+      },
+    }),
     [],
   );
 
