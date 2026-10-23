@@ -1,5 +1,11 @@
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -176,6 +182,107 @@ describe('GitCliService (real git)', () => {
 
     it('Should return no flags for a clean repo', async () => {
       expect(await service().status(dir)).toEqual({});
+    });
+  });
+
+  describe('grep', () => {
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=fly-test',
+          '-c',
+          'user.email=fly-test@example.com',
+          '-c',
+          'commit.gpgsign=false',
+          ...args,
+        ],
+        {cwd: dir, stdio: 'pipe'},
+      );
+    const query = {
+      text: 'needle',
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    };
+    const grep = (over: Partial<typeof query> = {}, maxPerFile = 101) =>
+      new GitCliService(new ExecCommandRunnerService()).grep({
+        worktreePath: dir,
+        query: {...query, ...over},
+        maxPerFile,
+      });
+
+    beforeEach(() => {
+      git('init', '-b', 'main');
+      mkdirSync(join(dir, 'sp ace'));
+      writeFileSync(join(dir, 'a.txt'), 'one needle\nNeedle two\r\nneedles\n');
+      writeFileSync(join(dir, 'sp ace', 'b c.txt'), 'x needle\n');
+      writeFileSync(join(dir, 'bin.dat'), 'needle\0binary\n');
+      writeFileSync(join(dir, '.gitignore'), 'ignored.txt\n');
+      git('add', '.');
+      git('commit', '-m', 'init');
+      writeFileSync(join(dir, 'ignored.txt'), 'needle\n');
+      writeFileSync(join(dir, 'fresh.txt'), 'new needle\n');
+    });
+
+    it('Should find tracked and untracked text files, never ignored or binary ones', async () => {
+      expect(await grep()).toEqual([
+        {path: 'a.txt', line: 1, text: 'one needle'},
+        {path: 'a.txt', line: 2, text: 'Needle two'},
+        {path: 'a.txt', line: 3, text: 'needles'},
+        {path: 'fresh.txt', line: 1, text: 'new needle'},
+        {path: 'sp ace/b c.txt', line: 1, text: 'x needle'},
+      ]);
+    });
+
+    it('Should honour case, whole word, regex and the per-file cap', async () => {
+      expect(
+        (await grep({caseSensitive: true})).map(h => h.text),
+      ).not.toContain('Needle two');
+      expect((await grep({wholeWord: true})).map(h => h.text)).not.toContain(
+        'needles',
+      );
+      expect(await grep({text: '^n.+s$', regex: true})).toEqual([
+        {path: 'a.txt', line: 3, text: 'needles'},
+      ]);
+      expect((await grep({}, 1)).filter(h => h.path === 'a.txt')).toHaveLength(
+        1,
+      );
+    });
+
+    it('Should treat regex characters literally without the regex flag', async () => {
+      writeFileSync(join(dir, 'fresh.txt'), 'a.b\naxb\n');
+
+      expect(await grep({text: 'a.b'})).toEqual([
+        {path: 'fresh.txt', line: 1, text: 'a.b'},
+      ]);
+    });
+
+    it('Should return no hits when nothing matches', async () => {
+      expect(await grep({text: 'absent'})).toEqual([]);
+    });
+
+    it('Should search despite submodule.recurse, which refuses --untracked', async () => {
+      git('config', 'submodule.recurse', 'true');
+
+      expect((await grep()).map(h => h.path)).toContain('fresh.txt');
+    });
+
+    it('Should keep a newline inside a file name', async () => {
+      writeFileSync(join(dir, 'new\nline.txt'), 'needle\n');
+
+      expect(await grep()).toContainEqual({
+        path: 'new\nline.txt',
+        line: 1,
+        text: 'needle',
+      });
+    });
+
+    it('Should reject an invalid regex with git falhou', async () => {
+      await expect(grep({text: '(', regex: true})).rejects.toThrow(
+        /^git falhou: /,
+      );
     });
   });
 });

@@ -3,7 +3,7 @@ import {useEffect, useRef} from 'react';
 import type {SessionsSnapshot} from '../../../core/domain/session';
 import type {Worktree} from '../../../core/domain/workspace';
 import {type CodeEditorHandle, forgetEditorState} from '../editor/code-editor';
-import {FILES_POLL_MS, type OpenFile} from '../state/fly-store';
+import {FILES_POLL_MS, type OpenFile, type Reveal} from '../state/fly-store';
 import type {ResolvedTheme} from '../theme/theme';
 import {EditorPanel} from './editor-panel';
 import {FileTabs} from './file-tabs';
@@ -26,6 +26,8 @@ type Props = {
   onKeep(path: string, mtimeMs: number | null): void;
   onPoll(worktreeId: string): Promise<void> | void;
   onOpenInEditor(path: string): void;
+  reveal: Reveal | null;
+  onRevealed(): void;
   session: {
     snapshot: SessionsSnapshot;
     activeSessionName: string | null;
@@ -52,6 +54,8 @@ export const WorkbenchPanel = ({
   onKeep,
   onPoll,
   onOpenInEditor,
+  reveal,
+  onRevealed,
   session,
 }: Props) => {
   const editorRef = useRef<CodeEditorHandle>(null);
@@ -89,6 +93,13 @@ export const WorkbenchPanel = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [active, onSave]);
+
+  // Runs after the editor's own effects, so the hit's file is already shown.
+  useEffect(() => {
+    if (!reveal || reveal.path !== active?.path) return;
+    editorRef.current?.reveal(reveal.line, reveal.range);
+    onRevealed();
+  }, [reveal, active?.path, onRevealed]);
 
   const close = (path: string) => {
     forgetEditorState(`${worktreeId}\0${path}`);

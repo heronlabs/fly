@@ -9,6 +9,7 @@ import {
   FilesPoll,
   WriteResult,
 } from '../domain/files';
+import {SearchQuery, SearchResult} from '../domain/search';
 import {Worktree} from '../domain/workspace';
 import {FileStore} from '../interfaces/file-store';
 import {VcsGateway} from '../interfaces/vcs-gateway';
@@ -22,6 +23,12 @@ import {
   visibleEntries,
   withEol,
 } from './file-rules';
+import {
+  emptySearch,
+  highlighter,
+  MAX_HITS_PER_FILE,
+  resultOf,
+} from './search-rules';
 import {errorMessage, SessionService} from './session-service';
 
 export const OUTSIDE_WORKTREE = 'Caminho fora do worktree';
@@ -107,6 +114,17 @@ export class FileService {
       }
     }
     return {flags, mtimes, error};
+  }
+
+  async search(worktreeId: string, query: SearchQuery): Promise<SearchResult> {
+    const worktree = this.worktree(worktreeId);
+    if (query.text === '') return emptySearch;
+    const hits = await this.vcs.grep({
+      worktreePath: worktree.path,
+      query,
+      maxPerFile: MAX_HITS_PER_FILE + 1,
+    });
+    return resultOf(hits, highlighter(query));
   }
 
   // access() follows links, so a dangling symlink (in any case or Unicode

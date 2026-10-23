@@ -52,17 +52,19 @@ const setup = (
 ) => {
   const onSelect = vi.fn();
   const onOpenInEditor = vi.fn();
+  const onSearch = vi.fn();
   render(
     <WorktreesPanel
       workspace={workspace}
       selectedId={selectedId}
       onSelect={onSelect}
       onOpenInEditor={onOpenInEditor}
+      onSearch={onSearch}
       sessionCounts={sessionCounts}
       statuses={statuses}
     />,
   );
-  return {onSelect, onOpenInEditor};
+  return {onSelect, onOpenInEditor, onSearch};
 };
 
 describe('WorktreesPanel', () => {
@@ -121,6 +123,19 @@ describe('WorktreesPanel', () => {
     const [button] = screen.getAllByRole('button', {name: 'Abrir no VSCode'});
     await user.click(button as HTMLElement);
     expect(onOpenInEditor).toHaveBeenCalledWith('/r/actions/one');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('Should search a worktree from its row without selecting it here', async () => {
+    const {onSelect, onSearch} = setup('one-main');
+    const user = userEvent.setup();
+    const buttons = screen.getAllByRole('button', {name: 'Buscar na worktree'});
+    expect(buttons).toHaveLength(3);
+    expect(buttons[0]).toHaveAttribute('aria-keyshortcuts', 'Meta+Shift+F');
+    expect(buttons[1]).not.toHaveAttribute('aria-keyshortcuts');
+    expect(buttons[0]).toHaveClass('fly-worktree-action');
+    await user.click(buttons[1] as HTMLElement);
+    expect(onSearch).toHaveBeenCalledExactlyOnceWith('one-feat');
     expect(onSelect).not.toHaveBeenCalled();
   });
 

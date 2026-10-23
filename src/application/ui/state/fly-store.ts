@@ -12,6 +12,12 @@ import type {
   QueueStatus,
   WorktreeQueue,
 } from '../../../core/domain/queue';
+import type {
+  SearchMatch,
+  SearchQuery,
+  SearchRange,
+  SearchResult,
+} from '../../../core/domain/search';
 import type {SessionsSnapshot} from '../../../core/domain/session';
 import type {
   AppConfig,
@@ -23,6 +29,7 @@ import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
 
 export const DIFF_POLL_MS = 3000;
 export const FILES_POLL_MS = 3000;
+export const SEARCH_DEBOUNCE_MS = 300;
 
 export type DiskState = 'same' | 'changed' | 'missing';
 export type OpenFile = {
@@ -36,6 +43,20 @@ export type OpenFile = {
 export type ExplorerTree = {
   expanded: Record<string, boolean>;
   entries: Record<string, FileEntry[]>;
+};
+// The last query searched in a worktree, and what it found.
+export type WorktreeSearch = {
+  query: SearchQuery;
+  result: SearchResult | null;
+  error: string | null;
+  searching: boolean;
+};
+// A search hit to show once its tab is the active one.
+export type Reveal = {
+  worktreeId: string;
+  path: string;
+  line: number;
+  range: SearchRange | null;
 };
 
 export type FlyState = {
@@ -57,6 +78,8 @@ export type FlyState = {
   filesError: Record<string, string | null>;
   diskMtimes: Record<string, Record<string, number | null>>;
   saving: boolean;
+  searches: Record<string, WorktreeSearch>;
+  reveal: Reveal | null;
   bootstrap(): Promise<void>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
@@ -93,6 +116,13 @@ export type FlyState = {
     result: FilesPoll,
   ): {reload: string[]; list: string[]};
   setExplorer(mode: ExplorerMode): Promise<void>;
+  searchFiles(worktreeId: string, query: SearchQuery): Promise<void>;
+  openMatch(
+    worktreeId: string,
+    path: string,
+    match: SearchMatch,
+  ): Promise<void>;
+  clearReveal(): void;
 };
 
 const ipcPrefix = /^Error invoking remote method '[^']*': (?:Error: )?/;
@@ -222,6 +252,8 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   filesError: {},
   diskMtimes: {},
   saving: false,
+  searches: {},
+  reveal: null,
 
   async bootstrap() {
     try {
@@ -298,6 +330,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
         flags: pruned(state.flags, ids),
         filesError: pruned(state.filesError, ids),
         diskMtimes: pruned(state.diskMtimes, ids),
+        searches: pruned(state.searches, ids),
       };
     });
   },
@@ -705,6 +738,58 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     } catch (error) {
       set({error: errorMessage(error)});
     }
+  },
+
+  // Search
+
+  // Results stay on screen while the next query runs; a response is applied
+  // only while its query is still the worktree's last one.
+  async searchFiles(worktreeId, query) {
+    const searching = query.text !== '';
+    set(state => ({
+      searches: {
+        ...state.searches,
+        [worktreeId]: {
+          query,
+          result: searching
+            ? (state.searches[worktreeId]?.result ?? null)
+            : null,
+          error: null,
+          searching,
+        },
+      },
+    }));
+    if (!searching) return;
+    const settle = (patch: Pick<WorktreeSearch, 'result' | 'error'>) =>
+      set(state => {
+        const current = state.searches[worktreeId];
+        if (current?.query !== query) return state;
+        return {
+          searches: {
+            ...state.searches,
+            [worktreeId]: {...current, ...patch, searching: false},
+          },
+        };
+      });
+    try {
+      settle({
+        result: await window.fly.files.search(worktreeId, query),
+        error: null,
+      });
+    } catch (error) {
+      settle({result: null, error: errorMessage(error)});
+    }
+  },
+
+  async openMatch(worktreeId, path, match) {
+    await get().openFile(worktreeId, path);
+    if (findTab(get(), worktreeId, path)) {
+      set({reveal: {worktreeId, path, line: match.line, range: match.range}});
+    }
+  },
+
+  clearReveal() {
+    set({reveal: null});
   },
 }));
 

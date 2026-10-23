@@ -5,6 +5,7 @@ import {DiffPrPanel} from './panels/diff-pr-panel';
 import {ExplorerPanel} from './panels/explorer-panel';
 import {FooterBar} from './panels/footer-bar';
 import {NewTaskDialog} from './panels/new-task-dialog';
+import {SearchPanel} from './panels/search-panel';
 import {TopBar} from './panels/top-bar';
 import {WelcomePanel} from './panels/welcome-panel';
 import {WorkbenchPanel} from './panels/workbench-panel';
@@ -69,11 +70,20 @@ export const AppShell = () => {
     collapseDirs,
     pollFiles,
     setExplorer,
+    searches,
+    reveal,
+    searchFiles,
+    openMatch,
+    clearReveal,
   } = useFlyStore();
   const theme = useTheme(config.theme);
   const bootstrapped = useRef(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // The explorer column shows the Explorer or the Search view, like VSCode's
+  // sidebar; each search request refocuses the Search input.
+  const [sidebar, setSidebar] = useState<'explorer' | 'search'>('explorer');
+  const [searchFocus, setSearchFocus] = useState(0);
   const canCreateTask = (workspace?.repos.length ?? 0) > 0;
 
   useEffect(() => {
@@ -101,6 +111,21 @@ export const AppShell = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [canCreateTask]);
+
+  // ⇧⌘F searches the selected worktree wherever the focus is; CodeMirror
+  // binds Mod-f only, and Shift-Mod-f does not fall back to it.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || !event.shiftKey) return;
+      if (event.key.toLowerCase() !== 'f') return;
+      const id = useFlyStore.getState().selectedWorktreeId;
+      if (!id) return;
+      event.preventDefault();
+      openSearch(id);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const sessionCounts = useMemo(() => {
     const result: Record<string, number> = {};
@@ -136,6 +161,15 @@ export const AppShell = () => {
     setTaskOpen(true);
   };
 
+  const openSearch = (worktreeId: string) => {
+    select(worktreeId);
+    setSidebar('search');
+    setSearchFocus(focus => focus + 1);
+    if (useFlyStore.getState().config.explorer !== 'open') {
+      void setExplorer('open');
+    }
+  };
+
   const openInEditor = async (path: string) => {
     try {
       await window.fly.shell.openInEditor(path);
@@ -168,6 +202,9 @@ export const AppShell = () => {
     null;
   const panelOpen = config.diffPanel === 'open';
   const explorerOpen = selected !== null && config.explorer === 'open';
+  const repoName = selected
+    ? (workspace.repos.find(repo => repo.id === selected.repoId)?.name ?? '')
+    : '';
   // minmax(0, 1fr), not 1fr (= minmax(auto, 1fr)): the centre column must
   // not grow to its tab strip's width, or the window scrolls sideways and
   // the terminal is fitted (and its tmux pane resized) wider than visible.
@@ -238,17 +275,29 @@ export const AppShell = () => {
               selectedId={selectedWorktreeId}
               onSelect={select}
               onOpenInEditor={path => void openInEditor(path)}
+              onSearch={openSearch}
               sessionCounts={sessionCounts}
               statuses={statuses}
             />
           )}
-          {explorerOpen && (
+          {explorerOpen && sidebar === 'search' && (
+            <SearchPanel
+              worktree={selected}
+              repoName={repoName}
+              search={searches[selected.id]}
+              focusKey={searchFocus}
+              onSearch={query => void searchFiles(selected.id, query)}
+              onOpenMatch={(path, match) =>
+                void openMatch(selected.id, path, match)
+              }
+              onShowExplorer={() => setSidebar('explorer')}
+              onClose={() => void setExplorer('collapsed')}
+            />
+          )}
+          {explorerOpen && sidebar === 'explorer' && (
             <ExplorerPanel
               worktree={selected}
-              repoName={
-                workspace.repos.find(repo => repo.id === selected.repoId)
-                  ?.name ?? ''
-              }
+              repoName={repoName}
               tree={trees[selected.id]}
               flags={flags[selected.id] ?? noFlags}
               error={filesError[selected.id] ?? null}
@@ -263,7 +312,10 @@ export const AppShell = () => {
             worktree={selected}
             theme={theme}
             explorerCollapsed={config.explorer === 'collapsed'}
-            onOpenExplorer={() => void setExplorer('open')}
+            onOpenExplorer={() => {
+              setSidebar('explorer');
+              void setExplorer('open');
+            }}
             tabs={tabs}
             activePath={selected ? (activeFile[selected.id] ?? null) : null}
             mtimes={(selected && diskMtimes[selected.id]) ?? noMtimes}
@@ -282,6 +334,8 @@ export const AppShell = () => {
             }
             onPoll={pollFiles}
             onOpenInEditor={path => void openInEditor(path)}
+            reveal={reveal?.worktreeId === selected?.id ? reveal : null}
+            onRevealed={clearReveal}
             session={{
               snapshot: sessions,
               activeSessionName,
