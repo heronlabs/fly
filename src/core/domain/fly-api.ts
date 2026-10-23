@@ -39,6 +39,7 @@ export const channels = {
   terminalResize: 'terminal:resize',
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
+  attachmentSaveImage: 'attachment:save-image',
 } as const;
 
 export type Channel = (typeof channels)[keyof typeof channels];
@@ -97,6 +98,11 @@ export type FlyApi = {
     onExit(
       listener: (terminalId: string, exitCode: number) => void,
     ): () => void;
+  };
+  attachments: {
+    // Absolute path of a file dropped from Finder; '' when it has none.
+    pathForFile(file: File): string;
+    saveImage(png: Uint8Array): Promise<string>;
   };
 };
 

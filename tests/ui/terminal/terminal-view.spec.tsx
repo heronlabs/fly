@@ -1,4 +1,4 @@
-import {act, render, screen} from '@testing-library/react';
+import {act, fireEvent, render, screen} from '@testing-library/react';
 
 import {TerminalView} from '../../../src/application/ui/terminal/terminal-view';
 
@@ -13,7 +13,9 @@ interface FakeTerm {
   rows: number;
   open: ReturnType<typeof vi.fn>;
   write: ReturnType<typeof vi.fn>;
+  paste: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
+  textarea: HTMLTextAreaElement;
   emitData(data: string): void;
 }
 
@@ -22,8 +24,11 @@ vi.mock('@xterm/xterm', () => ({
     options: Record<string, unknown>;
     cols = 80;
     rows = 24;
-    open = vi.fn();
+    // Like xterm, open() puts the textarea that receives keys and pastes.
+    textarea = document.createElement('textarea');
+    open = vi.fn((element: HTMLElement) => element.append(this.textarea));
     write = vi.fn();
+    paste = vi.fn();
     dispose = vi.fn();
     listener: ((d: string) => void) | undefined;
     constructor(options: Record<string, unknown>) {
@@ -66,6 +71,20 @@ let observerCb: () => void;
 const disconnect = vi.fn();
 
 const terminal = () => window.fly.terminal;
+const attachments = () => window.fly.attachments;
+const textarea = () => h.terms[0]!.textarea;
+const host = () => textarea().parentElement!;
+const png = () =>
+  new File([new Uint8Array([137, 80, 78, 71])], 'image.png', {
+    type: 'image/png',
+  });
+const pasteOn = (target: Element, text: string, files: File[]) =>
+  fireEvent.paste(target, {
+    clipboardData: {
+      getData: (type: string) => (type === 'text/plain' ? text : ''),
+      files,
+    },
+  });
 
 beforeEach(() => {
   h.terms.length = 0;
@@ -297,5 +316,156 @@ describe('TerminalView', () => {
     await flush();
     expect(terminal().resize).toHaveBeenCalledTimes(1);
     expect(terminal().resize).toHaveBeenCalledWith('t1', {cols: 90, rows: 20});
+  });
+
+  it('Should accept a drag over the terminal', async () => {
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    expect(fireEvent.dragOver(host())).toBe(false);
+  });
+
+  it('Should paste the escaped paths of dropped files, space-separated', async () => {
+    vi.mocked(attachments().pathForFile).mockImplementation(
+      file => `/Users/me/Desktop/${file.name}`,
+    );
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    const dropped = fireEvent.drop(host(), {
+      dataTransfer: {
+        files: [
+          new File([], 'Screenshot 2026-10-23 at 09.46.52.png'),
+          new File([], "it's (2).png"),
+        ],
+      },
+    });
+    expect(dropped).toBe(false);
+    expect(h.terms[0]?.paste).toHaveBeenCalledWith(
+      "/Users/me/Desktop/Screenshot\\ 2026-10-23\\ at\\ 09.46.52.png /Users/me/Desktop/it\\'s\\ \\(2\\).png",
+    );
+  });
+
+  it('Should keep non-ASCII characters of a dropped path unescaped', async () => {
+    vi.mocked(attachments().pathForFile).mockReturnValue(
+      '/tmp/café 9.46.52\u202fAM.png',
+    );
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    fireEvent.drop(host(), {dataTransfer: {files: [png()]}});
+    expect(h.terms[0]?.paste).toHaveBeenCalledWith(
+      '/tmp/café\\ 9.46.52\u202fAM.png',
+    );
+  });
+
+  it('Should skip dropped files without a path', async () => {
+    vi.mocked(attachments().pathForFile)
+      .mockReturnValueOnce('')
+      .mockReturnValueOnce('/tmp/b.png');
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    fireEvent.drop(host(), {dataTransfer: {files: [png(), png()]}});
+    expect(h.terms[0]?.paste).toHaveBeenCalledTimes(1);
+    expect(h.terms[0]?.paste).toHaveBeenCalledWith('/tmp/b.png');
+  });
+
+  it('Should paste nothing when no dropped file has a path', async () => {
+    vi.mocked(attachments().pathForFile).mockReturnValue('');
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    expect(fireEvent.drop(host(), {dataTransfer: {files: [png()]}})).toBe(
+      false,
+    );
+    expect(h.terms[0]?.paste).not.toHaveBeenCalled();
+  });
+
+  it('Should save an image-only paste and paste its escaped path', async () => {
+    vi.mocked(attachments().saveImage).mockResolvedValue(
+      '/tmp/my dir/image.png',
+    );
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    const xtermPaste = vi.fn();
+    textarea().addEventListener('paste', xtermPaste);
+    expect(pasteOn(textarea(), '', [png()])).toBe(false);
+    await vi.waitFor(() =>
+      expect(h.terms[0]?.paste).toHaveBeenCalledWith('/tmp/my\\ dir/image.png'),
+    );
+    expect(attachments().saveImage).toHaveBeenCalledWith(
+      new Uint8Array([137, 80, 78, 71]),
+    );
+    expect(xtermPaste).not.toHaveBeenCalled();
+  });
+
+  it('Should leave a paste with text to xterm, image or not', async () => {
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    const xtermPaste = vi.fn();
+    textarea().addEventListener('paste', xtermPaste);
+    expect(pasteOn(textarea(), 'hello', [png()])).toBe(true);
+    expect(xtermPaste).toHaveBeenCalledTimes(1);
+    expect(attachments().saveImage).not.toHaveBeenCalled();
+  });
+
+  it('Should leave a paste with neither text nor a PNG to xterm', async () => {
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    const xtermPaste = vi.fn();
+    textarea().addEventListener('paste', xtermPaste);
+    const tiff = new File([], 'image.tiff', {type: 'image/tiff'});
+    expect(pasteOn(textarea(), '', [tiff])).toBe(true);
+    expect(xtermPaste).toHaveBeenCalledTimes(1);
+    expect(attachments().saveImage).not.toHaveBeenCalled();
+  });
+
+  it('Should leave a paste without clipboard data to xterm', async () => {
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    const xtermPaste = vi.fn();
+    textarea().addEventListener('paste', xtermPaste);
+    expect(fireEvent.paste(textarea())).toBe(true);
+    expect(xtermPaste).toHaveBeenCalledTimes(1);
+    expect(attachments().saveImage).not.toHaveBeenCalled();
+  });
+
+  it('Should paste nothing when saving the image fails', async () => {
+    vi.mocked(attachments().saveImage).mockRejectedValue(new Error('disk'));
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    pasteOn(textarea(), '', [png()]);
+    await vi.waitFor(() =>
+      expect(attachments().saveImage).toHaveBeenCalledTimes(1),
+    );
+    await flush();
+    expect(h.terms[0]?.paste).not.toHaveBeenCalled();
+  });
+
+  it('Should not paste an image saved after unmount', async () => {
+    let resolve!: (path: string) => void;
+    vi.mocked(attachments().saveImage).mockReturnValue(
+      new Promise<string>(r => (resolve = r)),
+    );
+    const {unmount} = render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    pasteOn(textarea(), '', [png()]);
+    await vi.waitFor(() =>
+      expect(attachments().saveImage).toHaveBeenCalledTimes(1),
+    );
+    unmount();
+    resolve('/tmp/image.png');
+    await flush();
+    expect(h.terms[0]?.paste).not.toHaveBeenCalled();
+  });
+
+  it('Should stop handling drops and pastes on unmount', async () => {
+    const {unmount} = render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    const element = host();
+    unmount();
+    expect(fireEvent.dragOver(element)).toBe(true);
+    expect(fireEvent.drop(element, {dataTransfer: {files: [png()]}})).toBe(
+      true,
+    );
+    pasteOn(textarea(), '', [png()]);
+    expect(attachments().pathForFile).not.toHaveBeenCalled();
+    expect(attachments().saveImage).not.toHaveBeenCalled();
   });
 });

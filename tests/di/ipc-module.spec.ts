@@ -15,6 +15,7 @@ vi.mock('electron', () => ({
   shell: {openExternal: vi.fn()},
 }));
 
+import {AttachmentHandler} from '../../src/application/ipc/handlers/attachment-handler';
 import {DiffHandler} from '../../src/application/ipc/handlers/diff-handler';
 import {FileHandler} from '../../src/application/ipc/handlers/file-handler';
 import {QueueHandler} from '../../src/application/ipc/handlers/queue-handler';
@@ -25,6 +26,7 @@ import {TerminalHandler} from '../../src/application/ipc/handlers/terminal-handl
 import {WorkspaceHandler} from '../../src/application/ipc/handlers/workspace-handler';
 import {IpcModule} from '../../src/application/ipc/ipc-module';
 import {CLAUDE_PROJECTS_DIR} from '../../src/infrastructure/claude/tokens';
+import {TEMP_DIR} from '../../src/infrastructure/filesystem/tokens';
 
 describe('IpcModule (real Nest DI)', () => {
   // Transcripts resolve under this dir, never the real ~/.claude.
@@ -58,6 +60,7 @@ describe('IpcModule (real Nest DI)', () => {
       expect(context.get(CLAUDE_PROJECTS_DIR)).toBe(
         join(claudeConfigDir, 'projects'),
       );
+      expect(context.get(TEMP_DIR)).toBe(userData.path);
       expect(() => context.get(WorkspaceHandler).register()).not.toThrow();
       expect(() => context.get(SettingsHandler).register()).not.toThrow();
       expect(() => context.get(ShellHandler).register()).not.toThrow();
@@ -73,6 +76,7 @@ describe('IpcModule (real Nest DI)', () => {
       expect(() => context.get(DiffHandler).register()).not.toThrow();
       expect(() => context.get(FileHandler).register()).not.toThrow();
       expect(() => context.get(TerminalHandler).register()).not.toThrow();
+      expect(() => context.get(AttachmentHandler).register()).not.toThrow();
     } finally {
       await context.close();
     }
