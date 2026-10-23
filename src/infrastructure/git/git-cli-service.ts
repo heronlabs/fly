@@ -9,9 +9,12 @@ import {
 import {
   DiffRequest,
   GIT_TIMEOUT_MESSAGE,
+  GrepHit,
+  GrepRequest,
   VcsGateway,
   WorktreeInfo,
 } from '../../core/interfaces/vcs-gateway';
+import {parseGrep} from './grep-parser';
 import {parseStatusPorcelain} from './status-porcelain-parser';
 import {parseUnifiedDiff} from './unified-diff-parser';
 import {parseWorktreePorcelain} from './worktree-porcelain-parser';
@@ -93,6 +96,38 @@ export class GitCliService extends VcsGateway {
       '--untracked-files=all',
     ]);
     return parseStatusPorcelain(output);
+  }
+
+  // The query is one argument after -e, never a shell string; exit 1 is
+  // "no match". --no-column, --no-recurse-submodules (submodule.recurse would
+  // make git refuse --untracked) and -F/-E override the user's config.
+  async grep({
+    worktreePath,
+    query,
+    maxPerFile,
+  }: GrepRequest): Promise<GrepHit[]> {
+    const output = await this.git(
+      worktreePath,
+      [
+        'grep',
+        '--no-color',
+        '--no-column',
+        '--no-recurse-submodules',
+        '-z',
+        '-n',
+        '-I',
+        '--untracked',
+        `--max-count=${maxPerFile}`,
+        ...(query.caseSensitive ? [] : ['-i']),
+        ...(query.wholeWord ? ['-w'] : []),
+        query.regex ? '-E' : '-F',
+        '-e',
+        query.text,
+        '--',
+      ],
+      [0, 1],
+    );
+    return parseGrep(output);
   }
 
   private async git(

@@ -44,6 +44,7 @@ describe('FileService', () => {
   const createText = vi.fn();
   const stat = vi.fn();
   const status = vi.fn();
+  const grep = vi.fn();
   const files: FileStore = {
     readDir,
     realPath,
@@ -58,6 +59,7 @@ describe('FileService', () => {
     resolveBase: vi.fn(),
     diff: vi.fn(),
     status,
+    grep,
   };
   const service = new FileService(
     {currentWorkspace} as unknown as SessionService,
@@ -102,8 +104,17 @@ describe('FileService', () => {
       await expect(service.poll('nope', ['a.ts'])).rejects.toThrow(
         'Worktree não encontrado',
       );
+      await expect(
+        service.search('nope', {
+          text: '',
+          caseSensitive: false,
+          wholeWord: false,
+          regex: false,
+        }),
+      ).rejects.toThrow('Worktree não encontrado');
       expect(realPath).not.toHaveBeenCalled();
       expect(status).not.toHaveBeenCalled();
+      expect(grep).not.toHaveBeenCalled();
       expect(writeText).not.toHaveBeenCalled();
     });
 
@@ -372,6 +383,72 @@ describe('FileService', () => {
         error: null,
       });
       expect(stat).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('search', () => {
+    const query = {
+      text: 'foo',
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    };
+
+    it('Should grep the worktree with one hit over the per-file cap and group the hits', async () => {
+      grep.mockResolvedValue([
+        {path: 'src/a.ts', line: 3, text: 'const Foo = 1;'},
+      ]);
+
+      expect(await service.search('a/feat', query)).toEqual({
+        files: [
+          {
+            path: 'src/a.ts',
+            matches: [
+              {
+                line: 3,
+                range: [6, 9],
+                preview: 'const Foo = 1;',
+                highlights: [[6, 9]],
+              },
+            ],
+          },
+        ],
+        total: 1,
+        truncated: false,
+      });
+      expect(grep).toHaveBeenCalledExactlyOnceWith({
+        worktreePath: '/r/a/feat',
+        query,
+        maxPerFile: 101,
+      });
+    });
+
+    it('Should highlight with the query options', async () => {
+      grep.mockResolvedValue([{path: 'a.ts', line: 1, text: 'Foo foo'}]);
+
+      const result = await service.search('a/feat', {
+        ...query,
+        caseSensitive: true,
+      });
+
+      expect(result.files[0]?.matches[0]?.highlights).toEqual([[4, 7]]);
+    });
+
+    it('Should return an empty result for an empty query without git', async () => {
+      expect(await service.search('a/feat', {...query, text: ''})).toEqual({
+        files: [],
+        total: 0,
+        truncated: false,
+      });
+      expect(grep).not.toHaveBeenCalled();
+    });
+
+    it('Should propagate a git failure', async () => {
+      grep.mockRejectedValue(new Error('git falhou: bad regex'));
+
+      await expect(service.search('a/feat', query)).rejects.toThrow(
+        'git falhou: bad regex',
+      );
     });
   });
 

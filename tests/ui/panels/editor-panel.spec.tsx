@@ -31,7 +31,7 @@ vi.mock('../../../src/application/ui/editor/code-editor', async () => {
       editor.props = props;
       useImperativeHandle(
         editor.attach ? props.editorRef : undefined,
-        () => ({getText: () => editor.text}),
+        () => ({getText: () => editor.text, reveal: vi.fn()}),
         [],
       );
       return <div data-testid="code-editor">{props.text}</div>;

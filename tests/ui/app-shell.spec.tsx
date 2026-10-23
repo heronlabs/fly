@@ -20,9 +20,11 @@ vi.mock('../../src/application/ui/terminal/terminal-view', () => ({
   ),
 }));
 
-// The mocked editor's onDirty, so a test can make the shown file dirty.
+// The mocked editor's onDirty, so a test can make the shown file dirty, and
+// a call counter for its reveal.
 const editor = vi.hoisted(() => ({
   onDirty: null as ((dirty: boolean) => void) | null,
+  revealed: vi.fn(),
 }));
 
 vi.mock('../../src/application/ui/editor/code-editor', async () => {
@@ -32,10 +34,16 @@ vi.mock('../../src/application/ui/editor/code-editor', async () => {
     CodeEditor: (props: {
       stateKey: string;
       onDirty(dirty: boolean): void;
-      editorRef?: Ref<{getText(): string}>;
+      editorRef?: Ref<{
+        getText(): string;
+        reveal(line: number, range: [number, number] | null): void;
+      }>;
     }) => {
       editor.onDirty = props.onDirty;
-      useImperativeHandle(props.editorRef, () => ({getText: () => 'edited'}));
+      useImperativeHandle(props.editorRef, () => ({
+        getText: () => 'edited',
+        reveal: (line, range) => editor.revealed(props.stateKey, line, range),
+      }));
       return <div data-testid="code-editor">{props.stateKey}</div>;
     },
   };
@@ -132,6 +140,8 @@ const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
     filesError: {},
     diskMtimes: {},
     saving: false,
+    searches: {},
+    reveal: null,
     ...state,
   });
 };
@@ -291,6 +301,153 @@ describe('AppShell', () => {
     expect(window.fly.settings.set).toHaveBeenLastCalledWith({
       explorer: 'open',
     });
+    expect(screen.getByRole('navigation', {name: 'Explorer'})).toBeVisible();
+  });
+
+  it('Should search a worktree from its row and switch back to the explorer', async () => {
+    const user = userEvent.setup();
+    seed({workspace: twoWorktrees, selectedWorktreeId: 'w1'});
+    await renderShell();
+    const [, second] = screen.getAllByRole('button', {
+      name: 'Buscar na worktree',
+    });
+    await user.click(second as HTMLElement);
+    expect(useFlyStore.getState().selectedWorktreeId).toBe('w2');
+    const search = screen.getByRole('navigation', {name: 'Busca'});
+    expect(search.previousElementSibling).toBe(
+      screen.getByRole('navigation', {name: 'Worktrees'}),
+    );
+    expect(search).toHaveTextContent('repo-a · b');
+    expect(screen.getByRole('textbox', {name: 'Buscar'})).toHaveFocus();
+    expect(
+      screen.queryByRole('navigation', {name: 'Explorer'}),
+    ).not.toBeInTheDocument();
+    expect(window.fly.settings.set).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', {name: 'Mostrar explorer'}));
+    expect(screen.getByRole('navigation', {name: 'Explorer'})).toBeVisible();
+    expect(
+      screen.queryByRole('navigation', {name: 'Busca'}),
+    ).not.toBeInTheDocument();
+  });
+
+  it('Should open the search of the selected worktree with ⇧⌘F, opening the column', async () => {
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      ...config('dark'),
+      explorer: 'collapsed',
+    });
+    vi.mocked(window.fly.settings.set).mockResolvedValue(config('dark'));
+    await renderShell();
+    expect(fireEvent.keyDown(window, {key: 'f', metaKey: true})).toBe(true);
+    expect(window.fly.settings.set).not.toHaveBeenCalled();
+    let handled = true;
+    await act(async () => {
+      handled = fireEvent.keyDown(window, {
+        key: 'F',
+        metaKey: true,
+        shiftKey: true,
+      });
+    });
+    expect(handled).toBe(false);
+    expect(window.fly.settings.set).toHaveBeenCalledExactlyOnceWith({
+      explorer: 'open',
+    });
+    expect(screen.getByRole('navigation', {name: 'Busca'})).toBeVisible();
+    expect(screen.getByRole('textbox', {name: 'Buscar'})).toHaveFocus();
+  });
+
+  it('Should ignore ⇧⌘F without a selected worktree', async () => {
+    seed({workspace});
+    await renderShell();
+    expect(
+      fireEvent.keyDown(window, {key: 'f', metaKey: true, shiftKey: true}),
+    ).toBe(true);
+    expect(fireEvent.keyDown(window, {key: 'f', shiftKey: true})).toBe(true);
+    expect(
+      screen.queryByRole('navigation', {name: 'Busca'}),
+    ).not.toBeInTheDocument();
+  });
+
+  it('Should search, open a hit in its tab and reveal it in the editor', async () => {
+    const user = userEvent.setup();
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.files.search).mockResolvedValue({
+      files: [
+        {
+          path: 'src/a.ts',
+          matches: [
+            {line: 7, range: [2, 5], preview: 'x foo', highlights: [[2, 5]]},
+          ],
+        },
+      ],
+      total: 1,
+      truncated: false,
+    });
+    vi.mocked(window.fly.files.read).mockResolvedValue({
+      kind: 'text',
+      path: 'src/a.ts',
+      text: 'saved',
+      eol: 'lf',
+      mtimeMs: 7,
+    });
+    await renderShell();
+    await act(async () => {
+      fireEvent.keyDown(window, {key: 'f', metaKey: true, shiftKey: true});
+    });
+    await user.type(
+      screen.getByRole('textbox', {name: 'Buscar'}),
+      'foo{Enter}',
+    );
+    expect(window.fly.files.search).toHaveBeenCalledWith('w1', {
+      text: 'foo',
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    });
+    expect(screen.getByText('1 resultado em 1 arquivo')).toBeVisible();
+    await user.click(screen.getByRole('button', {name: /^7/}));
+    expect(window.fly.files.read).toHaveBeenCalledWith('w1', 'src/a.ts');
+    expect(screen.getByRole('tab', {name: 'a.ts'})).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(editor.revealed).toHaveBeenCalledExactlyOnceWith(
+      'w1\0src/a.ts',
+      7,
+      [2, 5],
+    );
+    expect(useFlyStore.getState().reveal).toBeNull();
+  });
+
+  it('Should not hand a reveal to another worktree', async () => {
+    seed({
+      workspace: twoWorktrees,
+      selectedWorktreeId: 'w1',
+      openFiles: [openTab('w1', 'a.ts')],
+      activeFile: {w1: 'a.ts'},
+      reveal: {worktreeId: 'w2', path: 'a.ts', line: 1, range: null},
+    });
+    await renderShell();
+    expect(editor.revealed).not.toHaveBeenCalled();
+    expect(useFlyStore.getState().reveal).not.toBeNull();
+  });
+
+  it('Should reopen the explorer, not the search, from the hamburger', async () => {
+    const user = userEvent.setup();
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.settings.set)
+      .mockResolvedValueOnce({...config('dark'), explorer: 'collapsed'})
+      .mockResolvedValueOnce(config('dark'));
+    await renderShell();
+    await user.click(screen.getByRole('button', {name: 'Buscar na worktree'}));
+    await user.click(screen.getByRole('button', {name: 'Fechar busca'}));
+    expect(window.fly.settings.set).toHaveBeenCalledWith({
+      explorer: 'collapsed',
+    });
+    expect(
+      screen.queryByRole('navigation', {name: 'Busca'}),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'Abrir explorer'}));
     expect(screen.getByRole('navigation', {name: 'Explorer'})).toBeVisible();
   });
 

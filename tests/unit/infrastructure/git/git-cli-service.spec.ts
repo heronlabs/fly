@@ -249,6 +249,125 @@ describe('GitCliService', () => {
     });
   });
 
+  describe('grep', () => {
+    const query = {
+      text: 'needle',
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+    };
+    const head = [
+      'grep',
+      '--no-color',
+      '--no-column',
+      '--no-recurse-submodules',
+      '-z',
+      '-n',
+      '-I',
+      '--untracked',
+      '--max-count=101',
+    ];
+    const options = {cwd: '/w', timeoutMs: 15_000};
+
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should grep a literal case-insensitively in the worktree and parse it', async () => {
+      run.mockResolvedValue({
+        code: 0,
+        stdout: 'a.ts\x003\x00x needle\n',
+        stderr: '',
+      });
+
+      const hits = await service.grep({
+        worktreePath: '/w',
+        query,
+        maxPerFile: 101,
+      });
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        [...head, '-i', '-F', '-e', 'needle', '--'],
+        options,
+      );
+      expect(hits).toEqual([{path: 'a.ts', line: 3, text: 'x needle'}]);
+    });
+
+    it('Should map case, whole word and regex to -i, -w and -E', async () => {
+      run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
+
+      await service.grep({
+        worktreePath: '/w',
+        query: {...query, caseSensitive: true, wholeWord: true, regex: true},
+        maxPerFile: 7,
+      });
+
+      expect(run).toHaveBeenCalledWith(
+        'git',
+        [
+          ...head.slice(0, -1),
+          '--max-count=7',
+          '-w',
+          '-E',
+          '-e',
+          'needle',
+          '--',
+        ],
+        options,
+      );
+    });
+
+    it('Should pass an option-like query as the pattern', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ''});
+
+      await service.grep({
+        worktreePath: '/w',
+        query: {...query, text: '--untracked; rm -rf /'},
+        maxPerFile: 101,
+      });
+
+      expect(run.mock.calls[0]?.[1]).toEqual([
+        ...head,
+        '-i',
+        '-F',
+        '-e',
+        '--untracked; rm -rf /',
+        '--',
+      ]);
+    });
+
+    it('Should return no hits on exit 1', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ''});
+
+      expect(
+        await service.grep({worktreePath: '/w', query, maxPerFile: 101}),
+      ).toEqual([]);
+    });
+
+    it('Should throw git falhou with the stderr on exit 128', async () => {
+      run.mockResolvedValue({
+        code: 128,
+        stdout: '',
+        stderr: "fatal: command line, '(': Unmatched ( or \\(\n",
+      });
+
+      await expect(
+        service.grep({worktreePath: '/w', query, maxPerFile: 101}),
+      ).rejects.toThrow(
+        new Error("git falhou: fatal: command line, '(': Unmatched ( or \\("),
+      );
+    });
+
+    it('Should map a killed child to the timeout message', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(
+        service.grep({worktreePath: '/w', query, maxPerFile: 101}),
+      ).rejects.toThrow(GIT_TIMEOUT_MESSAGE);
+    });
+  });
+
   describe('resolveBase', () => {
     beforeEach(() => {
       run.mockReset();

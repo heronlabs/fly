@@ -9,12 +9,18 @@ import {
   pathAncestors,
   queueCounts,
   queueOf,
+  SEARCH_DEBOUNCE_MS,
   statusesOf,
   useFlyStore,
 } from '../../../src/application/ui/state/fly-store';
 import type {WorktreeDiff} from '../../../src/core/domain/diff';
 import type {FileContent, FilesPoll} from '../../../src/core/domain/files';
 import type {QueueSnapshot, QueueStatus} from '../../../src/core/domain/queue';
+import type {
+  SearchMatch,
+  SearchQuery,
+  SearchResult,
+} from '../../../src/core/domain/search';
 import type {SessionsSnapshot} from '../../../src/core/domain/session';
 import type {Workspace} from '../../../src/core/domain/workspace';
 
@@ -1521,5 +1527,189 @@ describe('files', () => {
         openFilesOf(useFlyStore.getState(), W).map(file => file.path),
       ).toEqual(['b', 'a']);
     });
+  });
+});
+
+describe('search', () => {
+  const W = 'a/x#main';
+  const query = (text: string): SearchQuery => ({
+    text,
+    caseSensitive: false,
+    wholeWord: false,
+    regex: false,
+  });
+  const resultOf = (total: number): SearchResult => ({
+    files: [],
+    total,
+    truncated: false,
+  });
+  const match: SearchMatch = {
+    line: 4,
+    range: [1, 3],
+    preview: 'x foo',
+    highlights: [[2, 5]],
+  };
+  const searchOf = () => useFlyStore.getState().searches[W];
+  const deferred = <T,>() => {
+    let resolve: (value: T) => void = () => {};
+    let reject: (error: unknown) => void = () => {};
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return {promise, resolve, reject};
+  };
+
+  it('debounces typing by 300 ms and starts with no search state', () => {
+    expect(SEARCH_DEBOUNCE_MS).toBe(300);
+    expect(useFlyStore.getState().searches).toEqual({});
+    expect(useFlyStore.getState().reveal).toBeNull();
+  });
+
+  it('searchFiles marks the worktree searching, then stores the result', async () => {
+    const pending = deferred<SearchResult>();
+    vi.mocked(window.fly.files.search).mockReturnValue(pending.promise);
+    const q = query('foo');
+    const done = useFlyStore.getState().searchFiles(W, q);
+    expect(window.fly.files.search).toHaveBeenCalledExactlyOnceWith(W, q);
+    expect(searchOf()).toEqual({
+      query: q,
+      result: null,
+      error: null,
+      searching: true,
+    });
+    pending.resolve(resultOf(2));
+    await done;
+    expect(searchOf()).toEqual({
+      query: q,
+      result: resultOf(2),
+      error: null,
+      searching: false,
+    });
+  });
+
+  it('searchFiles keeps the previous result on screen while the next runs', async () => {
+    vi.mocked(window.fly.files.search).mockResolvedValueOnce(resultOf(1));
+    await useFlyStore.getState().searchFiles(W, query('a'));
+    const pending = deferred<SearchResult>();
+    vi.mocked(window.fly.files.search).mockReturnValueOnce(pending.promise);
+    const done = useFlyStore.getState().searchFiles(W, query('ab'));
+    expect(searchOf()).toMatchObject({result: resultOf(1), searching: true});
+    pending.resolve(resultOf(0));
+    await done;
+    expect(searchOf()).toMatchObject({result: resultOf(0), searching: false});
+  });
+
+  it('searchFiles clears the worktree for an empty query without IPC', async () => {
+    vi.mocked(window.fly.files.search).mockResolvedValueOnce(resultOf(1));
+    await useFlyStore.getState().searchFiles(W, query('a'));
+    await useFlyStore.getState().searchFiles(W, query(''));
+    expect(window.fly.files.search).toHaveBeenCalledTimes(1);
+    expect(searchOf()).toEqual({
+      query: query(''),
+      result: null,
+      error: null,
+      searching: false,
+    });
+  });
+
+  it('searchFiles drops a response whose query is no longer the last one', async () => {
+    const slow = deferred<SearchResult>();
+    const fast = deferred<SearchResult>();
+    vi.mocked(window.fly.files.search)
+      .mockReturnValueOnce(slow.promise)
+      .mockReturnValueOnce(fast.promise);
+    const first = useFlyStore.getState().searchFiles(W, query('a'));
+    const second = useFlyStore.getState().searchFiles(W, query('ab'));
+    fast.resolve(resultOf(1));
+    await second;
+    slow.resolve(resultOf(9));
+    await first;
+    expect(searchOf()).toEqual({
+      query: query('ab'),
+      result: resultOf(1),
+      error: null,
+      searching: false,
+    });
+  });
+
+  it('searchFiles drops a stale rejection too and keeps other worktrees', async () => {
+    const slow = deferred<SearchResult>();
+    vi.mocked(window.fly.files.search)
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce(resultOf(3));
+    useFlyStore.setState({
+      searches: {
+        other: {query: query('z'), result: null, error: null, searching: false},
+      },
+    });
+    const first = useFlyStore.getState().searchFiles(W, query('a'));
+    await useFlyStore.getState().searchFiles(W, query('ab'));
+    slow.reject(new Error('git falhou: late'));
+    await first;
+    expect(searchOf()).toMatchObject({result: resultOf(3), error: null});
+    expect(useFlyStore.getState().searches['other']?.query).toEqual(query('z'));
+  });
+
+  it('searchFiles stores a rejection without the IPC prefix and no result', async () => {
+    vi.mocked(window.fly.files.search).mockRejectedValue(
+      new Error(
+        "Error invoking remote method 'file:search': Error: git falhou: bad",
+      ),
+    );
+    await useFlyStore.getState().searchFiles(W, query('('));
+    expect(searchOf()).toEqual({
+      query: query('('),
+      result: null,
+      error: 'git falhou: bad',
+      searching: false,
+    });
+    expect(useFlyStore.getState().error).toBeNull();
+  });
+
+  it('openMatch opens the file and asks to reveal the hit', async () => {
+    vi.mocked(window.fly.files.read).mockResolvedValue({
+      kind: 'text',
+      path: 'src/a.ts',
+      text: 'x',
+      eol: 'lf',
+      mtimeMs: 1,
+    });
+    await useFlyStore.getState().openMatch(W, 'src/a.ts', match);
+    expect(window.fly.files.read).toHaveBeenCalledWith(W, 'src/a.ts');
+    expect(useFlyStore.getState().activeFile[W]).toBe('src/a.ts');
+    expect(useFlyStore.getState().reveal).toEqual({
+      worktreeId: W,
+      path: 'src/a.ts',
+      line: 4,
+      range: [1, 3],
+    });
+    useFlyStore.getState().clearReveal();
+    expect(useFlyStore.getState().reveal).toBeNull();
+  });
+
+  it('openMatch reveals nothing when the file cannot be opened', async () => {
+    vi.mocked(window.fly.files.read).mockRejectedValue(
+      new Error('Não é um arquivo'),
+    );
+    await useFlyStore.getState().openMatch(W, 'gone.ts', match);
+    expect(useFlyStore.getState().error).toBe('Não é um arquivo');
+    expect(useFlyStore.getState().reveal).toBeNull();
+  });
+
+  it('applyWorkspace drops the search of a removed worktree and keeps the map otherwise', () => {
+    const kept = {
+      query: query('a'),
+      result: null,
+      error: null,
+      searching: false,
+    };
+    const searches = {[W]: kept};
+    useFlyStore.setState({searches});
+    useFlyStore.getState().applyWorkspace(workspace());
+    expect(useFlyStore.getState().searches).toBe(searches);
+    useFlyStore.setState({searches: {[W]: kept, gone: kept}});
+    useFlyStore.getState().applyWorkspace(workspace());
+    expect(useFlyStore.getState().searches).toEqual({[W]: kept});
   });
 });

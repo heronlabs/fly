@@ -74,6 +74,8 @@ const api: FlyApi = {
       ),
     poll: (worktreeId, openPaths) =>
       ipcRenderer.invoke(channels.filePoll, worktreeId, openPaths),
+    search: (worktreeId, query) =>
+      ipcRenderer.invoke(channels.fileSearch, worktreeId, query),
   },
   pullRequests: {
     merge: worktreeId => ipcRenderer.invoke(channels.prMerge, worktreeId),

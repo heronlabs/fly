@@ -1,5 +1,6 @@
 import type {DiffFile} from '../domain/diff';
 import type {FileFlag} from '../domain/files';
+import type {SearchQuery} from '../domain/search';
 
 export const GIT_TIMEOUT_MESSAGE = 'git não respondeu em 15 s';
 
@@ -15,10 +16,20 @@ export type DiffRequest =
   | {worktreePath: string; scope: 'live'}
   | {worktreePath: string; scope: 'branch'; base: string};
 
+export type GrepRequest = {
+  worktreePath: string;
+  query: SearchQuery;
+  maxPerFile: number;
+};
+
+export type GrepHit = {path: string; line: number; text: string};
+
 export abstract class VcsGateway {
   abstract listWorktrees(repoPath: string): Promise<WorktreeInfo[]>;
   // origin/<branch> when that remote-tracking ref exists, else <branch>.
   abstract resolveBase(worktreePath: string, branch: string): Promise<string>;
   abstract diff(request: DiffRequest): Promise<DiffFile[]>;
   abstract status(worktreePath: string): Promise<Record<string, FileFlag>>;
+  // Tracked and untracked, not ignored, text files; worktree-relative paths.
+  abstract grep(request: GrepRequest): Promise<GrepHit[]>;
 }

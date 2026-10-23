@@ -7,6 +7,7 @@ import type {
   WriteResult,
 } from './files';
 import type {QueueSnapshot} from './queue';
+import type {SearchQuery, SearchResult} from './search';
 import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
 import type {Workspace} from './workspace';
@@ -30,6 +31,7 @@ export const channels = {
   fileRead: 'file:read',
   fileWrite: 'file:write',
   filePoll: 'file:poll',
+  fileSearch: 'file:search',
   prMerge: 'pr:merge',
   shellOpenExternal: 'shell:open-external',
   taskCreate: 'task:create',
@@ -81,6 +83,7 @@ export type FlyApi = {
       expectedMtimeMs: number | null,
     ): Promise<WriteResult>;
     poll(worktreeId: string, openPaths: string[]): Promise<FilesPoll>;
+    search(worktreeId: string, query: SearchQuery): Promise<SearchResult>;
   };
   pullRequests: {merge(worktreeId: string): Promise<void>};
   tasks: {

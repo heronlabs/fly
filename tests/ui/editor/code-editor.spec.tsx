@@ -57,6 +57,7 @@ const setup = (initial: Props) => {
     ...utils,
     onDirty,
     view,
+    editorRef,
     getText: () => editorRef.current?.getText(),
     rerender: (props: Props) => utils.rerender(element(props)),
     insert: (text: string) =>
@@ -93,6 +94,58 @@ describe('CodeEditor', () => {
     expect(handle.getText()).toBe('a');
     unmount();
     expect(handle.getText()).toBeNull();
+  });
+
+  it('Should select a range of a line, scroll to it and keep the doc clean', () => {
+    const {view, editorRef, onDirty} = setup({
+      stateKey: freshKey('a.ts'),
+      text: 'one\n  two three\nfour',
+    });
+    const dispatch = vi.spyOn(view(), 'dispatch');
+    editorRef.current?.reveal(2, [6, 11]);
+    expect(view().state.selection.main).toMatchObject({from: 10, to: 15});
+    expect(view().state.selection.main.head).toBe(15);
+    expect(view().state.sliceDoc(10, 15)).toBe('three');
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      effects: expect.anything(),
+    });
+    expect(onDirty).not.toHaveBeenCalled();
+  });
+
+  it('Should put the cursor at the start of the line without a range', () => {
+    const {view, editorRef} = setup({
+      stateKey: freshKey('a.ts'),
+      text: 'one\ntwo',
+    });
+    editorRef.current?.reveal(2, null);
+    expect(view().state.selection.main).toMatchObject({from: 4, to: 4});
+  });
+
+  it('Should clamp a reveal past the end of the line or of the doc', () => {
+    const {view, editorRef} = setup({
+      stateKey: freshKey('a.ts'),
+      text: 'one\ntwo',
+    });
+    editorRef.current?.reveal(9, [1, 40]);
+    expect(view().state.selection.main).toMatchObject({from: 5, to: 7});
+  });
+
+  it('Should do nothing on a reveal without a view', () => {
+    const editorRef = createRef<CodeEditorHandle>();
+    const {unmount} = render(
+      <CodeEditor
+        stateKey={freshKey('a.ts')}
+        text="a"
+        revision={0}
+        kind={fileKind('a.ts')}
+        theme="dark"
+        onDirty={vi.fn()}
+        editorRef={editorRef}
+      />,
+    );
+    const handle = editorRef.current as CodeEditorHandle;
+    unmount();
+    expect(() => handle.reveal(1, [0, 1])).not.toThrow();
   });
 
   it('Should report dirty after an edit and clean after reverting, only on flips', () => {
