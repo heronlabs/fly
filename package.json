@@ -95,5 +95,5 @@
     "test:unit": "vitest run --coverage --project node --project ui",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
-  "version": "0.1.5"
+  "version": "0.2.0"
 }
