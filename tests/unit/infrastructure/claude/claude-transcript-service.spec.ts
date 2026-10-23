@@ -435,6 +435,18 @@ describe('ClaudeTranscriptService', () => {
         return write(C, successor, 2000);
       };
 
+      /** A line of `type` without session_id, padded with `bytes` of data. */
+      const blob = (type: string, bytes: number): string =>
+        `${JSON.stringify({type, data: 'x'.repeat(bytes)})}\n`;
+
+      /** An instructions attachment owned by S, padded with `bytes`. */
+      const instructions = (bytes: number): string =>
+        `${JSON.stringify({
+          type: 'attachment',
+          session_id: S,
+          attachment: {type: 'instructions', content: 'x'.repeat(bytes)},
+        })}\n`;
+
       it('Should follow the newer file whose session_id is the launch uuid (C1)', async () => {
         await clear(text('c1', 't3'));
         expect(await session()).toEqual(expected('c1', 't3'));
@@ -452,11 +464,112 @@ describe('ClaudeTranscriptService', () => {
         expect(await session()).toEqual(expected('t1'));
       });
 
-      it('Should re-check a small successor without session_id on the next call', async () => {
+      it('Should re-check a successor without session_id once it grows', async () => {
         const successor = await clear(`${C1_CLEAR}\n`);
         expect(await session()).toEqual(expected('t1'));
         await appendFile(successor, `${C1_LINK}\n${text('t3')}`);
         expect(await session()).toEqual(expected('c1', 't3'));
+      });
+
+      it('Should hold a half-written owner line until its newline arrives', async () => {
+        const successor = await clear(C1_LINK.slice(0, 40));
+        expect(await session()).toEqual(expected('t1'));
+        await appendFile(successor, `${C1_LINK.slice(40)}\n${text('t3')}`);
+        expect(await session()).toEqual(parse(`${C1_LINK}\n${text('t3')}`));
+      });
+
+      it('Should scan only the bytes appended since the last owner scan', async () => {
+        const pending = blob('mode', 100);
+        const successor = await clear(`${C1_CLEAR}\n${pending}`);
+        expect(await session()).toEqual(expected('t1'));
+        // A scan from byte 0 would now meet OTHER first.
+        const claimed = Buffer.from(
+          JSON.stringify({type: 'mode', session_id: OTHER}).padEnd(
+            pending.length - 1,
+          ),
+        );
+        const handle = await open(successor, 'r+');
+        try {
+          await handle.write(
+            claimed,
+            0,
+            claimed.length,
+            Buffer.byteLength(`${C1_CLEAR}\n`),
+          );
+        } finally {
+          await handle.close();
+        }
+        await appendFile(successor, `${C1_LINK}\n${text('t3')}`);
+        expect(await session()).toEqual(parse(readFileSync(successor, 'utf8')));
+      });
+
+      it('Should scan the appended bytes with one exact-size read and close the handle', async () => {
+        const successor = await clear(`${C1_CLEAR}\n`);
+        await session();
+        const handles = await trackHandles();
+        const more = blob('mode', 100);
+        await appendFile(successor, more);
+        await session();
+        const scans = handles.filter(handle => handle.path === successor);
+        expect(scans).toHaveLength(1);
+        const [scan] = scans;
+        expect(scan?.read).toHaveBeenCalledTimes(1);
+        expect(scan?.read.mock.calls[0]).toEqual([
+          expect.objectContaining({length: more.length}),
+          0,
+          more.length,
+          Buffer.byteLength(`${C1_CLEAR}\n`),
+        ]);
+        expect(scan?.close).toHaveBeenCalledTimes(1);
+      });
+
+      it('Should not reopen a successor without session_id that has not grown', async () => {
+        const successor = await clear(`${C1_CLEAR}\n`);
+        expect(await session()).toEqual(expected('t1'));
+        expect(await session()).toEqual(expected('t1'));
+        expect(opened(successor)).toBe(1);
+      });
+
+      it('Should rescan a successor from byte 0 when it was rewritten shorter', async () => {
+        const successor = await clear(`${C1_CLEAR}\n${blob('mode', KIB)}`);
+        expect(await session()).toEqual(expected('t1'));
+        await writeFile(successor, text('c1', 't3'));
+        expect(await session()).toEqual(expected('c1', 't3'));
+      });
+
+      it('Should rescan a successor from byte 0 when it was replaced by a new inode', async () => {
+        const successor = await clear(`${C1_CLEAR}\n${blob('mode', KIB)}`);
+        expect(await session()).toEqual(expected('t1'));
+        const content = text('c1', 't3') + blob('mode', 2 * KIB);
+        const replacement = join(dirOf(ROOT), 'replacement.tmp');
+        await writeFile(replacement, content);
+        await rename(replacement, successor);
+        expect(await session()).toEqual(parse(content));
+      });
+
+      it('Should stop scanning a successor shorter than its stat said', async () => {
+        const successor = await clear(`${C1_CLEAR}\n`);
+        const actual =
+          await vi.importActual<typeof import('node:fs/promises')>(
+            'node:fs/promises',
+          );
+        vi.mocked(stat).mockImplementation((async (
+          file: string,
+          ...rest: unknown[]
+        ) => {
+          const stats = await (
+            actual.stat as (...args: unknown[]) => Promise<Stats>
+          )(file, ...rest);
+          return file === successor ? {...stats, size: stats.size + 50} : stats;
+        }) as unknown as typeof stat);
+        expect(await session()).toEqual(expected('t1'));
+      });
+
+      it('Should follow the successor when two callers scan it at the same time', async () => {
+        await clear(text('c1', 't3'));
+        const [first, second] = await Promise.all([session(), session()]);
+        expect(first).toEqual(expected('c1', 't3'));
+        expect(second).toEqual(expected('c1', 't3'));
       });
 
       it('Should not follow a successor of another session and remember its owner', async () => {
@@ -471,12 +584,28 @@ describe('ClaudeTranscriptService', () => {
         expect(opened(successor)).toBe(1);
       });
 
-      it('Should scan only the first 256 KiB of a newer file and remember it has no owner', async () => {
-        const filler = `${JSON.stringify({type: 'mode', data: 'x'.repeat(KIB)})}\n`;
-        const successor = await clear(filler.repeat(300) + text('c1', 't3'));
-        expect(await session()).toEqual(expected('t1'));
-        expect(await session()).toEqual(expected('t1'));
-        expect(opened(successor)).toBe(1);
+      it('Should follow a successor whose first session_id line starts past 256 KiB and is longer than 256 KiB', async () => {
+        // Claude Code 2.1.309 opens the new file with api-request blobs and
+        // big SessionStart attachments before the first session_id line.
+        const content =
+          `${C1_CLEAR}\n` +
+          blob('api-request-shape', 89 * KIB) +
+          blob('api-request-blob', 184 * KIB) +
+          blob('api-request-blob', 65 * KIB) +
+          blob('attachment', 160 * KIB) +
+          instructions(323 * KIB) +
+          text('t3');
+        await clear(content);
+        expect(await session()).toEqual(parse(content));
+      });
+
+      it('Should find an owner line that spans two read chunks', async () => {
+        const content =
+          blob('api-request-blob', 900 * KIB) +
+          instructions(300 * KIB) +
+          text('t3');
+        await clear(content);
+        expect(await session()).toEqual(parse(content));
       });
 
       it('Should skip malformed and non-object lines while looking for the owner', async () => {
@@ -576,6 +705,12 @@ describe('ClaudeTranscriptService', () => {
 
     it('Should ignore a transcript whose owner is excluded', async () => {
       await write(C, text('c1', 't3'), ago(MINUTE));
+      expect(await directory({exclude: [S]})).toBeNull();
+    });
+
+    it('Should keep ignoring a transcript whose owner is excluded on later calls', async () => {
+      await write(C, text('c1', 't3'), ago(MINUTE));
+      await directory({exclude: [S]});
       expect(await directory({exclude: [S]})).toBeNull();
     });
 
