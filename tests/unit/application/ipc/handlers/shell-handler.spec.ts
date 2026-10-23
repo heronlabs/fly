@@ -47,7 +47,16 @@ describe('ShellHandler', () => {
     expect(linkOpen).toHaveBeenCalledWith('https://github.com/x');
   });
 
-  it.each(['http://github.com/x', 'file:///etc/passwd', 'not a url'])(
+  it('Should open an http URL', async () => {
+    linkOpen.mockResolvedValue(undefined);
+    await listeners.get(channels.shellOpenExternal)!(
+      {},
+      'http://localhost:5173/',
+    );
+    expect(linkOpen).toHaveBeenCalledWith('http://localhost:5173/');
+  });
+
+  it.each(['file:///etc/passwd', 'javascript:alert(1)', 'not a url'])(
     'Should reject %s without opening it',
     async url => {
       await expect(

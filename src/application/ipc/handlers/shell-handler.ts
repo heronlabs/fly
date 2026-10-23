@@ -6,6 +6,7 @@ import type {IpcHost, LinkOpener} from '../ipc-types';
 import {IPC_HOST, LINK_OPENER} from '../ipc-types';
 
 const NOT_ALLOWED = 'URL não permitida';
+const WEB_PROTOCOLS = ['http:', 'https:'];
 
 @Injectable()
 export class ShellHandler {
@@ -28,7 +29,9 @@ export class ShellHandler {
         } catch {
           throw new Error(NOT_ALLOWED);
         }
-        if (parsed.protocol !== 'https:') throw new Error(NOT_ALLOWED);
+        if (!WEB_PROTOCOLS.includes(parsed.protocol)) {
+          throw new Error(NOT_ALLOWED);
+        }
         return this.links.open(url);
       },
     );
