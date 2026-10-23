@@ -17,7 +17,6 @@ export const LIVE_WINDOW_MS = 10 * 60_000;
 const EXTENSION = '.jsonl';
 const MAX_CACHED_FILES = 64;
 const CHUNK_BYTES = 1024 * 1024;
-const OWNER_SCAN_BYTES = 256 * 1024;
 const NEWLINE = 0x0a;
 
 /** How far a file has been read, and the parser fed with its lines. */
@@ -29,7 +28,22 @@ type Tail = {
   parser: TranscriptParser;
 };
 
-type Transcript = {path: string; stem: string; mtimeMs: number; size: number};
+/** How far a file's head has been scanned for its owner `session_id`. */
+type OwnerScan = {
+  ino: number;
+  offset: number;
+  /** The bytes after the last newline scanned: a line still being written. */
+  remainder: Buffer;
+  owner: string | null;
+};
+
+type Transcript = {
+  path: string;
+  stem: string;
+  ino: number;
+  mtimeMs: number;
+  size: number;
+};
 type SessionInput = Parameters<TranscriptSource['forSession']>[0];
 type DirectoryInput = Parameters<TranscriptSource['forDirectory']>[0];
 
@@ -72,8 +86,11 @@ export class ClaudeTranscriptService extends TranscriptSource {
   private readonly tails = new Map<string, Tail>();
   /** The in-flight read per path; later callers chain onto it. */
   private readonly reads = new Map<string, Promise<TranscriptSummary>>();
-  /** A file's owner `session_id`, or null once 256 KiB held none. */
-  private readonly owners = new Map<string, string | null>();
+  /**
+   * Each scanned file's owner, or how far it was scanned without one. Scans
+   * never mutate a stored record, so concurrent ones need no queue.
+   */
+  private readonly scans = new Map<string, OwnerScan>();
   /** The launch file's path → the /clear successor that replaced it. */
   private readonly successors = new Map<string, string>();
 
@@ -142,8 +159,9 @@ export class ClaudeTranscriptService extends TranscriptSource {
         const path = join(dir, name);
         const stats = await stat(path).catch(skipIfMissing);
         if (stats === undefined) return undefined;
-        const {mtimeMs, size} = stats;
-        return {path, stem: name.slice(0, -EXTENSION.length), mtimeMs, size};
+        const {ino, mtimeMs, size} = stats;
+        const stem = name.slice(0, -EXTENSION.length);
+        return {path, stem, ino, mtimeMs, size};
       }),
     );
     return found.filter((file): file is Transcript => file !== undefined);
@@ -162,29 +180,54 @@ export class ClaudeTranscriptService extends TranscriptSource {
     });
   }
 
-  /** The first string `session_id` in the complete lines of the first 256 KiB. */
-  private async owner({path, size}: Transcript): Promise<string | null> {
-    const cached = this.owners.get(path);
-    if (cached !== undefined) return cached;
-    const length = Math.min(size, OWNER_SCAN_BYTES);
-    const head = Buffer.alloc(length);
+  /**
+   * The first string `session_id` in the file's complete lines (spike F2).
+   * Only the bytes added since the last scan are read, so a file without one
+   * is checked again as it grows; a new inode or a shorter size starts over.
+   */
+  private async owner({path, ino, size}: Transcript): Promise<string | null> {
+    const last = this.scans.get(path);
+    if (last?.owner) return last.owner;
+    const from: OwnerScan =
+      last?.ino === ino && last.offset <= size
+        ? last
+        : {ino, offset: 0, remainder: Buffer.alloc(0), owner: null};
+    if (from.offset === size) return null;
+    const scan = await this.scan(path, from, size);
+    this.scans.set(path, scan);
+    return scan.owner;
+  }
+
+  /**
+   * Scans from `offset` on, after the remainder, a chunk at a time up to the
+   * first complete line with an owner. Holds one chunk and one partial line.
+   */
+  private async scan(
+    path: string,
+    from: OwnerScan,
+    size: number,
+  ): Promise<OwnerScan> {
+    let {offset, remainder} = from;
+    const chunk = Buffer.alloc(Math.min(CHUNK_BYTES, size - offset));
     const handle = await open(path, 'r');
-    let bytesRead: number;
     try {
-      ({bytesRead} = await handle.read(head, 0, length, 0));
+      let bytesRead: number;
+      do {
+        ({bytesRead} = await handle.read(chunk, 0, chunk.length, offset));
+        offset += bytesRead;
+        const bytes = Buffer.concat([remainder, chunk.subarray(0, bytesRead)]);
+        for (const line of completeLines(bytes)) {
+          const owner = lineOwner(line);
+          if (owner !== null) {
+            return {ino: from.ino, offset, remainder: Buffer.alloc(0), owner};
+          }
+        }
+        remainder = Buffer.from(bytes.subarray(bytes.lastIndexOf(NEWLINE) + 1));
+      } while (bytesRead > 0 && offset < size);
     } finally {
       await handle.close();
     }
-    let owner: string | null = null;
-    for (const line of completeLines(head.subarray(0, bytesRead))) {
-      owner = lineOwner(line);
-      if (owner !== null) break;
-    }
-    // A smaller file without one may still get it: check it again next time.
-    if (owner !== null || bytesRead === OWNER_SCAN_BYTES) {
-      this.owners.set(path, owner);
-    }
-    return owner;
+    return {ino: from.ino, offset, remainder, owner: null};
   }
 
   /** One tail per path at a time, so no byte is pushed into a parser twice. */
