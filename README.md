@@ -31,6 +31,7 @@ and xterm.js. macOS first.
 - [Architecture](#architecture)
 - [Testing](#testing)
 - [Contributing](#contributing)
+- [Security](#security)
 - [License](#license)
 
 ## Why This Project
@@ -171,6 +172,9 @@ pnpm test:mutation    # stryker mutation testing
 
 ## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the test isolation
+rules and the CI gates.
+
 ```bash
 pnpm lint:check       # gts + json/yml lint
 pnpm lint:fix         # auto-fix
@@ -190,6 +194,11 @@ test(core): kill surviving mutants in the core services
 
 - All work branches from `main`; PRs target `main`. Never commit directly to `main`.
 - `version.txt` is managed by [action-tag-release-build](https://github.com/heronlabs/action-tag-release-build) on merge; never edit it by hand.
+
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md),
+never in a public issue.
 
 ## License
 
