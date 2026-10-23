@@ -226,4 +226,121 @@ describe('SessionPanel', () => {
       expect(screen.queryByTestId('terminal')).not.toBeInTheDocument();
     });
   });
+
+  describe('after the user kills the shown session', () => {
+    const kill = async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', {name: 'Encerrar sessão'}));
+      await user.click(screen.getByRole('button', {name: 'Confirmar'}));
+    };
+
+    it('Should offer to start a session once the exited session is gone', async () => {
+      const props = setup({snapshot: snapshot([session('a')])});
+      await kill();
+      exit('a');
+      expect(screen.getByTestId('terminal')).toHaveTextContent('a');
+
+      props.rerender({snapshot: snapshot([])});
+
+      expect(screen.queryByTestId('terminal')).not.toBeInTheDocument();
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', {name: 'Iniciar sessão'}));
+      expect(props.onStart).toHaveBeenCalledWith('w1');
+    });
+
+    it('Should offer to start a session when the exit and the snapshot land together', async () => {
+      const props = setup({snapshot: snapshot([session('a')])});
+      await kill();
+
+      act(() => {
+        exits.get('a')?.(0);
+        props.rerender({snapshot: snapshot([])});
+      });
+
+      expect(screen.queryByTestId('terminal')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', {name: 'Iniciar sessão'}),
+      ).toBeVisible();
+    });
+
+    it('Should keep the last output of a later session with the same name', async () => {
+      const props = setup({snapshot: snapshot([session('a')])});
+      await kill();
+      exit('a');
+      props.rerender({snapshot: snapshot([])});
+      expect(screen.queryByTestId('terminal')).not.toBeInTheDocument();
+
+      props.rerender({snapshot: snapshot([session('a')])});
+      exit('a');
+      props.rerender({snapshot: snapshot([])});
+
+      expect(screen.getByTestId('terminal')).toHaveTextContent('a');
+      expect(
+        screen.getByRole('button', {name: 'Iniciar sessão'}),
+      ).toBeVisible();
+    });
+
+    it('Should keep the last output of a session that survived its kill once another is picked', async () => {
+      const props = setup({
+        snapshot: snapshot([session('a'), session('c')]),
+        activeSessionName: 'a',
+      });
+      await kill();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', {name: 'c'}));
+      props.rerender({activeSessionName: 'c'});
+      await user.click(screen.getByRole('button', {name: 'a'}));
+      props.rerender({activeSessionName: 'a'});
+
+      exit('a');
+      props.rerender({snapshot: snapshot([session('c')])});
+
+      expect(screen.getByTestId('terminal')).toHaveTextContent('a');
+      expect(
+        screen.getByRole('button', {name: 'Iniciar sessão'}),
+      ).toBeVisible();
+    });
+
+    it('Should keep the last output of a session that survived its kill once another is started', async () => {
+      const props = setup({snapshot: snapshot([session('a')])});
+      await kill();
+      props.rerender({worktree: {...worktree, id: 'w2'}});
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', {name: 'Iniciar sessão'}));
+      expect(props.onStart).toHaveBeenCalledWith('w2');
+      props.rerender({worktree});
+
+      exit('a');
+      props.rerender({snapshot: snapshot([])});
+
+      expect(screen.getByTestId('terminal')).toHaveTextContent('a');
+      expect(
+        screen.getByRole('button', {name: 'Iniciar sessão'}),
+      ).toBeVisible();
+    });
+
+    it('Should show another session of the worktree and keep it once it exits elsewhere', async () => {
+      const props = setup({
+        snapshot: snapshot([session('a'), session('c')]),
+        activeSessionName: 'a',
+      });
+      await kill();
+      exit('a');
+      props.rerender({snapshot: snapshot([session('c')])});
+      expect(screen.getByTestId('terminal')).toHaveTextContent('c');
+      expect(
+        screen.getByRole('button', {name: 'Encerrar sessão'}),
+      ).toBeVisible();
+
+      exit('c');
+      props.rerender({snapshot: snapshot([])});
+
+      expect(screen.getByTestId('terminal')).toHaveTextContent('c');
+      expect(
+        screen.getByRole('button', {name: 'Iniciar sessão'}),
+      ).toBeVisible();
+    });
+  });
 });
