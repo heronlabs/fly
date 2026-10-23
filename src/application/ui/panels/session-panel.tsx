@@ -157,6 +157,9 @@ export const SessionPanel = ({
     name: string;
     worktreeId: string;
   } | null>(null);
+  // Killed from here: once gone it is like a worktree with no session. Only
+  // until the snapshot drops it or the user moves on, not for a later death.
+  const [killed, setKilled] = useState<string | null>(null);
   const names = snapshot.sessions
     .filter(session => session.worktreeId === worktree?.id)
     .map(session => session.name);
@@ -167,9 +170,18 @@ export const SessionPanel = ({
     names.includes(activeSessionName);
   if (
     ended &&
-    (ended.worktreeId !== worktree?.id || snapshot.tmux !== 'ok' || replaced)
+    (ended.worktreeId !== worktree?.id ||
+      snapshot.tmux !== 'ok' ||
+      replaced ||
+      ended.name === killed)
   ) {
     setEnded(null);
+  }
+  if (
+    killed !== null &&
+    !snapshot.sessions.some(session => session.name === killed)
+  ) {
+    setKilled(null);
   }
 
   if (!worktree) {
@@ -190,11 +202,17 @@ export const SessionPanel = ({
   }
   const start = () => {
     setEnded(null);
+    setKilled(null);
     onStart(worktree.id);
   };
   const select = (name: string) => {
     setEnded(null);
+    setKilled(null);
     onSelectSession(name);
+  };
+  const kill = (name: string) => {
+    setKilled(name);
+    onKill(name);
   };
   // Same component and key as before, so the terminal is never re-attached.
   if (ended?.worktreeId === worktree.id && !names.includes(ended.name)) {
@@ -227,7 +245,7 @@ export const SessionPanel = ({
       name={shown}
       others={names.filter(name => name !== shown)}
       theme={theme}
-      onKill={onKill}
+      onKill={kill}
       onStart={start}
       onSelectSession={select}
       onExit={() => setEnded({name: shown, worktreeId: worktree.id})}
