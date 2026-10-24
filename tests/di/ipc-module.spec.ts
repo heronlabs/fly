@@ -18,6 +18,7 @@ vi.mock('electron', () => ({
 import {AttachmentHandler} from '../../src/application/ipc/handlers/attachment-handler';
 import {DiffHandler} from '../../src/application/ipc/handlers/diff-handler';
 import {FileHandler} from '../../src/application/ipc/handlers/file-handler';
+import {LaunchHandler} from '../../src/application/ipc/handlers/launch-handler';
 import {QueueHandler} from '../../src/application/ipc/handlers/queue-handler';
 import {SessionHandler} from '../../src/application/ipc/handlers/session-handler';
 import {SettingsHandler} from '../../src/application/ipc/handlers/settings-handler';
@@ -77,6 +78,7 @@ describe('IpcModule (real Nest DI)', () => {
       expect(() => context.get(FileHandler).register()).not.toThrow();
       expect(() => context.get(TerminalHandler).register()).not.toThrow();
       expect(() => context.get(AttachmentHandler).register()).not.toThrow();
+      expect(() => context.get(LaunchHandler).register()).not.toThrow();
     } finally {
       await context.close();
     }

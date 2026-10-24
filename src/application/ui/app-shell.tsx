@@ -32,6 +32,7 @@ export const AppShell = () => {
     selectedWorktreeId,
     error,
     bootstrap,
+    takeLaunch,
     pickAndOpen,
     openRoot,
     select,
@@ -100,6 +101,11 @@ export const AppShell = () => {
   );
 
   useEffect(() => window.fly.queue.onChanged(applyQueue), [applyQueue]);
+
+  useEffect(
+    () => window.fly.launch.onRequested(() => void takeLaunch()),
+    [takeLaunch],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

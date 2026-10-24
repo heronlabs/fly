@@ -77,9 +77,21 @@
       }
     },
     {
-      "comment": "Every module in src must be reachable from the entry point (dead-code guard; allow type declarations).",
+      "comment": "cli.ts runs on Electron in Node mode (ELECTRON_RUN_AS_NODE), where the electron package is only the binary path: nothing it reaches may import electron.",
       "from": {
-        "path": "^src/(main|preload)\\.ts$|^src/application/ui/main\\.tsx$"
+        "path": "^src/cli\\.ts$"
+      },
+      "name": "cli-no-electron",
+      "severity": "error",
+      "to": {
+        "path": "node_modules/electron/",
+        "reachable": true
+      }
+    },
+    {
+      "comment": "Every module in src must be reachable from an entry point (dead-code guard; allow type declarations).",
+      "from": {
+        "path": "^src/(main|preload|cli)\\.ts$|^src/application/ui/main\\.tsx$"
       },
       "name": "no-unreachable-from-entry",
       "severity": "error",
@@ -87,7 +99,7 @@
         "path": "^src",
         "pathNot": [
           "\\.d\\.ts$",
-          "^src/(main|preload)\\.ts$",
+          "^src/(main|preload|cli)\\.ts$",
           "^src/application/ui/main\\.tsx$"
         ],
         "reachable": false
@@ -99,7 +111,7 @@
         "orphan": true,
         "pathNot": [
           "\\.d\\.ts$",
-          "^src/(main|preload)\\.ts$",
+          "^src/(main|preload|cli)\\.ts$",
           "^src/application/ui/main\\.tsx$"
         ]
       },

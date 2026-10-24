@@ -9,6 +9,7 @@ import {app, BrowserWindow, nativeImage} from 'electron';
 import {AttachmentHandler} from './application/ipc/handlers/attachment-handler';
 import {DiffHandler} from './application/ipc/handlers/diff-handler';
 import {FileHandler} from './application/ipc/handlers/file-handler';
+import {LaunchHandler} from './application/ipc/handlers/launch-handler';
 import {QueueHandler} from './application/ipc/handlers/queue-handler';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
@@ -16,6 +17,7 @@ import {ShellHandler} from './application/ipc/handlers/shell-handler';
 import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
+import {launchFolder} from './application/ipc/launch-args';
 import {
   LoginShellEnvService,
   mergePath,
@@ -79,9 +81,17 @@ let context: Awaited<
   ReturnType<typeof NestFactory.createApplicationContext>
 > | null = null;
 
-app
+// A second `fly <pasta>` hands its argv to this instance and quits.
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
+
+const folderOf = (argv: string[], cwd: string): string | null =>
+  launchFolder(argv, {cwd, defaultApp: process.defaultApp});
+
+const booted = app
   .whenReady()
   .then(async () => {
+    if (!primary) return null;
     // Apps launched from Finder get a minimal PATH; load the login shell's.
     const env = await new LoginShellEnvService(
       new ExecCommandRunnerService(),
@@ -102,6 +112,9 @@ app
     const terminalHandler = context.get(TerminalHandler);
     terminalHandler.register();
     const onReset = () => terminalHandler.reset();
+    const launch = context.get(LaunchHandler);
+    launch.register();
+    launch.request(folderOf(process.argv, process.cwd()));
     if (!app.isPackaged && process.platform === 'darwin') {
       app.dock?.setIcon(
         nativeImage.createFromPath(join(app.getAppPath(), 'build/icon.png')),
@@ -111,11 +124,28 @@ app
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow(onReset);
     });
+    return {launch, onReset};
   })
   .catch((error: unknown) => {
     console.error('Falha ao iniciar o fly', error);
     app.quit();
+    return null;
   });
+
+app.on('second-instance', (_event, argv, workingDirectory) => {
+  void booted.then(state => {
+    if (!state) return;
+    state.launch.request(folderOf(argv, workingDirectory));
+    const [window] = BrowserWindow.getAllWindows();
+    if (!window) {
+      createWindow(state.onReset);
+      return;
+    }
+    if (window.isMinimized()) window.restore();
+    window.focus();
+    app.focus({steal: true});
+  });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

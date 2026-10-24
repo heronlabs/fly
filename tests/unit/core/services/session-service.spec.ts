@@ -205,6 +205,19 @@ describe('SessionService', () => {
     });
   });
 
+  it('Should launch a claude session at a path named after its id', async () => {
+    start.mockResolvedValue(undefined);
+    service.setWorkspace(null);
+    const name = await service.launch('talon/src', '/r/talon/src');
+    expect(name).toBe('talon-src-abc123');
+    expect(start).toHaveBeenCalledWith({
+      name: 'talon-src-abc123',
+      cwd: '/r/talon/src',
+      command: 'claude --dangerously-skip-permissions --session-id u1; exit',
+      options: {'@fly_session_id': 'u1', '@fly_worktree': '/r/talon/src'},
+    });
+  });
+
   it('Should fail to start without a workspace', async () => {
     service.setWorkspace(null);
     await expect(service.start('talon')).rejects.toThrow(

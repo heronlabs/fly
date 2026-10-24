@@ -181,6 +181,27 @@ describe('AppShell', () => {
     expect(unsubscribe).toHaveBeenCalled();
   });
 
+  it('takes a launch when main announces one and unsubscribes on unmount', async () => {
+    seed({});
+    const unsubscribe = vi.fn();
+    vi.mocked(window.fly.launch.onRequested).mockReturnValue(unsubscribe);
+    const view = render(<AppShell />);
+    await act(async () => {});
+    expect(window.fly.launch.take).toHaveBeenCalledTimes(1);
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/tmp/x',
+      worktreeId: 'w1',
+    });
+    vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace);
+    const listener = vi.mocked(window.fly.launch.onRequested).mock
+      .calls[0]?.[0] as () => void;
+    await act(async () => listener());
+    expect(window.fly.workspace.open).toHaveBeenCalledWith('/tmp/x');
+    expect(useFlyStore.getState().selectedWorktreeId).toBe('w1');
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
   it('applies workspace pushes', async () => {
     seed({});
     await renderShell();

@@ -117,6 +117,16 @@ const api: FlyApi = {
     pathForFile: file => webUtils.getPathForFile(file),
     saveImage: png => ipcRenderer.invoke(channels.attachmentSaveImage, png),
   },
+  launch: {
+    take: () => ipcRenderer.invoke(channels.launchTake),
+    onRequested: listener => {
+      const handler = () => listener();
+      ipcRenderer.on(channels.launchRequested, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.launchRequested, handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('fly', api);

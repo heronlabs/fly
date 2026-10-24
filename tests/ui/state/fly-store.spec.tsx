@@ -86,6 +86,72 @@ describe('fly store', () => {
     expect(useFlyStore.getState().error).toBe('boom');
   });
 
+  it('bootstrap opens a pending launch instead of the recent root', async () => {
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      recentRoots: ['/q'],
+      theme: 'system',
+      diffPanel: 'open',
+      explorer: 'open',
+    });
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/r',
+      worktreeId: 'b#main',
+    });
+    vi.mocked(window.fly.workspace.open).mockResolvedValue(
+      workspace(['a', 'b']),
+    );
+    await useFlyStore.getState().bootstrap();
+    expect(window.fly.workspace.open).toHaveBeenCalledTimes(1);
+    expect(window.fly.workspace.open).toHaveBeenCalledWith('/r');
+    expect(useFlyStore.getState().selectedWorktreeId).toBe('b#main');
+  });
+
+  it('takeLaunch is false without a pending launch', async () => {
+    expect(await useFlyStore.getState().takeLaunch()).toBe(false);
+    expect(window.fly.workspace.open).not.toHaveBeenCalled();
+  });
+
+  it('takeLaunch opens the root and keeps the selection without a worktree', async () => {
+    useFlyStore.setState({selectedWorktreeId: 'a#main'});
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/r',
+      worktreeId: null,
+    });
+    vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace(['a']));
+    expect(await useFlyStore.getState().takeLaunch()).toBe(true);
+    expect(useFlyStore.getState().workspace?.root).toBe('/r');
+    expect(useFlyStore.getState().selectedWorktreeId).toBe('a#main');
+  });
+
+  it('takeLaunch selects nothing when the root failed to open', async () => {
+    useFlyStore.setState({workspace: workspace(['a'])});
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/other',
+      worktreeId: 'a#main',
+    });
+    vi.mocked(window.fly.workspace.open).mockRejectedValue(new Error('no'));
+    expect(await useFlyStore.getState().takeLaunch()).toBe(true);
+    expect(useFlyStore.getState().selectedWorktreeId).toBeNull();
+    expect(useFlyStore.getState().error).toBe('no');
+  });
+
+  it('takeLaunch reports a failed take and opens nothing', async () => {
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      recentRoots: ['/q'],
+      theme: 'system',
+      diffPanel: 'open',
+      explorer: 'open',
+    });
+    vi.mocked(window.fly.launch.take).mockRejectedValue(
+      new Error(
+        "Error invoking remote method 'launch:take': Error: Pasta não encontrada: /x",
+      ),
+    );
+    await useFlyStore.getState().bootstrap();
+    expect(useFlyStore.getState().error).toBe('Pasta não encontrada: /x');
+    expect(window.fly.workspace.open).not.toHaveBeenCalled();
+  });
+
   it('pickAndOpen does nothing when the picker is cancelled', async () => {
     vi.mocked(window.fly.workspace.pickFolder).mockResolvedValue(null);
     await useFlyStore.getState().pickAndOpen();

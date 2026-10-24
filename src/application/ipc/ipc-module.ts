@@ -18,6 +18,7 @@ import {VcsGateway} from '../../core/interfaces/vcs-gateway';
 import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
 import {DiffService} from '../../core/services/diff-service';
 import {FileService} from '../../core/services/file-service';
+import {LaunchService} from '../../core/services/launch-service';
 import {QueueService} from '../../core/services/queue-service';
 import {SessionService} from '../../core/services/session-service';
 import {SettingsService} from '../../core/services/settings-service';
@@ -43,6 +44,7 @@ import {TMUX_SOCKET} from '../../infrastructure/tmux/tokens';
 import {AttachmentHandler} from './handlers/attachment-handler';
 import {DiffHandler} from './handlers/diff-handler';
 import {FileHandler} from './handlers/file-handler';
+import {LaunchHandler} from './handlers/launch-handler';
 import {QueueHandler} from './handlers/queue-handler';
 import {SessionHandler} from './handlers/session-handler';
 import {SettingsHandler} from './handlers/settings-handler';
@@ -109,6 +111,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
     DiffService,
     FileService,
     TerminalService,
+    LaunchService,
     WorkspaceHandler,
     SettingsHandler,
     ShellHandler,
@@ -118,6 +121,7 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
     FileHandler,
     TerminalHandler,
     AttachmentHandler,
+    LaunchHandler,
   ],
 })
 export class IpcModule {}

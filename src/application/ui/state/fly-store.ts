@@ -81,6 +81,7 @@ export type FlyState = {
   searches: Record<string, WorktreeSearch>;
   reveal: Reveal | null;
   bootstrap(): Promise<void>;
+  takeLaunch(): Promise<boolean>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
   refresh(): Promise<void>;
@@ -259,12 +260,30 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     try {
       const config = await window.fly.settings.get();
       set({config});
-      if (config.recentRoots[0]) {
+      if (!(await get().takeLaunch()) && config.recentRoots[0]) {
         await get().openRoot(config.recentRoots[0]);
       }
     } catch (error) {
       set({error: errorMessage(error)});
     }
+  },
+
+  // Opens a pending `fly <pasta>` request; false when there was none.
+  async takeLaunch() {
+    try {
+      const launch = await window.fly.launch.take();
+      if (!launch) return false;
+      await get().openRoot(launch.root);
+      const {workspace} = get();
+      const worktree =
+        workspace?.root === launch.root
+          ? workspace.worktrees.find(({id}) => id === launch.worktreeId)
+          : undefined;
+      if (worktree) get().select(worktree.id);
+    } catch (error) {
+      set({error: errorMessage(error)});
+    }
+    return true;
   },
 
   async pickAndOpen() {

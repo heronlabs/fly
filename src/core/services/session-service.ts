@@ -102,14 +102,20 @@ export class SessionService {
     if (!this.workspace) throw new Error('Nenhuma pasta aberta');
     const worktree = this.workspace.worktrees.find(w => w.id === worktreeId);
     if (!worktree) throw new Error('Worktree não encontrado');
+    return this.launch(worktree.id, worktree.path);
+  }
+
+  // Claude in a new session at path, named after id (path under the root).
+  // The CLI starts its sessions here too, so the app tracks them alike.
+  async launch(id: string, path: string): Promise<string> {
     const uuid = this.ids.uuid();
-    const name = sessionName(sessionPrefix(worktree.id), this.ids.hex(3));
+    const name = sessionName(sessionPrefix(id), this.ids.hex(3));
     try {
       await this.launcher.start({
         name,
-        cwd: worktree.path,
+        cwd: path,
         command: claudeCommand({sessionId: uuid}),
-        options: {'@fly_session_id': uuid, '@fly_worktree': worktree.path},
+        options: {'@fly_session_id': uuid, '@fly_worktree': path},
       });
     } catch (error) {
       rethrowMissing(error);

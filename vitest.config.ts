@@ -61,6 +61,7 @@ export default defineConfig({
       exclude: [
         'src/main.ts',
         'src/preload.ts',
+        'src/cli.ts',
         'src/application/ipc/ipc-module.ts',
         'src/application/ui/**',
       ],

@@ -18,7 +18,8 @@ You need:
 | Command | Purpose |
 |---------|---------|
 | `pnpm dev` | Run the app with hot reload (electron-vite) |
-| `pnpm build` | Build main, preload and renderer into `out/` |
+| `pnpm build` | Build main (app `index.js` and CLI `cli.js`), preload and renderer into `out/` |
+| `pnpm cli:install` | Build, then link `bin/fly` into `~/.local/bin` (or `$FLY_BIN_DIR`) |
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm lint:fix` | Apply the fixes gts and eslint can make |
 | `pnpm typecheck` | Typecheck node and web projects |
@@ -41,7 +42,7 @@ Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`. Mu
 
 `CLAUDE.md` is the reference. In short:
 
-- **Layer rules.** `core` never imports `application`; only `src/application/ipc/ipc-module.ts` imports `infrastructure`; `infrastructure` imports only `core/interfaces` and `core/domain`; `application/ui` imports only itself and type-only `core/domain`. `pnpm dep:cruise` enforces them.
+- **Layer rules.** `core` never imports `application`; only `src/application/ipc/ipc-module.ts` imports `infrastructure`; `infrastructure` imports only `core/interfaces` and `core/domain`; `application/ui` imports only itself and type-only `core/domain`; `src/cli.ts` never reaches `electron`. `pnpm dep:cruise` enforces them.
 - **Renderer isolation.** The renderer never touches Node or Electron APIs; it talks to the main process only through `window.fly`, exposed by `preload.ts` via `contextBridge`.
 - **Mutation testing.** Kill a surviving mutant with a test first; if that is not possible, with a behaviour-preserving simplification; only for a genuine equivalent mutant, with `// Stryker disable next-line <Mutator>: <reason>`. Never disable whole files, blocks or `all`.
 
@@ -49,7 +50,8 @@ Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`. Mu
 
 Tests never touch your real sessions, transcripts, repositories or GitHub account:
 
-- **tmux.** Tests that touch tmux use a private socket `-L fly-test-<hex>` and kill that server afterwards, never the default tmux server, where your real sessions live.
+- **tmux.** Tests that touch tmux use a private socket `-L fly-test-<hex>` and kill that server afterwards, never the default tmux server, where your real sessions live. A test that starts a session through `SessionService` gives that server a fake `default-shell` that only records typed lines, so no pane runs `claude`.
+- **App config.** CLI tests inject the user-data dir, never the real `~/Library/Application Support/fly`.
 - **Transcripts.** Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token, and the DI test points `CLAUDE_CONFIG_DIR` at a temp dir, never the real `~/.claude`.
 - **`gh`.** Always mocked, through `CommandRunner` or `PrGateway`, never the real `gh`.
 - **`git`.** Mocked through `CommandRunner` in unit tests; runs against an `mkdtemp` repo in integration tests, never your repositories.
