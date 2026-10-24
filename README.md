@@ -194,7 +194,7 @@ test(core): kill surviving mutants in the core services
 ```
 
 - All work branches from `main`; PRs target `main`. Never commit directly to `main`.
-- `version.txt` is managed by [action-tag-release-build](https://github.com/heronlabs/action-tag-release-build) on merge; never edit it by hand.
+- `version.txt` is managed by [action-tag-release](https://github.com/heronlabs/action-tag-release) on merge; never edit it by hand.
 
 ## Security
 
