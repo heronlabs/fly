@@ -59,6 +59,6 @@ Node >=22 (`.node-version`), pnpm >=10, TypeScript ~5.8 strict with `noUnchecked
 
 ## HARD RULES
 
-- **NEVER edit `version.txt` manually.** Version is managed by `action-tag-release-build` via the CD workflow.
+- **NEVER edit `version.txt` manually.** Version is managed by `action-tag-release` via the CD workflow.
 - **ALWAYS use `/supera:ship`** for every change. No exceptions.
 - **NEVER commit directly to `main`.** All changes go through worktree, PR, pr-watch.
