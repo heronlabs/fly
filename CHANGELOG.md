@@ -1,3 +1,9 @@
+## v0.2.2 (2026-10-24)
+
+### Miscellaneous Chores
+
+* other: drop -build suffix from action-tag-release references (d730cdecd5a6dc18c724b988c6713e4245ec776f)
+
 ## v0.2.1 (2026-10-24)
 
 ### Bug Fixes
