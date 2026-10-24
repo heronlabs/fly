@@ -9,7 +9,8 @@ Electron desktop app (main process runs NestJS, renderer is React) for driving a
 | Command | Purpose |
 |---------|---------|
 | `pnpm dev` | Run the app with hot reload (electron-vite) |
-| `pnpm build` | Build main, preload and renderer into `out/` |
+| `pnpm build` | Build main (app `index.js` and CLI `cli.js`), preload and renderer into `out/` |
+| `pnpm cli:install` | Build, then link `bin/fly` into `~/.local/bin` (or `$FLY_BIN_DIR`) |
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm test:unit` | vitest with 100% coverage thresholds |
 | `pnpm test:di` | Nest DI smoke test: `IpcModule` resolves with real decorator metadata |
@@ -27,6 +28,8 @@ Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill t
 
 Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token (the DI test points `CLAUDE_CONFIG_DIR` at a temp dir). Never the real `~/.claude`.
 
+A test that starts a session through `SessionService` (which types `claude …` into the pane) first sets the private server's `default-shell` to a fake shell that only records typed lines, so no pane ever runs `claude`. CLI tests inject the user-data dir; never the real `~/Library/Application Support/fly`.
+
 `gh` is always mocked in tests, through `CommandRunner` or `PrGateway`. Never the real `gh`.
 
 `git` is mocked through `CommandRunner` in unit tests and runs against an `mkdtemp` repo in integration tests. Never the user's repos.
@@ -41,13 +44,14 @@ Kill a surviving mutant with a test first; if that is not possible, with a behav
 
 ## Layout and layer rules
 
-`src/{application,core,infrastructure}` plus `src/main.ts` and `src/preload.ts`; the renderer lives under `src/application/ui`. `src/application/ui/editor` holds the CodeMirror host, languages and the VSCode-like palette (`--ed*` variables). Kebab-case files with `-service.ts` / `-handler.ts` / `-module.ts` suffixes.
+`src/{application,core,infrastructure}` plus `src/main.ts`, `src/preload.ts` and `src/cli.ts` (composition root of the `fly` CLI, whose commands live in `src/application/cli`); the renderer lives under `src/application/ui`. `src/application/ui/editor` holds the CodeMirror host, languages and the VSCode-like palette (`--ed*` variables). Kebab-case files with `-service.ts` / `-handler.ts` / `-module.ts` suffixes.
 
 - `core` never imports `application`.
 - `application` never imports `infrastructure`, except `src/application/ipc/ipc-module.ts` (composition root).
 - `infrastructure` never imports `application` or `core`, except `core/interfaces` and `core/domain`.
 - `application/ui` imports only `application/ui` and type-only `core/domain`.
 - `preload.ts` imports only `core/domain`.
+- `cli.ts` never reaches `electron`: `bin/fly` runs it on Electron in Node mode (`ELECTRON_RUN_AS_NODE`).
 
 ## Electron two-process note
 

@@ -21,6 +21,7 @@
     "src/**/*.ts",
     "!src/main.ts",
     "!src/preload.ts",
+    "!src/cli.ts",
     "!src/**/*-module.ts",
     "!src/application/ui/**"
   ],

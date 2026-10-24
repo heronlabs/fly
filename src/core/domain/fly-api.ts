@@ -6,6 +6,7 @@ import type {
   FilesPoll,
   WriteResult,
 } from './files';
+import type {LaunchRequest} from './launch';
 import type {QueueSnapshot} from './queue';
 import type {SearchQuery, SearchResult} from './search';
 import type {SessionsSnapshot} from './session';
@@ -42,6 +43,8 @@ export const channels = {
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
   attachmentSaveImage: 'attachment:save-image',
+  launchTake: 'launch:take',
+  launchRequested: 'launch:requested',
 } as const;
 
 export type Channel = (typeof channels)[keyof typeof channels];
@@ -106,6 +109,11 @@ export type FlyApi = {
     // Absolute path of a file dropped from Finder; '' when it has none.
     pathForFile(file: File): string;
     saveImage(png: Uint8Array): Promise<string>;
+  };
+  launch: {
+    // The pending `fly <pasta>` request, once; null when there is none.
+    take(): Promise<LaunchRequest | null>;
+    onRequested(listener: () => void): () => void;
   };
 };
 

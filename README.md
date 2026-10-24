@@ -26,6 +26,7 @@ and xterm.js. macOS first.
 - [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [CLI](#cli)
 - [Queue States](#queue-states)
 - [Status](#status)
 - [Architecture](#architecture)
@@ -41,7 +42,7 @@ worktrees and no single view of which ones need a human. fly replaces the
 routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 
 - **One window, every repo** — discovers the git repos under a folder, two levels deep, and every worktree of each. Session = worktree = task.
-- **Real terminals, persistent sessions** — each worktree hosts Claude Code inside tmux, so sessions survive app restarts and stay reachable remotely via Tailscale + Termius, exactly as with [code-sessions](https://github.com/heronlabs/code-sessions).
+- **Real terminals, persistent sessions** — each worktree hosts Claude Code inside tmux, so sessions survive app restarts and stay reachable remotely via Tailscale + Termius. The [`fly` CLI](#cli) starts, lists, resumes and stops the same sessions from any terminal, and opens the app on a folder.
 - **Nova tarefa** — pick a repo, type a description, fly starts a session and runs `/supera:ship <description>`. Supera creates the worktree; fly binds the session to it when it appears.
 - **Queue, not chat** — the state of each worktree is derived from the Claude Code transcript and `gh`, without changing supera. The TUI stays the chat.
 - **100% tested** — v8 coverage and Stryker mutation testing, both at 100% thresholds.
@@ -66,8 +67,9 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 | `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
 | `code` | VSCode on `PATH`, used by "Abrir no VSCode" |
 
-fly uses the default tmux server, so `tmux ls` and `tmux attach -t <name>` from
-any terminal reach the same sessions.
+fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or
+`tmux ls` and `tmux attach -t <name>`) from any terminal reach the same
+sessions.
 
 ## Quick Start
 
@@ -78,12 +80,69 @@ pnpm install
 pnpm dev
 ```
 
+To drive fly from a terminal as well, install the CLI and open the app on a
+folder:
+
+```bash
+pnpm cli:install
+fly ~/Workfolder
+```
+
 Pick a workspace folder on the welcome screen. Each repo under it appears in
 the left panel with its worktrees; select one and press "Iniciar sessão" to get
 its terminal, or press "Nova tarefa" to ship something new.
 
 Packaged builds (`.dmg`) are planned for milestone 6; until then fly runs from
 source.
+
+## CLI
+
+`pnpm cli:install` builds fly and links `bin/fly` into `~/.local/bin` (or
+`$FLY_BIN_DIR`), warning when that folder is not on `PATH`. `bin/fly` runs the
+CLI on the checkout's own Electron in Node mode (`ELECTRON_RUN_AS_NODE`), the
+way VSCode's `code` does, so it needs no separate Node. It runs the last
+build: rerun `pnpm build` after pulling.
+
+| Command | What it does |
+|---|---|
+| `fly [pasta]` | Opens the app on the folder (default: the current one) |
+| `fly start [pasta]` | Starts Claude Code in a new tmux session in the folder (default: the current one), prints the session name and attaches when run from a terminal |
+| `fly ls` | Lists every session on the default tmux server: name, folder, creation time, attached, task |
+| `fly resume <nome>` | Attaches to a session by its exact name |
+| `fly stop <nome>` | Kills a session by its exact name |
+| `fly help` | Prints the usage (also `--help`, `-h`) |
+
+A first argument that is not a subcommand is a folder: `fly ./start` opens a
+folder named `start`. The exit code is 0 on success, 1 on a failure and 2 on a
+usage error.
+
+**Opening a folder.** fly runs as a single instance: a second `fly <pasta>`
+hands the folder to the running app, which comes to the front (or reopens its
+window) and opens it the way a folder picked on the welcome screen opens,
+remembered among the recent folders. The root it opens climbs to a recent
+folder: a folder inside one of them opens the deepest such recent folder; a
+folder inside a git repo opens the parent of the repo's main worktree, since
+discovery lists the repos under a root; any other folder opens as the root
+itself. The worktree that holds the folder is selected.
+
+**Starting a session.** `fly start` resolves the same root and names the
+session after the folder's path under it plus six hex chars
+(`heronlabs-fly-a3f7c2`), as the app names a worktree's session. It runs
+`claude --dangerously-skip-permissions --session-id <uuid>` with the same tmux
+options as the app, so the app lists the session under its worktree and tracks
+it in the queue.
+
+### Coming from code-sessions
+
+| code-sessions | fly |
+|---|---|
+| `start-s [path]` | `fly start [pasta]` |
+| `list-s` | `fly ls` |
+| `resume-s <name>` | `fly resume <nome>` |
+| `stop-s <name>` | `fly stop <nome>` |
+
+`start-s <path>` read its path under `~/Workfolder`; `fly start` reads it from
+the current folder, like any command.
 
 ## Queue States
 
@@ -126,15 +185,17 @@ script via `contextBridge`.
 
 ```
 src/
-├── main.ts                   # Electron entry: boots Nest, opens the window
+├── main.ts                   # Electron entry: boots Nest, opens the window, single instance
 ├── preload.ts                # contextBridge → window.fly (channels in core/domain/fly-api.ts)
+├── cli.ts                    # `fly` CLI entry (bin/fly runs it on Electron in Node mode)
 ├── application/
+│   ├── cli/                  # CLI commands: open, start, ls, resume, stop
 │   ├── ipc/                  # composition root: IpcModule + one handler per channel
 │   └── ui/                   # React renderer: panels, components, editor (CodeMirror), terminal, theme, state
 ├── core/
 │   ├── domain/               # queue, session, transcript, diff, files, workspace, settings, fly-api types
 │   ├── interfaces/           # ports: VcsGateway, PrGateway, SessionLauncher, TranscriptSource…
-│   └── services/             # workspace, session, task, terminal, queue (+ queue-rules), diff (+ diff-rules), files (+ file-rules), settings
+│   └── services/             # workspace, session, task, terminal, queue (+ queue-rules), diff (+ diff-rules), files (+ file-rules), settings, launch (+ launch-rules)
 └── infrastructure/
     ├── claude/               # transcript reader and parser (~/.claude/projects)
     ├── git/ github/          # worktree discovery, diff and status (git), pull requests (gh)
@@ -143,7 +204,7 @@ src/
     └── environment/ filesystem/
 ```
 
-- **`application/`** wires handlers and the renderer; `ipc-module.ts` is the only place that imports `infrastructure`.
+- **`application/`** wires handlers, the CLI commands and the renderer; `ipc-module.ts` is the only place in it that imports `infrastructure`. `cli.ts`, the CLI's composition root, never reaches `electron`.
 - **`core/`** holds the rules: what a worktree's queue state is, how a session is named, how a task binds to the worktree ship creates. It never imports `application`.
 - **`infrastructure/`** adapters implement `core/interfaces` and never import inward.
 - **`application/ui`** imports only itself and type-only `core/domain`; `preload.ts` imports only `core/domain`.
@@ -180,7 +241,8 @@ rules and the CI gates.
 pnpm lint:check       # gts + json/yml lint
 pnpm lint:fix         # auto-fix
 pnpm typecheck        # node and web projects
-pnpm build            # main, preload and renderer into out/
+pnpm build            # main (app and CLI), preload and renderer into out/
+pnpm cli:install      # build, then link bin/fly into ~/.local/bin
 pnpm test:unit        # verify tests pass at 100% coverage
 pnpm dep:cruise       # verify architecture
 ```

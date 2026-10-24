@@ -13,7 +13,10 @@ export default defineConfig({
     plugins: [swcPlugin()],
     build: {
       outDir: 'out/main',
-      rollupOptions: {input: {index: resolve('src/main.ts')}},
+      // cli.js is the `fly` CLI, run by bin/fly on Electron in Node mode.
+      rollupOptions: {
+        input: {index: resolve('src/main.ts'), cli: resolve('src/cli.ts')},
+      },
     },
   },
   preload: {

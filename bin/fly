@@ -1,0 +1,30 @@
+#!/bin/sh
+# fly CLI: runs out/main/cli.js on this checkout's own Electron in Node mode,
+# the way VSCode's `code` does, so no separate Node is needed.
+set -eu
+
+# Follow the symlink chain (e.g. ~/.local/bin/fly) back to the checkout.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
+
+ELECTRON=""
+if [ -f "$ROOT/node_modules/electron/path.txt" ]; then
+  ELECTRON="$ROOT/node_modules/electron/dist/$(cat "$ROOT/node_modules/electron/path.txt")"
+fi
+if [ ! -x "$ELECTRON" ]; then
+  echo "fly: Electron não encontrado em $ROOT/node_modules: rode pnpm install em $ROOT" >&2
+  exit 1
+fi
+if [ ! -f "$ROOT/out/main/cli.js" ]; then
+  echo "fly: build não encontrado em $ROOT/out: rode pnpm build em $ROOT" >&2
+  exit 1
+fi
+
+ELECTRON_RUN_AS_NODE=1 exec "$ELECTRON" "$ROOT/out/main/cli.js" "$@"

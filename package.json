@@ -83,6 +83,7 @@
   "productName": "fly",
   "scripts": {
     "build": "electron-vite build",
+    "cli:install": "pnpm build && sh scripts/install-cli.sh",
     "dep:cruise": "depcruise src --config .dependency-cruiser.json",
     "dev": "electron-vite dev",
     "dist": "electron-builder",

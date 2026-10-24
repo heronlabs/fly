@@ -4,6 +4,8 @@
   "include": [
     "src/main.ts",
     "src/preload.ts",
+    "src/cli.ts",
+    "src/application/cli",
     "src/application/ipc",
     "src/core",
     "src/infrastructure",
