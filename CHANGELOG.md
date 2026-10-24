@@ -1,3 +1,10 @@
+## v0.2.1 (2026-10-24)
+
+### Bug Fixes
+
+* fix: bump electron to 44.9.3 for GHSA-jr5w-w6x2-84p9 (be1da3fabff0b5bf1c3f9c911a061b25b9aac180)
+* fix: find /clear successor whose session_id lies past 256 KiB (c0240ae15fd1081765e63f0a15ffebbe5960e37f)
+
 ## v0.2.0 (2026-10-23)
 
 ### Features
