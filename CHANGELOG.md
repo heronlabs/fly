@@ -1,3 +1,9 @@
+## v0.3.0 (2026-10-26)
+
+### Features
+
+* feat: add fly CLI for sessions and single-instance folder open (51c8aa14dbf6c83a040048aecb3cf2bfb3e2df49)
+
 ## v0.2.2 (2026-10-24)
 
 ### Miscellaneous Chores
