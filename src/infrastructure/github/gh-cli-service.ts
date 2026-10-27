@@ -5,8 +5,8 @@ import {CommandRunner} from '../../core/interfaces/command-runner';
 import {
   GH_AUTH_MESSAGE,
   GH_DEFAULT_BRANCH_MESSAGE,
-  GH_MERGE_TIMEOUT_MESSAGE,
   GH_RERUN_TIMEOUT_MESSAGE,
+  GH_SLOW_TIMEOUT_MESSAGE,
   GH_TIMEOUT_MESSAGE,
   PrGateway,
 } from '../../core/interfaces/pr-gateway';
@@ -64,7 +64,7 @@ export class GhCliService extends PrGateway {
       );
     } catch (error) {
       if ((error as {killed?: unknown}).killed === true) {
-        throw new Error(GH_MERGE_TIMEOUT_MESSAGE);
+        throw new Error(GH_SLOW_TIMEOUT_MESSAGE);
       }
       throw error;
     }
@@ -88,7 +88,7 @@ export class GhCliService extends PrGateway {
       );
     } catch (error) {
       if ((error as {killed?: unknown}).killed === true) {
-        throw new Error(GH_MERGE_TIMEOUT_MESSAGE);
+        throw new Error(GH_SLOW_TIMEOUT_MESSAGE);
       }
       throw error;
     }
@@ -130,7 +130,7 @@ export class GhCliService extends PrGateway {
       repoPath,
       ['run', 'view', '--job', jobId, '--log-failed'],
       60_000,
-      GH_MERGE_TIMEOUT_MESSAGE,
+      GH_SLOW_TIMEOUT_MESSAGE,
     );
     if (result.code !== 0) {
       if (NO_LOG_PATTERN.test(result.stderr)) return null;

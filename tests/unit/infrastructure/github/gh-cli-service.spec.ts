@@ -1,8 +1,8 @@
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {
   GH_AUTH_MESSAGE,
-  GH_MERGE_TIMEOUT_MESSAGE,
   GH_RERUN_TIMEOUT_MESSAGE,
+  GH_SLOW_TIMEOUT_MESSAGE,
   GH_TIMEOUT_MESSAGE,
 } from '../../../../src/core/interfaces/pr-gateway';
 import {GhCliService} from '../../../../src/infrastructure/github/gh-cli-service';
@@ -149,9 +149,9 @@ describe('GhCliService', () => {
       );
 
       await expect(service.merge('/r', 12)).rejects.toThrow(
-        GH_MERGE_TIMEOUT_MESSAGE,
+        GH_SLOW_TIMEOUT_MESSAGE,
       );
-      expect(GH_MERGE_TIMEOUT_MESSAGE).toBe('gh não respondeu em 60 s');
+      expect(GH_SLOW_TIMEOUT_MESSAGE).toBe('gh não respondeu em 60 s');
     });
 
     it('Should propagate other spawn errors unchanged', async () => {
@@ -301,7 +301,7 @@ describe('GhCliService', () => {
       run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
 
       await expect(service.create(input)).rejects.toThrow(
-        GH_MERGE_TIMEOUT_MESSAGE,
+        GH_SLOW_TIMEOUT_MESSAGE,
       );
     });
 
@@ -363,7 +363,7 @@ describe('GhCliService', () => {
       run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
 
       await expect(service.failedLog('/r', '1')).rejects.toThrow(
-        GH_MERGE_TIMEOUT_MESSAGE,
+        GH_SLOW_TIMEOUT_MESSAGE,
       );
     });
 
@@ -530,7 +530,7 @@ describe('GhCliService', () => {
       reply(first, second);
 
       await expect(service.reviewComments('/r', 42)).rejects.toThrow(
-        'Resposta inesperada do GitHub',
+        /^Resposta inesperada do GitHub$/,
       );
     });
 

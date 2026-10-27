@@ -1,6 +1,6 @@
 import {parseReviewComments} from '../../../../src/infrastructure/github/review-comments-parser';
 
-const INVALID = 'Resposta inesperada do GitHub';
+const INVALID = /^Resposta inesperada do GitHub$/;
 
 const review = (over: Record<string, unknown> = {}) => ({
   id: 'PRR_1',

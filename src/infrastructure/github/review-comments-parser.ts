@@ -1,28 +1,10 @@
 import type {ReviewComment} from '../../core/domain/queue';
+import {type Fields, isRecord, stringOrNull} from './json-fields';
 
 const INVALID = 'Resposta inesperada do GitHub';
 
-type Fields = Record<string, unknown>;
-
-// Object(value) === value is true only for objects: null and primitives fail.
-const isRecord = (value: unknown): value is Fields =>
-  Object(value) === value && !Array.isArray(value);
-
-// Stryker disable BlockStatement: an emptied catch yields undefined, rejected by the caller like null
-const parseJson = (json: string): unknown => {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-};
-// Stryker restore BlockStatement
-
-const text = (value: unknown): string | null =>
-  typeof value === 'string' ? value : null;
-
 const login = (user: unknown): string | null =>
-  isRecord(user) ? text(user.login) : null;
+  isRecord(user) ? stringOrNull(user.login) : null;
 
 const epoch = (value: unknown): number | null => {
   const time = typeof value === 'string' ? Date.parse(value) : NaN;
@@ -31,7 +13,7 @@ const epoch = (value: unknown): number | null => {
 
 const idOf = (value: unknown): string | null => {
   if (typeof value === 'number') return String(value);
-  return text(value);
+  return stringOrNull(value);
 };
 
 // `gh pr view` reviews and conversation comments differ only in the time key.
@@ -40,10 +22,10 @@ const mapConversation = (
   timeKey: string,
 ): ReviewComment | null => {
   if (!isRecord(entry)) return null;
-  const id = text(entry.id);
+  const id = stringOrNull(entry.id);
   const author = login(entry.author);
-  const body = text(entry.body);
-  const url = text(entry.url);
+  const body = stringOrNull(entry.body);
+  const url = stringOrNull(entry.url);
   const createdAt = epoch(entry[timeKey]);
   if (
     id === null ||
@@ -61,8 +43,8 @@ const mapLineComment = (entry: unknown): ReviewComment | null => {
   if (!isRecord(entry)) return null;
   const id = idOf(entry.id);
   const author = login(entry.user);
-  const body = text(entry.body);
-  const url = text(entry.html_url);
+  const body = stringOrNull(entry.body);
+  const url = stringOrNull(entry.html_url);
   const createdAt = epoch(entry.created_at);
   if (
     id === null ||
@@ -78,7 +60,7 @@ const mapLineComment = (entry: unknown): ReviewComment | null => {
     id,
     author,
     body,
-    path: text(entry.path),
+    path: stringOrNull(entry.path),
     line: typeof line === 'number' ? line : null,
     url,
     createdAt,
@@ -88,15 +70,25 @@ const mapLineComment = (entry: unknown): ReviewComment | null => {
 // Stryker disable next-line ArrayDeclaration: a stand-in entry is skipped as a non-object
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
+const parseInputs = (
+  viewJson: string,
+  linesJson: string,
+): {view: Fields; lines: unknown[]} => {
+  try {
+    const view: unknown = JSON.parse(viewJson);
+    const lines: unknown = JSON.parse(linesJson);
+    if (isRecord(view) && Array.isArray(lines)) return {view, lines};
+  } catch {
+    // Unparseable JSON falls through to the rejection below.
+  }
+  throw new Error(INVALID);
+};
+
 export const parseReviewComments = (
   viewJson: string,
   linesJson: string,
 ): ReviewComment[] => {
-  const view = parseJson(viewJson);
-  const lines = parseJson(linesJson);
-  if (!isRecord(view) || !Array.isArray(lines)) {
-    throw new Error(INVALID);
-  }
+  const {view, lines} = parseInputs(viewJson, linesJson);
   return [
     ...list(view.reviews).flatMap(e => mapConversation(e, 'submittedAt') ?? []),
     ...list(view.comments).flatMap(e => mapConversation(e, 'createdAt') ?? []),
