@@ -218,6 +218,45 @@ describe('SessionService', () => {
     });
   });
 
+  it('Should launch with a prompt file, a model and a task label', async () => {
+    start.mockResolvedValue(undefined);
+    await service.launch('talon/src', '/r/talon/src', {
+      promptFile: '/u/tasks/t/prompt.md',
+      model: 'haiku',
+      task: 'Faz X',
+    });
+    expect(start).toHaveBeenCalledWith({
+      name: 'talon-src-abc123',
+      cwd: '/r/talon/src',
+      command:
+        'claude --dangerously-skip-permissions --session-id u1 --model haiku -- "$(cat "$FLY_PROMPT_FILE")"; exit',
+      env: {FLY_PROMPT_FILE: '/u/tasks/t/prompt.md'},
+      options: {
+        '@fly_session_id': 'u1',
+        '@fly_worktree': '/r/talon/src',
+        '@fly_task': 'Faz X',
+      },
+    });
+  });
+
+  it('Should add no env and no task option without extras', async () => {
+    start.mockResolvedValue(undefined);
+    await service.launch('talon/src', '/r/talon/src', {model: null});
+    const call = start.mock.calls[0]?.[0];
+    expect(call).not.toHaveProperty('env');
+    expect(Object.keys(call.options)).toEqual([
+      '@fly_session_id',
+      '@fly_worktree',
+    ]);
+    expect(call.options).toEqual({
+      '@fly_session_id': 'u1',
+      '@fly_worktree': '/r/talon/src',
+    });
+    expect(call.command).toBe(
+      'claude --dangerously-skip-permissions --session-id u1; exit',
+    );
+  });
+
   it('Should fail to start without a workspace', async () => {
     service.setWorkspace(null);
     await expect(service.start('talon')).rejects.toThrow(

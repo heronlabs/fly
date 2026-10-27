@@ -470,6 +470,21 @@ describe('QueueService', () => {
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('waiting');
     });
 
+    it('Should read a fly task session without a transcript yet as unknown', async () => {
+      sessionsAre([
+        item('talon/.worktrees/feat', {
+          options: {
+            '@fly_session_id': 's1',
+            '@fly_worktree': '/r/talon/.worktrees/feat',
+            '@fly_task': 'Faz X',
+          },
+        }),
+      ]);
+      forSession.mockResolvedValue(null);
+      const snap = await service.snapshot(now);
+      expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
+    });
+
     it('Should read a started session with phase none as waiting', async () => {
       sessionsAre([fly('talon/.worktrees/feat', 's1')]);
       forSession.mockResolvedValue(summary({phase: 'none'}));

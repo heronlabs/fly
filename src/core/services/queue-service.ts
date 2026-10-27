@@ -141,7 +141,9 @@ export class QueueService {
     const launchCwd =
       options['@fly_task_repo'] ?? options['@fly_worktree'] ?? session.cwd;
     // A session started without a prompt has no transcript until the first one.
-    const started = options['@fly_task_repo'] === undefined;
+    const started =
+      options['@fly_task_repo'] === undefined &&
+      options['@fly_task'] === undefined;
     let summary: TranscriptSummary | null;
     try {
       summary = await this.transcripts.forSession({launchCwd, sessionId});

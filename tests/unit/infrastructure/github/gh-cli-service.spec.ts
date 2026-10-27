@@ -158,4 +158,59 @@ describe('GhCliService', () => {
       await expect(service.merge('/r', 12)).rejects.toBe(error);
     });
   });
+
+  describe('defaultBranch', () => {
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should ask gh for the default branch name', async () => {
+      run.mockResolvedValue({code: 0, stdout: 'main\n', stderr: ''});
+
+      expect(await service.defaultBranch('/r')).toBe('main');
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'gh',
+        [
+          'repo',
+          'view',
+          '--json',
+          'defaultBranchRef',
+          '-q',
+          '.defaultBranchRef.name',
+        ],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+    });
+
+    it('Should reject on empty output', async () => {
+      run.mockResolvedValue({code: 0, stdout: '\n', stderr: ''});
+
+      await expect(service.defaultBranch('/r')).rejects.toThrow(
+        'Não foi possível descobrir o branch padrão',
+      );
+    });
+
+    it('Should reject on a non-zero exit', async () => {
+      run.mockResolvedValue({code: 1, stdout: 'main\n', stderr: 'x'});
+
+      await expect(service.defaultBranch('/r')).rejects.toThrow(
+        'Não foi possível descobrir o branch padrão',
+      );
+    });
+
+    it('Should throw the timeout message when gh was killed', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.defaultBranch('/r')).rejects.toThrow(
+        GH_TIMEOUT_MESSAGE,
+      );
+    });
+
+    it('Should propagate other spawn errors unchanged', async () => {
+      const error = new Error('x');
+      run.mockRejectedValue(error);
+
+      await expect(service.defaultBranch('/r')).rejects.toBe(error);
+    });
+  });
 });

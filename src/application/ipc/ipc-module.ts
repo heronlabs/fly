@@ -12,6 +12,8 @@ import {IdGenerator} from '../../core/interfaces/id-generator';
 import {ImageStore} from '../../core/interfaces/image-store';
 import {PrGateway} from '../../core/interfaces/pr-gateway';
 import {SessionLauncher} from '../../core/interfaces/session-launcher';
+import {TaskFiles} from '../../core/interfaces/task-files';
+import {TaskStore} from '../../core/interfaces/task-store';
 import {TerminalSpawner} from '../../core/interfaces/terminal-spawner';
 import {TranscriptSource} from '../../core/interfaces/transcript-source';
 import {VcsGateway} from '../../core/interfaces/vcs-gateway';
@@ -29,10 +31,12 @@ import {ClaudeTranscriptService} from '../../infrastructure/claude/claude-transc
 import {CLAUDE_PROJECTS_DIR} from '../../infrastructure/claude/tokens';
 import {CryptoIdGeneratorService} from '../../infrastructure/environment/crypto-id-generator-service';
 import {JsonConfigStoreService} from '../../infrastructure/environment/json-config-store-service';
+import {JsonTaskStoreService} from '../../infrastructure/environment/json-task-store-service';
 import {USER_DATA_DIR} from '../../infrastructure/environment/tokens';
 import {VscodeEditorLauncherService} from '../../infrastructure/environment/vscode-editor-launcher-service';
 import {GitDirWatcherService} from '../../infrastructure/filesystem/git-dir-watcher-service';
 import {NodeFileStoreService} from '../../infrastructure/filesystem/node-file-store-service';
+import {NodeTaskFilesService} from '../../infrastructure/filesystem/node-task-files-service';
 import {TempImageStoreService} from '../../infrastructure/filesystem/temp-image-store-service';
 import {TEMP_DIR} from '../../infrastructure/filesystem/tokens';
 import {GitCliService} from '../../infrastructure/git/git-cli-service';
@@ -51,13 +55,26 @@ import {SettingsHandler} from './handlers/settings-handler';
 import {ShellHandler} from './handlers/shell-handler';
 import {TerminalHandler} from './handlers/terminal-handler';
 import {WorkspaceHandler} from './handlers/workspace-handler';
-import type {Broadcaster, FolderPicker, LinkOpener} from './ipc-types';
-import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
+import type {
+  Broadcaster,
+  FilePicker,
+  FolderPicker,
+  LinkOpener,
+} from './ipc-types';
+import {
+  BROADCASTER,
+  FILE_PICKER,
+  FOLDER_PICKER,
+  IPC_HOST,
+  LINK_OPENER,
+} from './ipc-types';
 
 @Module({
   providers: [
     {provide: CommandRunner, useClass: ExecCommandRunnerService},
     {provide: FileStore, useClass: NodeFileStoreService},
+    {provide: TaskStore, useClass: JsonTaskStoreService},
+    {provide: TaskFiles, useClass: NodeTaskFilesService},
     {provide: ImageStore, useClass: TempImageStoreService},
     {provide: VcsGateway, useClass: GitCliService},
     {provide: PrGateway, useClass: GhCliService},
@@ -87,6 +104,17 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
           (await dialog.showOpenDialog({properties: ['openDirectory']}))
             .filePaths[0] ?? null,
       } satisfies FolderPicker,
+    },
+    {
+      provide: FILE_PICKER,
+      useValue: {
+        pick: async () => {
+          const result = await dialog.showOpenDialog({
+            properties: ['openFile', 'multiSelections'],
+          });
+          return result.canceled ? [] : result.filePaths;
+        },
+      } satisfies FilePicker,
     },
     {
       provide: LINK_OPENER,

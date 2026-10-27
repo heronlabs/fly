@@ -6,6 +6,7 @@ import {
 } from '../../../../../src/application/ipc/handlers/session-handler';
 import type {
   Broadcaster,
+  FilePicker,
   IpcHost,
 } from '../../../../../src/application/ipc/ipc-types';
 import {channels} from '../../../../../src/core/domain/fly-api';
@@ -39,6 +40,7 @@ const start = vi.fn();
 const kill = vi.fn();
 const create = vi.fn();
 const bind = vi.fn();
+const pick = vi.fn();
 
 const invoke = (channel: string, ...args: unknown[]) =>
   listeners.get(channel)!({}, ...args);
@@ -57,6 +59,7 @@ beforeEach(() => {
     {send} as Broadcaster,
     {snapshot, start, kill} as unknown as SessionService,
     {bind, create} as unknown as TaskService,
+    {pick} as FilePicker,
   );
   handler.register();
 });
@@ -68,15 +71,27 @@ afterEach(() => {
 });
 
 describe('SessionHandler', () => {
-  it('Should register the four invoke channels', () => {
+  it('Should register the five invoke channels', () => {
     expect([...listeners.keys()].sort()).toEqual(
       [
         channels.sessionList,
         channels.sessionStart,
         channels.sessionKill,
         channels.taskCreate,
+        channels.taskPickAttachments,
       ].sort(),
     );
+  });
+
+  it('Should return the picked attachment paths without ticking', async () => {
+    pick.mockResolvedValue(['/a.md', '/b.png']);
+
+    expect(await invoke(channels.taskPickAttachments)).toEqual([
+      '/a.md',
+      '/b.png',
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(snapshot).not.toHaveBeenCalled();
   });
 
   it('Should not touch tmux until the first interval fires', async () => {
@@ -187,7 +202,13 @@ describe('SessionHandler', () => {
       'create',
       channels.taskCreate,
       create,
-      {repoId: 'r', description: 'd'},
+      {
+        repoId: 'r',
+        description: 'd',
+        branch: 'b',
+        model: null,
+        attachments: ['/a.md'],
+      },
       'sess-2',
     ],
   ])(
@@ -235,6 +256,7 @@ describe('SessionHandler', () => {
       {send} as Broadcaster,
       {snapshot, start, kill} as unknown as SessionService,
       {bind, create} as unknown as TaskService,
+      {pick} as FilePicker,
     );
 
     idle.stop();

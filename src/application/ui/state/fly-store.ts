@@ -25,6 +25,7 @@ import type {
   ExplorerMode,
   ThemeMode,
 } from '../../../core/domain/settings';
+import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
 
 export const DIFF_POLL_MS = 3000;
@@ -94,7 +95,7 @@ export type FlyState = {
   applyQueue(snapshot: QueueSnapshot): void;
   startSession(worktreeId: string): Promise<void>;
   killSession(name: string): Promise<void>;
-  createTask(input: {repoId: string; description: string}): Promise<boolean>;
+  createTask(input: NewTaskInput): Promise<boolean>;
   setActiveSession(name: string | null): void;
   loadDiff(worktreeId: string, scope: DiffScope): Promise<void>;
   applyDiff(result: WorktreeDiff): void;
@@ -424,14 +425,18 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     set({error: null});
     try {
       const name = await window.fly.tasks.create(input);
+      set({activeSessionName: name});
+      await get().refresh();
+      await get().loadSessions();
       const main = get().workspace?.worktrees.find(
         worktree => worktree.repoId === input.repoId && worktree.isMain,
       );
+      const own = get().sessions.sessions.find(
+        session => session.name === name,
+      )?.worktreeId;
       set(state => ({
-        activeSessionName: name,
-        selectedWorktreeId: main?.id ?? state.selectedWorktreeId,
+        selectedWorktreeId: own ?? main?.id ?? state.selectedWorktreeId,
       }));
-      await get().loadSessions();
       return true;
     } catch (error) {
       set({error: errorMessage(error)});

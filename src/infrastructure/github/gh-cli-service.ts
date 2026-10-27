@@ -4,6 +4,7 @@ import type {PullRequest} from '../../core/domain/queue';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {
   GH_AUTH_MESSAGE,
+  GH_DEFAULT_BRANCH_MESSAGE,
   GH_MERGE_TIMEOUT_MESSAGE,
   GH_TIMEOUT_MESSAGE,
   PrGateway,
@@ -50,6 +51,34 @@ export class GhCliService extends PrGateway {
     if (result.code !== 0) {
       throw new Error(result.stderr.trim() || 'gh pr merge failed');
     }
+  }
+
+  async defaultBranch(repoPath: string): Promise<string> {
+    let result: Awaited<ReturnType<CommandRunner['run']>>;
+    try {
+      result = await this.runner.run(
+        'gh',
+        [
+          'repo',
+          'view',
+          '--json',
+          'defaultBranchRef',
+          '-q',
+          '.defaultBranchRef.name',
+        ],
+        {cwd: repoPath, timeoutMs: 15_000},
+      );
+    } catch (error) {
+      if ((error as {killed?: unknown}).killed === true) {
+        throw new Error(GH_TIMEOUT_MESSAGE);
+      }
+      throw error;
+    }
+    const name = result.stdout.trim();
+    if (result.code !== 0 || name === '') {
+      throw new Error(GH_DEFAULT_BRANCH_MESSAGE);
+    }
+    return name;
   }
 
   private async run(repoPath: string): ReturnType<CommandRunner['run']> {

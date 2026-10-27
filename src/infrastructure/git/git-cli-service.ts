@@ -1,3 +1,6 @@
+import {appendFile, mkdir, readFile} from 'node:fs/promises';
+import {join, resolve} from 'node:path';
+
 import {Injectable} from '@nestjs/common';
 
 import type {DiffFile} from '../../core/domain/diff';
@@ -8,7 +11,6 @@ import {
 } from '../../core/interfaces/command-runner';
 import {
   DiffRequest,
-  GIT_TIMEOUT_MESSAGE,
   GrepHit,
   GrepRequest,
   VcsGateway,
@@ -27,6 +29,8 @@ const DIFF_ARGS = [
   '--no-ext-diff',
 ];
 const GIT_TIMEOUT_MS = 15_000;
+const FETCH_TIMEOUT_MS = 60_000;
+const WORKTREE_ADD_TIMEOUT_MS = 30_000;
 
 @Injectable()
 export class GitCliService extends VcsGateway {
@@ -130,6 +134,88 @@ export class GitCliService extends VcsGateway {
     return parseGrep(output);
   }
 
+  async defaultBranch(repoPath: string): Promise<string | null> {
+    const result = await this.run(repoPath, [
+      'symbolic-ref',
+      '--short',
+      'refs/remotes/origin/HEAD',
+    ]);
+    if (result.code !== 0) return null;
+    return result.stdout.trim().replace(/^origin\//, '');
+  }
+
+  async fetch(repoPath: string, branch: string): Promise<void> {
+    const result = await this.run(
+      repoPath,
+      ['fetch', 'origin', branch],
+      FETCH_TIMEOUT_MS,
+    );
+    if (result.code === 0) return;
+    // Not parsed from stderr: git may be localized.
+    const origin = await this.run(repoPath, ['remote', 'get-url', 'origin']);
+    if (origin.code !== 0) {
+      throw new Error('Repositório sem remote origin');
+    }
+    throw new Error(`git fetch falhou: ${result.stderr.trim()}`);
+  }
+
+  async validBranchName(repoPath: string, name: string): Promise<boolean> {
+    const result = await this.run(repoPath, [
+      'check-ref-format',
+      '--branch',
+      name,
+    ]);
+    return result.code === 0;
+  }
+
+  async branchExists(repoPath: string, name: string): Promise<boolean> {
+    const result = await this.run(repoPath, [
+      'show-ref',
+      '--verify',
+      '--quiet',
+      `refs/heads/${name}`,
+    ]);
+    return result.code === 0;
+  }
+
+  async addWorktree(input: {
+    repoPath: string;
+    path: string;
+    branch: string;
+    base: string;
+  }): Promise<void> {
+    const result = await this.run(
+      input.repoPath,
+      [
+        'worktree',
+        'add',
+        '--no-track',
+        '-b',
+        input.branch,
+        input.path,
+        input.base,
+      ],
+      WORKTREE_ADD_TIMEOUT_MS,
+    );
+    if (result.code !== 0) {
+      throw new Error(`git falhou: ${result.stderr.trim()}`);
+    }
+  }
+
+  async ensureIgnored(repoPath: string, entry: string): Promise<void> {
+    const ignored = await this.run(repoPath, ['check-ignore', '-q', entry]);
+    if (ignored.code === 0) return;
+    const commonDir = (
+      await this.git(repoPath, ['rev-parse', '--git-common-dir'])
+    ).trim();
+    const infoDir = join(resolve(repoPath, commonDir), 'info');
+    const file = join(infoDir, 'exclude');
+    await mkdir(infoDir, {recursive: true});
+    const current = await readFile(file, 'utf8').catch(() => '');
+    const separator = current === '' || current.endsWith('\n') ? '' : '\n';
+    await appendFile(file, `${separator}/${entry}/\n`);
+  }
+
   private async git(
     cwd: string,
     args: string[],
@@ -142,16 +228,17 @@ export class GitCliService extends VcsGateway {
     return result.stdout;
   }
 
-  private async run(cwd: string, args: string[]): Promise<CommandResult> {
+  private async run(
+    cwd: string,
+    args: string[],
+    timeoutMs = GIT_TIMEOUT_MS,
+  ): Promise<CommandResult> {
     try {
-      return await this.runner.run('git', args, {
-        cwd,
-        timeoutMs: GIT_TIMEOUT_MS,
-      });
+      return await this.runner.run('git', args, {cwd, timeoutMs});
     } catch (error) {
       // execFile kills the child on timeout: `killed` is set, `code` is null.
       if ((error as {killed?: unknown}).killed === true) {
-        throw new Error(GIT_TIMEOUT_MESSAGE);
+        throw new Error(`git não respondeu em ${timeoutMs / 1000} s`);
       }
       throw new Error(
         `git falhou: ${error instanceof Error ? error.message : String(error)}`,
