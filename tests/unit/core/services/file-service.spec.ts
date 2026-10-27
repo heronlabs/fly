@@ -69,6 +69,9 @@ describe('FileService', () => {
     headSha: vi.fn(),
     aheadCount: vi.fn(),
     push: vi.fn(),
+    removeWorktree: vi.fn(),
+    deleteBranch: vi.fn(),
+    deleteRemoteBranch: vi.fn(),
     ensureIgnored: vi.fn(),
   };
   const service = new FileService(

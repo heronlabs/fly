@@ -31,6 +31,7 @@ const DIFF_ARGS = [
 const GIT_TIMEOUT_MS = 15_000;
 const FETCH_TIMEOUT_MS = 60_000;
 const WORKTREE_ADD_TIMEOUT_MS = 30_000;
+const WORKTREE_REMOVE_TIMEOUT_MS = 30_000;
 const PUSH_TIMEOUT_MS = 60_000;
 
 @Injectable()
@@ -224,6 +225,34 @@ export class GitCliService extends VcsGateway {
     );
     if (result.code !== 0) {
       throw new Error(`git push falhou: ${result.stderr.trim()}`);
+    }
+  }
+
+  async removeWorktree(repoPath: string, path: string): Promise<void> {
+    const result = await this.run(
+      repoPath,
+      ['worktree', 'remove', path],
+      WORKTREE_REMOVE_TIMEOUT_MS,
+    );
+    if (result.code !== 0) throw new Error(result.stderr.trim());
+  }
+
+  async deleteBranch(repoPath: string, branch: string): Promise<void> {
+    const result = await this.run(repoPath, ['branch', '-D', branch]);
+    if (result.code !== 0) throw new Error(result.stderr.trim());
+  }
+
+  async deleteRemoteBranch(repoPath: string, branch: string): Promise<void> {
+    const result = await this.run(
+      repoPath,
+      ['push', 'origin', '--delete', branch],
+      PUSH_TIMEOUT_MS,
+    );
+    if (
+      result.code !== 0 &&
+      !result.stderr.includes('remote ref does not exist')
+    ) {
+      throw new Error(result.stderr.trim());
     }
   }
 

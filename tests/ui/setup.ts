@@ -25,6 +25,7 @@ const fly: FlyApi = {
     open: vi.fn(),
     rerun: vi.fn(),
     resume: vi.fn(),
+    clean: vi.fn(),
   },
   sessions: {
     list: vi.fn(),

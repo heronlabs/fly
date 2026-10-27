@@ -50,6 +50,9 @@ const renderView = (
     onMerge?: () => void;
     onOpenExternal?: (url: string) => void;
     onOpenPr?: () => Promise<void>;
+    onRerun?: () => Promise<void>;
+    onResume?: () => Promise<void>;
+    onClean?: (confirmed: boolean) => Promise<void>;
   } = {},
 ) =>
   render(
@@ -60,6 +63,9 @@ const renderView = (
       onMerge={options.onMerge ?? (() => {})}
       onOpenExternal={options.onOpenExternal ?? (() => {})}
       onOpenPr={options.onOpenPr ?? (async () => {})}
+      onRerun={options.onRerun ?? (async () => {})}
+      onResume={options.onResume ?? (async () => {})}
+      onClean={options.onClean ?? (async () => {})}
     />,
   );
 
@@ -243,6 +249,9 @@ describe('PrView', () => {
         onMerge={() => {}}
         onOpenExternal={() => {}}
         onOpenPr={onOpenPr}
+        onRerun={async () => {}}
+        onResume={async () => {}}
+        onClean={async () => {}}
       />
     );
     const {rerender} = render(view('A'));
@@ -266,6 +275,9 @@ describe('PrView', () => {
         onMerge={() => {}}
         onOpenExternal={() => {}}
         onOpenPr={async () => {}}
+        onRerun={async () => {}}
+        onResume={async () => {}}
+        onClean={async () => {}}
       />
     );
     const {rerender} = render(view(queueOf(pr())));
@@ -287,6 +299,9 @@ describe('PrView', () => {
         onMerge={onMerge}
         onOpenExternal={() => {}}
         onOpenPr={async () => {}}
+        onRerun={async () => {}}
+        onResume={async () => {}}
+        onClean={async () => {}}
       />
     );
     const {rerender} = render(view('ready'));
@@ -296,5 +311,26 @@ describe('PrView', () => {
     expect(confirm).toBeDisabled();
     await userEvent.click(confirm);
     expect(onMerge).not.toHaveBeenCalled();
+  });
+  it('Should thread rerun, resume and clean from the task section', async () => {
+    const onRerun = vi.fn().mockResolvedValue(undefined);
+    const onResume = vi.fn().mockResolvedValue(undefined);
+    const onClean = vi.fn().mockResolvedValue(undefined);
+    const stopped: WorktreeQueue = {
+      ...queueOf(pr({state: 'merged'})),
+      task: {
+        phase: 'stopped',
+        ciAttempts: 0,
+        review: null,
+        stop: {kind: 'infra', message: 'Falha de infraestrutura na CI: a'},
+      },
+    };
+    renderView(stopped, {onRerun, onResume, onClean});
+    await userEvent.click(screen.getByRole('button', {name: 'Rodar de novo'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Retomar'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Limpar'}));
+    expect(onRerun).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(onClean).toHaveBeenCalledExactlyOnceWith(false);
   });
 });

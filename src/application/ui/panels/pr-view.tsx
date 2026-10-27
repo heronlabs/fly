@@ -9,6 +9,8 @@ import type {
 import type {ReceiptResult} from '../../../core/domain/transcript';
 import {TaskSection} from './task-section';
 
+type TaskHandlers = 'onOpenPr' | 'onRerun' | 'onResume' | 'onClean';
+
 type Props = {
   queue: WorktreeQueue | null;
   status: QueueStatus;
@@ -16,6 +18,9 @@ type Props = {
   onMerge(): void;
   onOpenExternal(url: string): void;
   onOpenPr(): Promise<void>;
+  onRerun(): Promise<void>;
+  onResume(): Promise<void>;
+  onClean(confirmed: boolean): Promise<void>;
 };
 
 const buttonStyle: CSSProperties = {
@@ -96,7 +101,7 @@ const PullRequestSection = ({
   merging,
   onMerge,
   onOpenExternal,
-}: Omit<Props, 'queue' | 'onOpenPr'> & {pr: PullRequest}) => {
+}: Omit<Props, 'queue' | TaskHandlers> & {pr: PullRequest}) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <section>
@@ -180,7 +185,14 @@ const PullRequestSection = ({
   );
 };
 
-export const PrView = ({queue, onOpenPr, ...props}: Props) => (
+export const PrView = ({
+  queue,
+  onOpenPr,
+  onRerun,
+  onResume,
+  onClean,
+  ...props
+}: Props) => (
   <div
     style={{
       height: '100%',
@@ -190,7 +202,14 @@ export const PrView = ({queue, onOpenPr, ...props}: Props) => (
       color: 'var(--text2)',
     }}
   >
-    <TaskSection key={queue?.worktreeId} queue={queue} onOpenPr={onOpenPr} />
+    <TaskSection
+      key={queue?.worktreeId}
+      queue={queue}
+      onOpenPr={onOpenPr}
+      onRerun={onRerun}
+      onResume={onResume}
+      onClean={onClean}
+    />
     {queue?.pullRequest ? (
       <PullRequestSection
         key={queue.pullRequest.url}

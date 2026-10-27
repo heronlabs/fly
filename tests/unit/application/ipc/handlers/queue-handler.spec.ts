@@ -24,7 +24,7 @@ const host: IpcHost = {
 const send = vi.fn();
 const snapshot = vi.fn();
 const refreshPullRequests = vi.fn();
-const mergePullRequest = vi.fn();
+const merge = vi.fn();
 const lifecycleTick = vi.fn();
 const poll = vi.fn();
 
@@ -40,18 +40,14 @@ beforeEach(() => {
   logged = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
   snapshot.mockResolvedValue(snap(1));
   refreshPullRequests.mockResolvedValue(undefined);
-  mergePullRequest.mockReset();
+  merge.mockReset();
   lifecycleTick.mockReset().mockResolvedValue(undefined);
   poll.mockReset().mockResolvedValue(undefined);
   handler = new QueueHandler(
     host,
     {send} as Broadcaster,
-    {
-      snapshot,
-      refreshPullRequests,
-      mergePullRequest,
-    } as unknown as QueueService,
-    {tick: lifecycleTick, poll} as unknown as LifecycleService,
+    {snapshot, refreshPullRequests} as unknown as QueueService,
+    {tick: lifecycleTick, poll, merge} as unknown as LifecycleService,
   );
   handler.register();
 });
@@ -269,18 +265,18 @@ describe('QueueHandler', () => {
     expect(snapshot).toHaveBeenCalledTimes(PR_POLL_MS / QUEUE_POLL_MS + 1);
   });
 
-  it('Should merge the PR then broadcast the refreshed snapshot once', async () => {
-    mergePullRequest.mockResolvedValue(undefined);
+  it('Should merge the PR with its cleanup, then broadcast the refreshed snapshot once', async () => {
+    merge.mockResolvedValue(undefined);
 
     await invoke(channels.prMerge, 'wt-1');
 
-    expect(mergePullRequest).toHaveBeenCalledWith('wt-1');
+    expect(merge).toHaveBeenCalledWith('wt-1');
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith(channels.queueChanged, snap(1));
   });
 
   it('Should propagate a merge failure and broadcast nothing', async () => {
-    mergePullRequest.mockRejectedValue(new Error('conflito'));
+    merge.mockRejectedValue(new Error('conflito'));
 
     await expect(invoke(channels.prMerge, 'wt-1')).rejects.toThrow('conflito');
     expect(snapshot).not.toHaveBeenCalled();

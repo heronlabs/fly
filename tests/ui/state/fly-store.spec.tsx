@@ -724,6 +724,67 @@ describe('errorMessage', () => {
       ).rejects.toThrow(/^ocupada$/);
     });
 
+    it('mergePullRequest reloads the workspace and then the queue after a merge', async () => {
+      const order: string[] = [];
+      vi.mocked(window.fly.pullRequests.merge).mockResolvedValue(undefined);
+      vi.mocked(window.fly.workspace.refresh).mockImplementation(async () => {
+        order.push('refresh');
+        return workspace();
+      });
+      vi.mocked(window.fly.queue.list).mockImplementation(async () => {
+        order.push('queue');
+        return {github: 'ok', message: null, worktrees: []};
+      });
+      await useFlyStore.getState().mergePullRequest('a/x#main');
+      expect(order).toEqual(['refresh', 'queue']);
+    });
+
+    it.each([
+      ['rerun', 'pr:rerun'],
+      ['resume', 'pr:resume'],
+    ] as const)(
+      '%sPullRequest forwards, propagates a refusal and drops the IPC prefix',
+      async (name, channel) => {
+        const method = `${name}PullRequest` as const;
+        const call = vi.mocked(window.fly.pullRequests[name]);
+        call.mockResolvedValueOnce(undefined);
+        await useFlyStore.getState()[method]('a/x#main');
+        expect(call).toHaveBeenCalledWith('a/x#main');
+        expect(window.fly.workspace.refresh).not.toHaveBeenCalled();
+        call.mockRejectedValueOnce(
+          new Error(
+            `Error invoking remote method '${channel}': Error: ocupada`,
+          ),
+        );
+        await expect(
+          useFlyStore.getState()[method]('a/x#main'),
+        ).rejects.toThrow(/^ocupada$/);
+      },
+    );
+
+    it('cleanPullRequest forwards the flag and then reloads the workspace', async () => {
+      vi.mocked(window.fly.pullRequests.clean).mockResolvedValue(undefined);
+      vi.mocked(window.fly.workspace.refresh).mockResolvedValue(workspace());
+      await useFlyStore.getState().cleanPullRequest('a/x#main', true);
+      expect(window.fly.pullRequests.clean).toHaveBeenCalledWith(
+        'a/x#main',
+        true,
+      );
+      expect(window.fly.workspace.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('cleanPullRequest propagates a refusal without the IPC prefix and does not reload', async () => {
+      vi.mocked(window.fly.pullRequests.clean).mockRejectedValue(
+        new Error(
+          "Error invoking remote method 'pr:clean': Error: Falha ao limpar: x",
+        ),
+      );
+      await expect(
+        useFlyStore.getState().cleanPullRequest('a/x#main', false),
+      ).rejects.toThrow(/^Falha ao limpar: x$/);
+      expect(window.fly.workspace.refresh).not.toHaveBeenCalled();
+    });
+
     it('setDiffPanel persists and stores the config', async () => {
       vi.mocked(window.fly.settings.set).mockResolvedValue({
         recentRoots: [],

@@ -103,6 +103,11 @@ export type FlyState = {
   mergePullRequest(worktreeId: string): Promise<void>;
   // Rejects with the refusal so the PR tab can show it.
   openPullRequest(worktreeId: string): Promise<void>;
+  // Like openPullRequest, for "Rodar de novo", "Retomar" and "Limpar"; a
+  // clean reloads the workspace, as its worktree is gone.
+  rerunPullRequest(worktreeId: string): Promise<void>;
+  resumePullRequest(worktreeId: string): Promise<void>;
+  cleanPullRequest(worktreeId: string, confirmed: boolean): Promise<void>;
   setDiffPanel(mode: DiffPanelMode): Promise<void>;
   openFile(worktreeId: string, path: string): Promise<void>;
   closeFile(worktreeId: string, path: string): void;
@@ -476,6 +481,8 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     set({merging: true, error: null});
     try {
       await window.fly.pullRequests.merge(worktreeId);
+      // The merge cleans the worktree up: its row goes away.
+      await get().refresh();
       await get().loadQueue();
     } catch (error) {
       set({error: errorMessage(error)});
@@ -491,6 +498,31 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       // Electron prefixes the main process's message with its IPC channel.
       throw new Error(errorMessage(error));
     }
+  },
+
+  async rerunPullRequest(worktreeId) {
+    try {
+      await window.fly.pullRequests.rerun(worktreeId);
+    } catch (error) {
+      throw new Error(errorMessage(error));
+    }
+  },
+
+  async resumePullRequest(worktreeId) {
+    try {
+      await window.fly.pullRequests.resume(worktreeId);
+    } catch (error) {
+      throw new Error(errorMessage(error));
+    }
+  },
+
+  async cleanPullRequest(worktreeId, confirmed) {
+    try {
+      await window.fly.pullRequests.clean(worktreeId, confirmed);
+    } catch (error) {
+      throw new Error(errorMessage(error));
+    }
+    await get().refresh();
   },
 
   async setDiffPanel(mode) {

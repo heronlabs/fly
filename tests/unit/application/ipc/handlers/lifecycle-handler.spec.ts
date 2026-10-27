@@ -12,6 +12,7 @@ const host: IpcHost = {
 const openPullRequest = vi.fn();
 const rerun = vi.fn();
 const resume = vi.fn();
+const clean = vi.fn();
 const tick = vi.fn();
 
 let handler: LifecycleHandler;
@@ -21,10 +22,11 @@ beforeEach(() => {
   openPullRequest.mockReset().mockResolvedValue(undefined);
   rerun.mockReset().mockResolvedValue(undefined);
   resume.mockReset().mockResolvedValue(undefined);
+  clean.mockReset().mockResolvedValue(undefined);
   tick.mockReset().mockResolvedValue(undefined);
   handler = new LifecycleHandler(
     host,
-    {openPullRequest, rerun, resume} as unknown as LifecycleService,
+    {openPullRequest, rerun, resume, clean} as unknown as LifecycleService,
     {tick} as unknown as QueueHandler,
   );
   handler.register();
@@ -36,9 +38,16 @@ describe('LifecycleHandler', () => {
     [channels.prRerun, rerun],
     [channels.prResume, resume],
   ];
+  const cleaning: [string, boolean][] = [
+    ['confirmed', true],
+    ['unconfirmed', false],
+  ];
 
-  it('Should register the open, rerun and resume channels', () => {
-    expect([...listeners.keys()]).toEqual(actions.map(([channel]) => channel));
+  it('Should register the open, rerun, resume and clean channels', () => {
+    expect([...listeners.keys()]).toEqual([
+      ...actions.map(([channel]) => channel),
+      channels.prClean,
+    ]);
   });
 
   it.each(actions)(
@@ -65,4 +74,25 @@ describe('LifecycleHandler', () => {
       expect(tick).not.toHaveBeenCalled();
     },
   );
+  it.each(cleaning)(
+    'Should clean with the %s flag and then tick the queue',
+    async (_name, confirmed) => {
+      const order: string[] = [];
+      clean.mockImplementation(async () => void order.push('clean'));
+      tick.mockImplementation(async () => void order.push('tick'));
+
+      await listeners.get(channels.prClean)!({}, 'w1', confirmed);
+
+      expect(clean).toHaveBeenCalledExactlyOnceWith('w1', confirmed);
+      expect(order).toEqual(['clean', 'tick']);
+    },
+  );
+
+  it('Should propagate a cleanup refusal without ticking', async () => {
+    clean.mockRejectedValue(new Error('Falha ao limpar: x'));
+    await expect(
+      listeners.get(channels.prClean)!({}, 'w1', true),
+    ).rejects.toThrow('Falha ao limpar: x');
+    expect(tick).not.toHaveBeenCalled();
+  });
 });

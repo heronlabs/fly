@@ -19,6 +19,7 @@ import {TaskFiles} from '../../../../src/core/interfaces/task-files';
 import {TaskStore} from '../../../../src/core/interfaces/task-store';
 import {TranscriptSource} from '../../../../src/core/interfaces/transcript-source';
 import {VcsGateway} from '../../../../src/core/interfaces/vcs-gateway';
+import {CleanupService} from '../../../../src/core/services/cleanup-service';
 import {LifecycleService} from '../../../../src/core/services/lifecycle-service';
 import {QueueService} from '../../../../src/core/services/queue-service';
 import {
@@ -182,10 +183,14 @@ describe('LifecycleService', () => {
   } as unknown as PrGateway;
   const pullRequestFor = vi.fn();
   const refreshPullRequests = vi.fn();
+  const mergePullRequest = vi.fn();
   const queue = {
     pullRequestFor,
     refreshPullRequests,
+    mergePullRequest,
   } as unknown as QueueService;
+  const clean = vi.fn();
+  const cleanup = {clean} as unknown as CleanupService;
   const get = vi.fn();
   const list = vi.fn();
   const save = vi.fn();
@@ -275,6 +280,7 @@ describe('LifecycleService', () => {
       tasks,
       taskFiles,
       ids,
+      cleanup,
     );
   });
 
@@ -2240,6 +2246,54 @@ describe('LifecycleService', () => {
 
     it('Should refuse an unknown worktree', async () => {
       await expect(service.resume('nope')).rejects.toThrow(
+        'Worktree não encontrado',
+      );
+    });
+  });
+  describe('merge', () => {
+    it('Should merge the PR and then clean up the worktree', async () => {
+      const order: string[] = [];
+      mergePullRequest.mockImplementation(async () => void order.push('merge'));
+      clean.mockImplementation(async () => void order.push('clean'));
+
+      await service.merge(WT);
+
+      expect(order).toEqual(['merge', 'clean']);
+      expect(mergePullRequest).toHaveBeenCalledExactlyOnceWith(WT);
+      expect(clean).toHaveBeenCalledExactlyOnceWith(WT, {confirmed: true});
+    });
+
+    it('Should not clean up when the merge is rejected', async () => {
+      mergePullRequest.mockRejectedValue(new Error('conflito'));
+
+      await expect(service.merge(WT)).rejects.toThrow('conflito');
+      expect(clean).not.toHaveBeenCalled();
+    });
+
+    it('Should reject with the cleanup failure after a successful merge', async () => {
+      mergePullRequest.mockResolvedValue(undefined);
+      clean.mockRejectedValue(new Error('Falha ao limpar: sujo'));
+
+      await expect(service.merge(WT)).rejects.toThrow('Falha ao limpar: sujo');
+    });
+  });
+
+  describe('clean', () => {
+    it.each([true, false])(
+      'Should hand the worktree and confirmed=%s to the cleanup',
+      async confirmed => {
+        clean.mockResolvedValue(undefined);
+
+        await service.clean(WT, confirmed);
+
+        expect(clean).toHaveBeenCalledExactlyOnceWith(WT, {confirmed});
+      },
+    );
+
+    it('Should propagate a cleanup refusal', async () => {
+      clean.mockRejectedValue(new Error('Worktree não encontrado'));
+
+      await expect(service.clean(WT, true)).rejects.toThrow(
         'Worktree não encontrado',
       );
     });

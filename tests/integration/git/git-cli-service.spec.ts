@@ -485,6 +485,73 @@ describe('GitCliService (real git)', () => {
       );
     });
 
+    describe('cleanup', () => {
+      let path: string;
+
+      beforeEach(async () => {
+        path = join(clone, '.worktrees', 'feat-z');
+        await service.addWorktree({
+          repoPath: clone,
+          path,
+          branch: 'feat-z',
+          base: 'origin/trunk',
+        });
+      });
+
+      it('Should remove a clean worktree', async () => {
+        await service.removeWorktree(clone, path);
+
+        const listed = await service.listWorktrees(clone);
+        expect(listed.map(w => w.path)).toEqual([clone]);
+      });
+
+      it("Should refuse a dirty worktree with git's message and keep it", async () => {
+        writeFileSync(join(path, 'wip.txt'), 'x');
+
+        await expect(service.removeWorktree(clone, path)).rejects.toThrow(
+          /contains modified or untracked files/,
+        );
+        expect((await service.listWorktrees(clone)).map(w => w.path)).toContain(
+          path,
+        );
+      });
+
+      it('Should delete the branch once the worktree is gone', async () => {
+        await service.removeWorktree(clone, path);
+
+        await service.deleteBranch(clone, 'feat-z');
+
+        expect(await service.branchExists(clone, 'feat-z')).toBe(false);
+      });
+
+      it('Should reject deleting a branch that does not exist', async () => {
+        await expect(service.deleteBranch(clone, 'nope')).rejects.toThrow(
+          /nope/,
+        );
+      });
+
+      it('Should delete the branch on origin, and resolve when it is already gone', async () => {
+        git(path, 'commit', '--allow-empty', '-m', 'work');
+        await service.push(path, 'feat-z');
+        expect(git(origin, 'branch', '--list', 'feat-z')).toContain('feat-z');
+
+        await service.deleteRemoteBranch(clone, 'feat-z');
+        expect(git(origin, 'branch', '--list', 'feat-z')).toBe('');
+
+        await expect(
+          service.deleteRemoteBranch(clone, 'feat-z'),
+        ).resolves.toBeUndefined();
+      });
+
+      it('Should reject a remote delete when origin is not reachable', async () => {
+        git(clone, 'remote', 'set-url', 'origin', join(dir, 'missing.git'));
+
+        await expect(
+          service.deleteRemoteBranch(clone, 'feat-z'),
+        ).rejects.toThrow(/\S/);
+      });
+    });
+
     it('Should write to the shared exclude from a linked worktree', async () => {
       const path = join(clone, '.worktrees', 'feat-y');
       await service.addWorktree({

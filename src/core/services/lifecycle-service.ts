@@ -17,6 +17,7 @@ import {TaskFiles} from '../interfaces/task-files';
 import {TaskStore} from '../interfaces/task-store';
 import {TranscriptSource} from '../interfaces/transcript-source';
 import {VcsGateway} from '../interfaces/vcs-gateway';
+import {CleanupService} from './cleanup-service';
 import {resolveDefaultBranch} from './default-branch';
 import {pollRecord} from './lifecycle-poll';
 import {
@@ -93,6 +94,7 @@ export class LifecycleService {
     private readonly tasks: TaskStore,
     private readonly taskFiles: TaskFiles,
     private readonly ids: IdGenerator,
+    private readonly cleanup: CleanupService,
   ) {}
 
   // Worktree paths with an open request between its checks and its save, or
@@ -297,6 +299,18 @@ export class LifecycleService {
     } finally {
       this.requesting.delete(worktree.path);
     }
+  }
+
+  // P12: merges the PR, then removes its worktree, branches and record. A
+  // cleanup failure after the merge still rejects; "Limpar" runs it again.
+  async merge(worktreeId: string): Promise<void> {
+    await this.queue.mergePullRequest(worktreeId);
+    await this.cleanup.clean(worktreeId, {confirmed: true});
+  }
+
+  // "Limpar": a merged PR's task, or a closed one's once confirmed.
+  async clean(worktreeId: string, confirmed: boolean): Promise<void> {
+    await this.cleanup.clean(worktreeId, {confirmed});
   }
 
   // "Rodar de novo": reruns the failed jobs of each run an infrastructure
