@@ -72,7 +72,6 @@ export const isSessionIdle = (
   const {options} = session;
   return (
     options['@fly_task'] === undefined &&
-    options['@fly_task_repo'] === undefined &&
     now - session.createdAt * 1000 >= MIN_SESSION_AGE_MS
   );
 };

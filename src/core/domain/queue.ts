@@ -1,5 +1,4 @@
 import type {TaskPhase, TaskRecord, TaskStop} from './task';
-import type {ReceiptResult} from './transcript';
 
 export type QueueStatus =
   | 'idle'
@@ -60,7 +59,6 @@ export type WorktreeQueue = {
   worktreeId: string;
   status: QueueStatus;
   pullRequest: PullRequest | null;
-  receipt: ReceiptResult | null;
   task: TaskView | null;
   canOpenPr: boolean;
 };

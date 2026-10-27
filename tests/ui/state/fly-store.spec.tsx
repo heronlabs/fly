@@ -546,7 +546,6 @@ describe('errorMessage', () => {
         worktreeId: `w${index}`,
         status,
         pullRequest: null,
-        receipt: null,
         task: null,
         canOpenPr: false,
       })),
@@ -810,7 +809,6 @@ describe('errorMessage', () => {
         worktreeId: 'a',
         status: 'idle' as QueueStatus,
         pullRequest: null,
-        receipt: null,
         task: null,
         canOpenPr: false,
       };

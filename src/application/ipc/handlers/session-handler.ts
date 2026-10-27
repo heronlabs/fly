@@ -51,16 +51,7 @@ export class SessionHandler {
   }
 
   private async list(): Promise<SessionsSnapshot> {
-    await this.bind();
     return this.sessions.snapshot();
-  }
-
-  private async bind(): Promise<void> {
-    try {
-      await this.tasks.bind();
-    } catch (error) {
-      this.logger.error(`Falha ao vincular tarefas: ${errorMessage(error)}`);
-    }
   }
 
   // Returns the action's result, then refreshes the renderer right away.
@@ -74,7 +65,6 @@ export class SessionHandler {
     if (this.running) return;
     this.running = true;
     try {
-      await this.bind();
       const snapshot = await this.sessions.snapshot();
       const serialized = JSON.stringify(snapshot);
       if (serialized !== this.lastBroadcast) {

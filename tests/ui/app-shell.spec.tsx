@@ -661,7 +661,6 @@ describe('AppShell', () => {
           {
             worktreeId: 'w1',
             status: 'ci',
-            receipt: null,
             task: null,
             canOpenPr: false,
             pullRequest: {
@@ -796,7 +795,6 @@ describe('AppShell', () => {
             worktreeId: 'w1',
             status: 'ready',
             pullRequest: null,
-            receipt: null,
             task: null,
             canOpenPr: false,
           },

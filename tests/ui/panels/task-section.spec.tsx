@@ -8,7 +8,6 @@ const queueOf = (overrides: Partial<WorktreeQueue> = {}): WorktreeQueue => ({
   worktreeId: 'w1',
   status: 'idle',
   pullRequest: null,
-  receipt: null,
   task: null,
   canOpenPr: false,
   ...overrides,

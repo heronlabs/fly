@@ -11,9 +11,6 @@ export const sessionPrefix = (relativePath: string): string =>
 export const sessionName = (prefix: string, hex: string): string =>
   `${prefix || 'fly'}-${hex}`;
 
-// The task prompt reaches the pane through this variable; it is never typed.
-export const PROMPT_ENV = 'FLY_PROMPT';
-
 // Control characters (C0, DEL, C1) become spaces, then whitespace collapses.
 export const normalizePrompt = (prompt: string): string =>
   prompt
@@ -29,7 +26,6 @@ export const cleanPrompt = (text: string): string =>
 
 export const claudeCommand = (input: {
   sessionId: string;
-  withPrompt?: boolean;
   promptFile?: boolean;
   model?: string | null;
 }): string => {
@@ -37,5 +33,5 @@ export const claudeCommand = (input: {
   const base = `claude --dangerously-skip-permissions --session-id ${input.sessionId}${model}`;
   if (input.promptFile)
     return `${base} -- "$(cat "$${PROMPT_FILE_ENV}")"; exit`;
-  return input.withPrompt ? `${base} "$${PROMPT_ENV}"; exit` : `${base}; exit`;
+  return `${base}; exit`;
 };

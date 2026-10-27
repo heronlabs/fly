@@ -6,7 +6,6 @@ import type {
   QueueStatus,
   WorktreeQueue,
 } from '../../../core/domain/queue';
-import type {ReceiptResult} from '../../../core/domain/transcript';
 import {TaskSection} from './task-section';
 
 type TaskHandlers = 'onOpenPr' | 'onRerun' | 'onResume' | 'onClean';
@@ -60,40 +59,6 @@ const pillBackground = (pr: PullRequest): string =>
       : pr.draft
         ? 'var(--badgeWarn)'
         : 'var(--badgeOk)';
-
-const Receipt = ({receipt}: {receipt: ReceiptResult}) => {
-  if (receipt.kind === 'invalid') {
-    return (
-      <section>
-        <h3 style={{...heading, color: 'var(--err)'}}>Receipt inválido</h3>
-        <ul style={{margin: 0, paddingLeft: 18}}>
-          {receipt.problems.map((problem, index) => (
-            <li key={index}>{problem}</li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
-  const {summary, filesChanged, verification} = receipt.receipt;
-  return (
-    <section>
-      <h3 style={heading}>Receipt do engineer</h3>
-      <p style={{margin: 0}}>{summary}</p>
-      <h3 style={heading}>Arquivos</h3>
-      <ul style={{margin: 0, paddingLeft: 18, fontFamily: 'var(--fontMono)'}}>
-        {filesChanged.map(path => (
-          <li key={path}>{path}</li>
-        ))}
-      </ul>
-      <h3 style={heading}>Verificação</h3>
-      {Object.entries(verification).map(([gate, result]) => (
-        <div key={gate} style={{fontFamily: 'var(--fontMono)'}}>
-          {`${gate}: ${result}`}
-        </div>
-      ))}
-    </section>
-  );
-};
 
 const PullRequestSection = ({
   pr,
@@ -219,6 +184,5 @@ export const PrView = ({
     ) : (
       <div style={{color: 'var(--muted)'}}>Sem PR aberto</div>
     )}
-    {queue?.receipt && <Receipt receipt={queue.receipt} />}
   </div>
 );

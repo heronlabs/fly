@@ -120,7 +120,6 @@ describe('DiffPrPanel', () => {
         worktreeId: 'w1',
         status: 'idle',
         pullRequest: null,
-        receipt: null,
         task: null,
         canOpenPr: true,
       },
@@ -140,7 +139,6 @@ describe('DiffPrPanel', () => {
           state: 'merged',
           checkRuns: [],
         } as unknown as PullRequest,
-        receipt: null,
         task: {
           phase: 'stopped',
           ciAttempts: 0,

@@ -77,8 +77,6 @@ const summary = (over: Partial<TranscriptSummary> = {}): TranscriptSummary => ({
   backgroundAgents: 0,
   backgroundShells: [],
   launchCwd: PATH,
-  worktreePath: null,
-  receipt: null,
   ...over,
 });
 

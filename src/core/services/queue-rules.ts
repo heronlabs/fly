@@ -72,7 +72,6 @@ export const pullRequestStatus = (
 export const worktreeStatus = (input: {
   activities: Activity[];
   pullRequest: PullRequest | null;
-  hasPlan: boolean;
   task: TaskRecord | null;
 }): QueueStatus => {
   const lifecycle = taskStatus(input.task);
@@ -90,7 +89,7 @@ export const worktreeStatus = (input: {
       // pullRequestStatus returns for an open PR (failed, ready, waiting, ci) ranks
       // at or above ci in PRECEDENCE, so a ci candidate would never change the result.
       if (!prOpen) candidates.add('engineer');
-    } else candidates.add(input.hasPlan ? 'engineer' : 'unknown');
+    } else if (activity === 'unknown') candidates.add('unknown');
   }
   return PRECEDENCE.find(status => candidates.has(status)) ?? 'idle';
 };

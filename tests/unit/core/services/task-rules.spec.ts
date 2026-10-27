@@ -253,14 +253,11 @@ describe('isSessionIdle', () => {
     expect(isSessionIdle(value, session(100), 105_000)).toBe(true);
   });
 
-  it.each(['@fly_task', '@fly_task_repo'])(
-    'Should not take a %s session without a transcript as idle',
-    key => {
-      expect(isSessionIdle(null, session(100, {[key]: 'x'}), 200_000)).toBe(
-        false,
-      );
-    },
-  );
+  it('Should not take a prompted session without a transcript as idle', () => {
+    expect(isSessionIdle(null, session(100, {'@fly_task': 'x'}), 200_000)).toBe(
+      false,
+    );
+  });
 });
 
 describe('logExcerpt', () => {

@@ -176,7 +176,6 @@ describe('ClaudeTranscriptService', () => {
       // launchCwd from the worktree line instead.
       expect(await session()).toMatchObject({
         launchCwd: ROOT,
-        worktreePath: `${ROOT}/.worktrees/feat-add-retry`,
         phase: 'turn-ended',
       });
     });

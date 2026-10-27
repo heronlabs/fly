@@ -1,12 +1,9 @@
-import {join} from 'node:path';
-
 import {Injectable} from '@nestjs/common';
 
 import {PullRequest, QueueSnapshot, WorktreeQueue} from '../domain/queue';
 import {TaskRecord} from '../domain/task';
-import {Activity, ReceiptResult, TranscriptSummary} from '../domain/transcript';
+import {Activity, TranscriptSummary} from '../domain/transcript';
 import {Workspace, Worktree} from '../domain/workspace';
-import {FileStore} from '../interfaces/file-store';
 import {PrGateway} from '../interfaces/pr-gateway';
 import {MultiplexerSession} from '../interfaces/session-launcher';
 import {TaskStore} from '../interfaces/task-store';
@@ -30,7 +27,6 @@ type SessionRead = {
   worktreeId: string;
   session: MultiplexerSession;
   activity: Activity | null;
-  receipt: ReceiptResult | null;
   // The session takes a new instruction (isSessionIdle).
   // Only a fly session reports it.
   idle?: boolean;
@@ -55,7 +51,6 @@ export class QueueService {
     private readonly sessions: SessionService,
     private readonly transcripts: TranscriptSource,
     private readonly prs: PrGateway,
-    private readonly files: FileStore,
     private readonly tasks: TaskStore,
   ) {}
 
@@ -149,7 +144,7 @@ export class QueueService {
         const activity = shared
           ? 'unknown'
           : await this.readExternal(session, flyIds, now);
-        return {worktreeId, session, activity, receipt: null};
+        return {worktreeId, session, activity};
       }),
     );
   }
@@ -161,22 +156,18 @@ export class QueueService {
     now: number,
   ): Promise<Omit<SessionRead, 'worktreeId' | 'session'>> {
     const {options} = session;
-    const launchCwd =
-      options['@fly_task_repo'] ?? options['@fly_worktree'] ?? session.cwd;
+    const launchCwd = options['@fly_worktree'] ?? session.cwd;
     // A session started without a prompt has no transcript until the first one.
-    const started =
-      options['@fly_task_repo'] === undefined &&
-      options['@fly_task'] === undefined;
+    const started = options['@fly_task'] === undefined;
     let summary: TranscriptSummary | null;
     try {
       summary = await this.transcripts.forSession({launchCwd, sessionId});
     } catch {
-      return {activity: classifyActivity(null, now), receipt: null};
+      return {activity: classifyActivity(null, now)};
     }
     const fresh = started && (summary === null || summary.phase === 'none');
     return {
       activity: fresh ? 'waiting' : classifyActivity(summary, now),
-      receipt: summary?.receipt ?? null,
       idle: isSessionIdle(summary, session, now),
     };
   }
@@ -211,11 +202,9 @@ export class QueueService {
     reads: SessionRead[],
     records: TaskRecord[],
   ): Promise<WorktreeQueue> {
+    // Stryker disable next-line ArrayDeclaration: worktreeStatus ignores an activity it does not recognise, so a junk element reads like none
     const activities = reads.flatMap(r => r.activity ?? []);
     const pullRequest = this.pullRequestOf(workspace, worktree);
-    const hasPlan =
-      activities.includes('unknown') &&
-      (await this.files.exists(join(worktree.path, '.supera', 'plan.md')));
     // A record left by another branch at this path is stale: not this task's.
     const task =
       records.find(
@@ -223,9 +212,8 @@ export class QueueService {
       ) ?? null;
     return {
       worktreeId: worktree.id,
-      status: worktreeStatus({activities, pullRequest, hasPlan, task}),
+      status: worktreeStatus({activities, pullRequest, task}),
       pullRequest,
-      receipt: reads.find(r => r.receipt)?.receipt ?? null,
       task: task && {
         phase: task.phase,
         ciAttempts: task.ciAttempts,

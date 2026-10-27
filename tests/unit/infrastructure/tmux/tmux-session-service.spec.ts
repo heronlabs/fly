@@ -19,8 +19,6 @@ describe('TmuxSessionService', () => {
       '#{@fly_session_id}',
       '#{@fly_worktree}',
       '#{@fly_task}',
-      '#{@fly_task_repo}',
-      '#{@fly_task_baseline}',
     ].join('\t');
 
     it('Should run list-sessions with the format and no -L without a socket', async () => {

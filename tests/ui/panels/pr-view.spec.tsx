@@ -7,7 +7,6 @@ import type {
   QueueStatus,
   WorktreeQueue,
 } from '../../../src/core/domain/queue';
-import type {ReceiptResult} from '../../../src/core/domain/transcript';
 
 const RUN = {kind: 'run', conclusion: null, runId: null, jobId: null} as const;
 
@@ -30,14 +29,10 @@ const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   ...overrides,
 });
 
-const queueOf = (
-  pullRequest: PullRequest | null,
-  receipt: ReceiptResult | null = null,
-): WorktreeQueue => ({
+const queueOf = (pullRequest: PullRequest | null): WorktreeQueue => ({
   worktreeId: 'w1',
   status: 'ready',
   pullRequest,
-  receipt,
   task: null,
   canOpenPr: false,
 });
@@ -193,41 +188,6 @@ describe('PrView', () => {
     renderView(queueOf(pr({state: 'merged'})));
     expect(screen.getByText('Merge feito')).toBeVisible();
     expect(screen.queryByRole('button', {name: 'Fazer merge'})).toBeNull();
-  });
-
-  it('Should render a valid receipt', () => {
-    renderView(
-      queueOf(null, {
-        kind: 'valid',
-        receipt: {
-          summary: 'Fez a coisa',
-          filesChanged: ['a.ts', 'b.ts'],
-          verification: {lint: 'pass', test: 'skipped', build: 'fail'},
-        },
-      }),
-    );
-    expect(screen.getByText('Receipt do engineer')).toBeVisible();
-    expect(screen.getByText('Fez a coisa')).toBeVisible();
-    expect(screen.getByText('Arquivos')).toBeVisible();
-    expect(screen.getAllByRole('listitem').map(i => i.textContent)).toEqual([
-      'a.ts',
-      'b.ts',
-    ]);
-    expect(screen.getByText('Verificação')).toBeVisible();
-    expect(screen.getByText('lint: pass')).toBeVisible();
-    expect(screen.getByText('test: skipped')).toBeVisible();
-    expect(screen.getByText('build: fail')).toBeVisible();
-    expect(screen.queryByText('Receipt inválido')).toBeNull();
-  });
-
-  it('Should render an invalid receipt with its problems', () => {
-    renderView(
-      queueOf(pr(), {kind: 'invalid', problems: ['sem resumo', 'json ruim']}),
-    );
-    expect(screen.getByText('Receipt inválido')).toBeVisible();
-    expect(screen.getByText('sem resumo')).toBeVisible();
-    expect(screen.getByText('json ruim')).toBeVisible();
-    expect(screen.queryByText('Receipt do engineer')).toBeNull();
   });
 
   it('Should not carry a rejection or an in-flight open to another worktree', async () => {

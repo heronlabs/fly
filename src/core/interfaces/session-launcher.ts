@@ -2,8 +2,6 @@ export const flyOptions = [
   '@fly_session_id',
   '@fly_worktree',
   '@fly_task',
-  '@fly_task_repo',
-  '@fly_task_baseline',
 ] as const;
 
 export type FlyOption = (typeof flyOptions)[number];
