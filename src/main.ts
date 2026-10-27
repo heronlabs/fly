@@ -10,6 +10,7 @@ import {AttachmentHandler} from './application/ipc/handlers/attachment-handler';
 import {DiffHandler} from './application/ipc/handlers/diff-handler';
 import {FileHandler} from './application/ipc/handlers/file-handler';
 import {LaunchHandler} from './application/ipc/handlers/launch-handler';
+import {LifecycleHandler} from './application/ipc/handlers/lifecycle-handler';
 import {QueueHandler} from './application/ipc/handlers/queue-handler';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
@@ -114,6 +115,7 @@ const booted = app
     context.get(ShellHandler).register();
     context.get(SessionHandler).register();
     context.get(QueueHandler).register();
+    context.get(LifecycleHandler).register();
     context.get(DiffHandler).register();
     context.get(FileHandler).register();
     context.get(AttachmentHandler).register();

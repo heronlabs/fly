@@ -1,3 +1,4 @@
+import type {TaskPhase, TaskRecord, TaskStop} from './task';
 import type {ReceiptResult} from './transcript';
 
 export type QueueStatus =
@@ -31,11 +32,21 @@ export type PullRequest = {
   checkRuns: CheckRun[];
 };
 
+// What the PR tab shows of a worktree's task record.
+export type TaskView = {
+  phase: TaskPhase;
+  ciAttempts: number;
+  stop: TaskStop | null;
+  review: TaskRecord['review'];
+};
+
 export type WorktreeQueue = {
   worktreeId: string;
   status: QueueStatus;
   pullRequest: PullRequest | null;
   receipt: ReceiptResult | null;
+  task: TaskView | null;
+  canOpenPr: boolean;
 };
 
 export type QueueSnapshot = {

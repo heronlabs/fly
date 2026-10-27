@@ -35,6 +35,7 @@ export const channels = {
   filePoll: 'file:poll',
   fileSearch: 'file:search',
   prMerge: 'pr:merge',
+  prOpen: 'pr:open',
   shellOpenExternal: 'shell:open-external',
   taskCreate: 'task:create',
   taskPickAttachments: 'task:pick-attachments',
@@ -90,7 +91,10 @@ export type FlyApi = {
     poll(worktreeId: string, openPaths: string[]): Promise<FilesPoll>;
     search(worktreeId: string, query: SearchQuery): Promise<SearchResult>;
   };
-  pullRequests: {merge(worktreeId: string): Promise<void>};
+  pullRequests: {
+    merge(worktreeId: string): Promise<void>;
+    open(worktreeId: string): Promise<void>;
+  };
   tasks: {
     create(input: NewTaskInput): Promise<string>;
     pickAttachments(): Promise<string[]>;

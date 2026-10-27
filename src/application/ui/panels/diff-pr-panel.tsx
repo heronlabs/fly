@@ -16,6 +16,7 @@ type Props = {
   merging: boolean;
   onLoadDiff(worktreeId: string, scope: DiffScope): Promise<void> | void;
   onMerge(worktreeId: string): void;
+  onOpenPr(worktreeId: string): Promise<void>;
   onOpenInEditor(path: string): void;
   onOpenExternal(url: string): void;
 };
@@ -58,6 +59,7 @@ export const DiffPrPanel = ({
   merging,
   onLoadDiff,
   onMerge,
+  onOpenPr,
   onOpenInEditor,
   onOpenExternal,
 }: Props) => {
@@ -137,6 +139,7 @@ export const DiffPrPanel = ({
             status={queue?.status ?? 'idle'}
             merging={merging}
             onMerge={() => onMerge(worktree.id)}
+            onOpenPr={() => onOpenPr(worktree.id)}
             onOpenExternal={onOpenExternal}
           />
         )}

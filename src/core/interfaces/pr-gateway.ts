@@ -10,5 +10,12 @@ export const GH_DEFAULT_BRANCH_MESSAGE =
 export abstract class PrGateway {
   abstract list(repoPath: string): Promise<PullRequest[]>;
   abstract defaultBranch(repoPath: string): Promise<string>;
+  abstract create(input: {
+    cwd: string;
+    title: string;
+    bodyFile: string;
+    base: string;
+    head: string;
+  }): Promise<{number: number; url: string}>;
   abstract merge(repoPath: string, number: number): Promise<void>;
 }

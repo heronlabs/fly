@@ -8,6 +8,17 @@ import {MAX_ATTACHMENT_BYTES, TASKS_DIR} from '../../core/domain/task';
 import {TaskFiles} from '../../core/interfaces/task-files';
 import {USER_DATA_DIR} from '../environment/tokens';
 
+const ID = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const INVALID = 'Caminho inválido';
+
+const checked = (value: string, pattern: RegExp): string => {
+  if (!pattern.test(value)) {
+    throw new Error(INVALID);
+  }
+  return value;
+};
+
 const isCode = (error: unknown, code: string): boolean =>
   (error as NodeJS.ErrnoException).code === code;
 
@@ -18,11 +29,12 @@ export class NodeTaskFilesService extends TaskFiles {
   }
 
   dir(taskId: string): string {
-    return join(this.userDataDir, TASKS_DIR, taskId);
+    return join(this.userDataDir, TASKS_DIR, checked(taskId, ID));
   }
 
   async write(taskId: string, name: string, content: string): Promise<string> {
     const dir = this.dir(taskId);
+    checked(name, NAME);
     await mkdir(dir, {recursive: true});
     const path = join(dir, name);
     await writeFile(path, content);
@@ -31,7 +43,10 @@ export class NodeTaskFilesService extends TaskFiles {
 
   async read(taskId: string, name: string): Promise<string | null> {
     try {
-      return await readFile(join(this.dir(taskId), name), 'utf8');
+      return await readFile(
+        join(this.dir(taskId), checked(name, NAME)),
+        'utf8',
+      );
     } catch (error) {
       if (isCode(error, 'ENOENT')) {
         return null;

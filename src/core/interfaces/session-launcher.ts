@@ -30,6 +30,8 @@ export abstract class SessionLauncher {
     option: FlyOption,
     value: string,
   ): Promise<void>;
+  // Types `text` into the session's pane and submits it with Enter.
+  abstract sendText(name: string, text: string): Promise<void>;
   abstract kill(name: string): Promise<void>;
   abstract attachCommand(name: string): {file: string; args: string[]};
 }

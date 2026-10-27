@@ -21,6 +21,7 @@ import {TaskFiles} from '../interfaces/task-files';
 import {TaskStore} from '../interfaces/task-store';
 import {TranscriptSource} from '../interfaces/transcript-source';
 import {VcsGateway} from '../interfaces/vcs-gateway';
+import {resolveDefaultBranch} from './default-branch';
 import {
   claudeCommand,
   cleanPrompt,
@@ -118,9 +119,7 @@ export class TaskService {
         throw new Error(`Arquivo maior que 20 MB: ${posix.basename(source)}`);
       }
     }
-    const base =
-      (await this.vcs.defaultBranch(repo.path)) ??
-      (await this.prs.defaultBranch(repo.path));
+    const base = await resolveDefaultBranch(this.vcs, this.prs, repo.path);
     await this.vcs.fetch(repo.path, base);
     await this.vcs.addWorktree({
       repoPath: repo.path,

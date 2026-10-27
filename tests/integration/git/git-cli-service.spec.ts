@@ -369,6 +369,57 @@ describe('GitCliService (real git)', () => {
       expect(await service.branchExists(clone, 'nope')).toBe(false);
     });
 
+    it('Should read HEAD and count commits ahead of a ref', async () => {
+      expect(await service.headSha(clone)).toBe(
+        git(clone, 'rev-parse', 'HEAD').trim(),
+      );
+      expect(await service.aheadCount(clone, 'origin/trunk')).toBe(0);
+
+      git(clone, 'commit', '--allow-empty', '-m', 'a');
+      git(clone, 'commit', '--allow-empty', '-m', 'b');
+
+      expect(await service.aheadCount(clone, 'origin/trunk')).toBe(2);
+      expect(await service.headSha(clone)).toBe(
+        git(clone, 'rev-parse', 'HEAD').trim(),
+      );
+    });
+
+    it('Should reject aheadCount for an unknown ref', async () => {
+      await expect(service.aheadCount(clone, 'origin/nope')).rejects.toThrow(
+        /^git falhou: /,
+      );
+    });
+
+    it('Should push a new branch and set its upstream', async () => {
+      git(clone, 'checkout', '--no-track', '-b', 'feat-x');
+      git(clone, 'commit', '--allow-empty', '-m', 'a');
+
+      await service.push(clone, 'feat-x');
+
+      expect(git(origin, 'rev-parse', 'refs/heads/feat-x')).toBe(
+        git(clone, 'rev-parse', 'HEAD'),
+      );
+      expect(git(clone, 'rev-parse', '--abbrev-ref', '@{u}').trim()).toBe(
+        'origin/feat-x',
+      );
+    });
+
+    it('Should reject a push origin refuses as non-fast-forward', async () => {
+      git(clone, 'checkout', '--no-track', '-b', 'feat-x');
+      git(clone, 'commit', '--allow-empty', '-m', 'a');
+      await service.push(clone, 'feat-x');
+      const other = join(dir, 'other');
+      git(dir, 'clone', origin, other);
+      git(other, 'checkout', 'feat-x');
+      git(other, 'commit', '--allow-empty', '-m', 'moved');
+      git(other, 'push', 'origin', 'feat-x');
+      git(clone, 'commit', '--allow-empty', '-m', 'b');
+
+      await expect(service.push(clone, 'feat-x')).rejects.toThrow(
+        /^git push falhou: \S.*\S$/s,
+      );
+    });
+
     it('Should add an untracked worktree at the base and ignore the folder', async () => {
       const head = git(clone, 'rev-parse', 'HEAD');
       const path = join(clone, '.worktrees', 'feat-x');

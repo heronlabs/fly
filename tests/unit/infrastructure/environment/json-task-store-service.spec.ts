@@ -3,9 +3,11 @@ import {FileStore} from '../../../../src/core/interfaces/file-store';
 import {JsonTaskStoreService} from '../../../../src/infrastructure/environment/json-task-store-service';
 
 const tasksPath = '/u/tasks.json';
+const tmpPath = '/u/tasks.json.tmp';
 const exists = vi.fn();
 const readText = vi.fn();
 const writeText = vi.fn();
+const rename = vi.fn();
 const fileStore: FileStore = {
   readDir: vi.fn(),
   realPath: vi.fn(),
@@ -14,6 +16,7 @@ const fileStore: FileStore = {
   writeText,
   createText: vi.fn(),
   stat: vi.fn(),
+  rename,
 };
 let store: JsonTaskStoreService;
 
@@ -48,7 +51,9 @@ beforeEach(() => {
   exists.mockReset();
   readText.mockReset();
   writeText.mockReset();
+  rename.mockReset();
   writeText.mockResolvedValue(undefined);
+  rename.mockResolvedValue(undefined);
   exists.mockResolvedValue(false);
   store = new JsonTaskStoreService(fileStore, '/u');
 });
@@ -61,9 +66,86 @@ describe('JsonTaskStoreService', () => {
 
     expect(await store.get('/r/.worktrees/a')).toEqual(a);
     expect(writeText).toHaveBeenCalledWith(
-      tasksPath,
+      tmpPath,
       JSON.stringify([a], null, 2),
     );
+  });
+
+  it('Should write a temp file and rename it over tasks.json, in order', async () => {
+    await store.save(record('/r/.worktrees/a'));
+
+    expect(writeText.mock.calls.map(c => c[0])).toEqual([tmpPath]);
+    expect(rename).toHaveBeenCalledWith(tmpPath, tasksPath);
+    expect(writeText.mock.invocationCallOrder[0]).toBeLessThan(
+      rename.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('Should not rename when the temp write failed', async () => {
+    writeText.mockRejectedValueOnce(new Error('ENOSPC'));
+
+    await expect(store.save(record('/r/.worktrees/a'))).rejects.toThrow(
+      'ENOSPC',
+    );
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it('Should hand out copies, never the stored records', async () => {
+    const a = record('/r/.worktrees/a');
+    await store.save(a);
+    a.phase = 'stopped';
+
+    const got = (await store.get('/r/.worktrees/a'))!;
+    got.phase = 'ci';
+    (await store.list())[0]!.branch = 'x';
+
+    expect((await store.get('/r/.worktrees/a'))!.phase).toBe('working');
+    expect((await store.list())[0]!.branch).toBe('feat-a');
+  });
+
+  it.each(['{', '{}'])(
+    'Should keep a damaged file (%s) as .bad-<ms> and start empty',
+    async content => {
+      withFile(content);
+      vi.spyOn(Date, 'now').mockReturnValue(1234);
+
+      expect(await store.list()).toEqual([]);
+      expect(rename).toHaveBeenCalledTimes(1);
+      expect(rename).toHaveBeenCalledWith(tasksPath, `${tasksPath}.bad-1234`);
+      const a = record('/r/.worktrees/a');
+      await store.save(a);
+      expect(rename).toHaveBeenLastCalledWith(tmpPath, tasksPath);
+      expect(written()).toEqual([a]);
+      vi.restoreAllMocks();
+    },
+  );
+
+  it('Should keep an unreadable file as .bad-<ms>', async () => {
+    exists.mockResolvedValue(true);
+    readText.mockRejectedValue(new Error('EACCES'));
+    vi.spyOn(Date, 'now').mockReturnValue(7);
+
+    expect(await store.list()).toEqual([]);
+    expect(rename).toHaveBeenCalledWith(tasksPath, `${tasksPath}.bad-7`);
+    vi.restoreAllMocks();
+  });
+
+  it('Should start empty even when keeping the damaged file fails', async () => {
+    withFile('{');
+    rename.mockRejectedValue(new Error('EPERM'));
+
+    expect(await store.list()).toEqual([]);
+    expect(await store.list()).toEqual([]);
+    expect(readText).toHaveBeenCalledTimes(1);
+  });
+
+  it('Should not rename a missing or valid file', async () => {
+    await store.list();
+    store = new JsonTaskStoreService(fileStore, '/u');
+    withFile('[]');
+    await store.list();
+
+    expect(rename).not.toHaveBeenCalled();
   });
 
   it('Should return null for an unknown worktree path', async () => {
@@ -139,23 +221,36 @@ describe('JsonTaskStoreService', () => {
     },
   );
 
-  it('Should keep only entries with string id and worktreePath', async () => {
+  it('Should keep only entries that pass the guard', async () => {
     const good = record('/r/.worktrees/a');
-    withFile(
-      JSON.stringify([
-        good,
-        null,
-        7,
-        'x',
-        {id: 'x'},
-        {worktreePath: '/w'},
-        {id: 1, worktreePath: '/w'},
-        {id: 'x', worktreePath: 2},
-      ]),
-    );
+    const bad = [
+      null,
+      7,
+      'x',
+      {...good, id: 1},
+      {...good, repoPath: 1},
+      {...good, worktreePath: 2},
+      {...good, branch: null},
+      {...good, base: undefined},
+      {...good, phase: 'done'},
+      {...good, phase: 1},
+      {...good, ciAttempts: '0'},
+      {...good, createdAt: '1'},
+    ];
+    withFile(JSON.stringify([good, ...bad]));
 
     expect(await store.list()).toEqual([good]);
   });
+
+  it.each(['working', 'opening', 'ci', 'fixing', 'reviewing', 'stopped'])(
+    'Should accept phase %s',
+    async phase => {
+      const r = {...record('/r/.worktrees/a'), phase};
+      withFile(JSON.stringify([r]));
+
+      expect(await store.list()).toEqual([r]);
+    },
+  );
 
   it('Should read the file once and serve later reads from memory', async () => {
     withFile(JSON.stringify([record('/r/.worktrees/a')]));

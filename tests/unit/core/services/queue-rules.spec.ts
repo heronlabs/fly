@@ -1,4 +1,5 @@
 import {PullRequest} from '../../../../src/core/domain/queue';
+import {TaskPhase, TaskRecord} from '../../../../src/core/domain/task';
 import {
   Activity,
   TranscriptSummary,
@@ -244,8 +245,53 @@ describe('worktreeStatus', () => {
       'ci',
     ],
   ])('Should resolve %s', (_name, input, expected) => {
-    expect(worktreeStatus(input)).toBe(expected);
+    expect(worktreeStatus({...input, task: null})).toBe(expected);
   });
+});
+
+describe('worktreeStatus with a task record', () => {
+  const task = (phase: TaskPhase): TaskRecord => ({
+    id: 't1',
+    repoPath: '/r/talon',
+    worktreePath: '/r/talon/.worktrees/feat-x',
+    branch: 'feat-x',
+    base: 'main',
+    model: null,
+    promptFile: null,
+    prNumber: 1,
+    phase,
+    ciAttempts: 0,
+    fixedSha: null,
+    reviewSeenAt: null,
+    review: null,
+    outbox: null,
+    pending: null,
+    stop: null,
+    createdAt: 1,
+  });
+  const failing = pr({checks: 'failing'});
+
+  it.each<[TaskPhase, Activity[], PullRequest | null, string]>([
+    ['stopped', [], failing, 'waiting'],
+    ['stopped', ['running'], null, 'waiting'],
+    ['opening', ['waiting'], pr(), 'engineer'],
+    ['fixing', [], failing, 'engineer'],
+    ['reviewing', [], pr(), 'engineer'],
+    ['ci', [], failing, 'failed'],
+    ['working', ['waiting'], null, 'waiting'],
+  ])(
+    'Should resolve phase %s with activities %j',
+    (phase, activities, pullRequest, expected) => {
+      expect(
+        worktreeStatus({
+          activities,
+          pullRequest,
+          hasPlan: false,
+          task: task(phase),
+        }),
+      ).toBe(expected);
+    },
+  );
 });
 
 describe('PRECEDENCE', () => {

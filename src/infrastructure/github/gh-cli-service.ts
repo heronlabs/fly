@@ -34,6 +34,47 @@ export class GhCliService extends PrGateway {
     return parsePrList(result.stdout);
   }
 
+  async create(input: {
+    cwd: string;
+    title: string;
+    bodyFile: string;
+    base: string;
+    head: string;
+  }): Promise<{number: number; url: string}> {
+    let result: Awaited<ReturnType<CommandRunner['run']>>;
+    try {
+      result = await this.runner.run(
+        'gh',
+        [
+          'pr',
+          'create',
+          '--title',
+          input.title,
+          '--body-file',
+          input.bodyFile,
+          '--base',
+          input.base,
+          '--head',
+          input.head,
+        ],
+        {cwd: input.cwd, timeoutMs: 60_000},
+      );
+    } catch (error) {
+      if ((error as {killed?: unknown}).killed === true) {
+        throw new Error(GH_MERGE_TIMEOUT_MESSAGE);
+      }
+      throw error;
+    }
+    const url = result.stdout.trim();
+    const number = /\/pull\/(\d+)$/.exec(url)?.[1];
+    if (result.code !== 0 || number === undefined) {
+      throw new Error(
+        `gh pr create falhou: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
+    return {number: Number(number), url};
+  }
+
   async merge(repoPath: string, number: number): Promise<void> {
     let result: Awaited<ReturnType<CommandRunner['run']>>;
     try {

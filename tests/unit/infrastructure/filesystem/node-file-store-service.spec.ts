@@ -116,4 +116,20 @@ describe('NodeFileStoreService', () => {
       realpathSync(join(dir, 'real')),
     );
   });
+
+  it('Should rename a file over an existing one', async () => {
+    await writeFile(join(dir, 'a.tmp'), 'new');
+    await writeFile(join(dir, 'a.json'), 'old');
+
+    await store.rename(join(dir, 'a.tmp'), join(dir, 'a.json'));
+
+    expect(await readFile(join(dir, 'a.json'), 'utf8')).toBe('new');
+    expect(await store.exists(join(dir, 'a.tmp'))).toBe(false);
+  });
+
+  it('Should reject renaming a missing path', async () => {
+    await expect(
+      store.rename(join(dir, 'missing'), join(dir, 'b')),
+    ).rejects.toThrow(/ENOENT/);
+  });
 });

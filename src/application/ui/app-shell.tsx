@@ -51,6 +51,7 @@ export const AppShell = () => {
     merging,
     loadDiff,
     mergePullRequest,
+    openPullRequest,
     setDiffPanel,
     openFiles,
     activeFile,
@@ -358,6 +359,7 @@ export const AppShell = () => {
               merging={merging}
               onLoadDiff={loadDiff}
               onMerge={id => void mergePullRequest(id)}
+              onOpenPr={openPullRequest}
               onOpenInEditor={path => void openInEditor(path)}
               onOpenExternal={url => void openExternal(url)}
             />

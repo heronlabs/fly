@@ -149,4 +149,216 @@ describe('TerminalService', () => {
     expect(processes[0]!.write).not.toHaveBeenCalled();
     expect(processes[0]!.kill).not.toHaveBeenCalled();
   });
+
+  describe('hasDraft', () => {
+    it('Should follow typing, submit and cancel per session', () => {
+      const id = service.attach('s1', size, sink);
+
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'ab\rcd');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'x\x03');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should look only after the last submit or cancel', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, 'a\x03b\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'a\rb\x03');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\rx\x03y');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'a\x03b\rc');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should leave the draft unchanged for control-only data', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[A');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, '\x1b[A');
+      service.write(id, '\x7f\n\t');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should ignore escape sequences, also after a submit', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[1;5C\x1b[?25h\x1b[ q');
+      service.write(id, '\x1bOA\x1bOP');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'ab\r\x1b[A\x1bOB');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b[Ax');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\x1bOA');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should keep drafts per session, and across detach', () => {
+      const a = service.attach('a', size, sink);
+      const b = service.attach('b', size, sink);
+
+      service.write(a, 'x');
+      expect(service.hasDraft('a')).toBe(true);
+      expect(service.hasDraft('b')).toBe(false);
+      service.write(b, 'y');
+      service.write(b, '\r');
+      service.detach(a);
+      expect(service.hasDraft('a')).toBe(true);
+      expect(service.hasDraft('b')).toBe(false);
+    });
+
+    it('Should share the draft between terminals of one session', () => {
+      const first = service.attach('s1', size, sink);
+      const second = service.attach('s1', size, sink);
+
+      service.write(first, 'x');
+      service.write(second, '\r');
+
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should return false for an unknown session and ignore writes to unknown terminals', () => {
+      service.write('nope', 'x');
+
+      expect(service.hasDraft('nope')).toBe(false);
+    });
+
+    it('Should treat a bracketed paste as a draft, whatever newlines it holds', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~text\r\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b[200~a\x03b\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should follow a paste split across writes', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~te');
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'xt\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should keep an open paste per session', () => {
+      const a = service.attach('a', size, sink);
+      const b = service.attach('b', size, sink);
+
+      service.write(a, '\x1b[200~x');
+      service.write(b, '\r');
+      service.write(b, 'y');
+      service.write(b, '\r');
+
+      expect(service.hasDraft('b')).toBe(false);
+      expect(service.hasDraft('a')).toBe(true);
+    });
+
+    it('Should leave the draft unchanged for an empty paste', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, '\x1b[200~\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r\x1b[200~\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should text typed after a paste ends count again', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~x\x1b[201~\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b[200~x\x1b[201~y');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should read Alt+Enter and Shift+Enter as a newline, not a submit', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, 'abc\x1b\r');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'def\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc\x1b\r');
+      service.write(id, '\x1b\n');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'abc\x1b\rdef\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b\r');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should ignore SGR and X10 mouse reports', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[<0;10;5M\x1b[<0;10;5m');
+      service.write(id, '\x1b[M !!');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, '\x1b[<64;10;5M');
+      service.write(id, '\x1b[M`!!');
+      service.write(id, '\x1b[M\r\x03\x03');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r\x1b[<0;1;1M\x1b[M   ');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it.each([
+      ['an OSC 11 reply ended by ST', '\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\'],
+      ['an OSC 10 reply ended by BEL', '\x1b]10;rgb:cccc/cccc/cccc\x07'],
+      ['a DCS reply', '\x1bP1$r0m\x1b\\'],
+      ['an APC string', '\x1b_Gi=1;OK\x1b\\'],
+    ])('Should not read %s as a draft', (_name, reply) => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, reply);
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, reply);
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should read a backslash then Enter as a newline, even across writes', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, 'abc\\');
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'def\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\x');
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'a\\\r\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\\x03\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\');
+      service.write(id, '\x03');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'x\r');
+      service.write(id, '\x7f\n');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\\x1b[200~p\x1b[201~\r');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+  });
 });

@@ -11,6 +11,7 @@ import type {
 } from '../../../../../src/application/ipc/ipc-types';
 import {channels} from '../../../../../src/core/domain/fly-api';
 import type {QueueSnapshot} from '../../../../../src/core/domain/queue';
+import type {LifecycleService} from '../../../../../src/core/services/lifecycle-service';
 import {QueueService} from '../../../../../src/core/services/queue-service';
 
 const snap = (n: number) => ({n}) as unknown as QueueSnapshot;
@@ -24,6 +25,7 @@ const send = vi.fn();
 const snapshot = vi.fn();
 const refreshPullRequests = vi.fn();
 const mergePullRequest = vi.fn();
+const lifecycleTick = vi.fn();
 
 const invoke = (channel: string, ...args: unknown[]) =>
   listeners.get(channel)!({}, ...args);
@@ -38,6 +40,7 @@ beforeEach(() => {
   snapshot.mockResolvedValue(snap(1));
   refreshPullRequests.mockResolvedValue(undefined);
   mergePullRequest.mockReset();
+  lifecycleTick.mockReset().mockResolvedValue(undefined);
   handler = new QueueHandler(
     host,
     {send} as Broadcaster,
@@ -46,6 +49,7 @@ beforeEach(() => {
       refreshPullRequests,
       mergePullRequest,
     } as unknown as QueueService,
+    {tick: lifecycleTick} as unknown as LifecycleService,
   );
   handler.register();
 });
@@ -57,6 +61,24 @@ afterEach(() => {
 });
 
 describe('QueueHandler', () => {
+  it('Should tick the lifecycle once before each snapshot', async () => {
+    const order: string[] = [];
+    lifecycleTick.mockImplementation(async () => void order.push('tick'));
+    snapshot.mockImplementation(async () => {
+      order.push('snapshot');
+      return snap(1);
+    });
+    await vi.advanceTimersByTimeAsync(QUEUE_POLL_MS);
+    expect(order).toEqual(['tick', 'snapshot']);
+  });
+
+  it('Should log a lifecycle tick rejection and still snapshot', async () => {
+    lifecycleTick.mockRejectedValue(new Error('boom'));
+    await vi.advanceTimersByTimeAsync(QUEUE_POLL_MS);
+    expect(logged).toHaveBeenCalledWith('Falha no ciclo das tarefas: boom');
+    expect(send).toHaveBeenCalledWith(channels.queueChanged, snap(1));
+  });
+
   it('Should register the list channel and do no work up front', async () => {
     expect([...listeners.keys()]).toEqual([
       channels.queueList,
@@ -182,6 +204,7 @@ describe('QueueHandler', () => {
       host,
       {send} as Broadcaster,
       {snapshot, refreshPullRequests} as unknown as QueueService,
+      {tick: lifecycleTick} as unknown as LifecycleService,
     );
 
     idle.stop();

@@ -101,6 +101,8 @@ export type FlyState = {
   applyDiff(result: WorktreeDiff): void;
   clearDiff(): void;
   mergePullRequest(worktreeId: string): Promise<void>;
+  // Rejects with the refusal so the PR tab can show it.
+  openPullRequest(worktreeId: string): Promise<void>;
   setDiffPanel(mode: DiffPanelMode): Promise<void>;
   openFile(worktreeId: string, path: string): Promise<void>;
   closeFile(worktreeId: string, path: string): void;
@@ -479,6 +481,15 @@ export const useFlyStore = create<FlyState>((set, get) => ({
       set({error: errorMessage(error)});
     } finally {
       set({merging: false});
+    }
+  },
+
+  async openPullRequest(worktreeId) {
+    try {
+      await window.fly.pullRequests.open(worktreeId);
+    } catch (error) {
+      // Electron prefixes the main process's message with its IPC channel.
+      throw new Error(errorMessage(error));
     }
   },
 

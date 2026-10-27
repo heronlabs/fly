@@ -2,6 +2,7 @@ import {Inject, Injectable, Logger} from '@nestjs/common';
 
 import {channels} from '../../../core/domain/fly-api';
 import type {QueueSnapshot} from '../../../core/domain/queue';
+import {LifecycleService} from '../../../core/services/lifecycle-service';
 import {QueueService} from '../../../core/services/queue-service';
 import type {Broadcaster, IpcHost} from '../ipc-types';
 import {BROADCASTER, IPC_HOST} from '../ipc-types';
@@ -25,6 +26,7 @@ export class QueueHandler {
     @Inject(IPC_HOST) private readonly host: IpcHost,
     @Inject(BROADCASTER) private readonly broadcaster: Broadcaster,
     private readonly queue: QueueService,
+    private readonly lifecycle: LifecycleService,
   ) {}
 
   register(): void {
@@ -53,10 +55,15 @@ export class QueueHandler {
     return this.queue.snapshot();
   }
 
-  private async tick(): Promise<void> {
+  async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
     try {
+      try {
+        await this.lifecycle.tick();
+      } catch (error) {
+        this.logger.error(`Falha no ciclo das tarefas: ${errorMessage(error)}`);
+      }
       const snapshot = await this.queue.snapshot();
       const serialized = JSON.stringify(snapshot);
       if (serialized !== this.lastBroadcast) {

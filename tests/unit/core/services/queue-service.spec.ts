@@ -5,6 +5,7 @@ import {
   QueueSnapshot,
   WorktreeQueue,
 } from '../../../../src/core/domain/queue';
+import {TaskRecord} from '../../../../src/core/domain/task';
 import {
   ReceiptResult,
   TranscriptSummary,
@@ -16,6 +17,7 @@ import {
   PrGateway,
 } from '../../../../src/core/interfaces/pr-gateway';
 import {MultiplexerSession} from '../../../../src/core/interfaces/session-launcher';
+import {TaskStore} from '../../../../src/core/interfaces/task-store';
 import {TranscriptSource} from '../../../../src/core/interfaces/transcript-source';
 import {
   GH_MISSING,
@@ -123,6 +125,30 @@ const task = (worktreeId: string, sessionId: string) =>
 const external = (worktreeId: string, cwd = `/r/${worktreeId}`) =>
   item(worktreeId, {cwd});
 
+const record = (
+  worktreeId: string,
+  over: Partial<TaskRecord> = {},
+): TaskRecord => ({
+  id: 't1',
+  repoPath: '/r/talon',
+  worktreePath: `/r/${worktreeId}`,
+  branch: 'feat',
+  base: 'main',
+  model: null,
+  promptFile: null,
+  prNumber: null,
+  phase: 'working',
+  ciAttempts: 0,
+  fixedSha: null,
+  reviewSeenAt: null,
+  review: null,
+  outbox: null,
+  pending: null,
+  stop: null,
+  createdAt: 1,
+  ...over,
+});
+
 const queueOf = (snap: QueueSnapshot, id: string): WorktreeQueue | undefined =>
   snap.worktrees.find(w => w.worktreeId === id);
 const statusOf = (snap: QueueSnapshot, id: string) => queueOf(snap, id)?.status;
@@ -141,6 +167,8 @@ describe('QueueService', () => {
   const prs = {list, merge} as unknown as PrGateway;
   const exists = vi.fn();
   const files = {exists} as unknown as FileStore;
+  const taskList = vi.fn();
+  const tasks = {list: taskList} as unknown as TaskStore;
   let service: QueueService;
 
   const sessionsAre = (items: MappedSessions['items']) =>
@@ -161,7 +189,8 @@ describe('QueueService', () => {
     exists.mockResolvedValue(false);
     forSession.mockResolvedValue(null);
     forDirectory.mockResolvedValue(null);
-    service = new QueueService(sessions, transcripts, prs, files);
+    taskList.mockResolvedValue([]);
+    service = new QueueService(sessions, transcripts, prs, files, tasks);
   });
 
   describe('refreshPullRequests', () => {
@@ -344,6 +373,8 @@ describe('QueueService', () => {
           status: 'idle',
           pullRequest: null,
           receipt: null,
+          task: null,
+          canOpenPr: false,
         })),
       });
     });
@@ -530,6 +561,8 @@ describe('QueueService', () => {
         status: 'ready',
         pullRequest: pr({branch: 'feat', number: 4}),
         receipt: null,
+        task: null,
+        canOpenPr: false,
       });
       expect(queueOf(snap, 'talon/.worktrees/fix')?.pullRequest?.number).toBe(
         5,
@@ -625,6 +658,194 @@ describe('QueueService', () => {
       const snap = await service.snapshot();
       expect(forDirectory).toHaveBeenCalledWith(expect.objectContaining({now}));
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
+    });
+  });
+
+  describe('pullRequestFor', () => {
+    it('Should return the PR the queue shows for a worktree', async () => {
+      pullRequestsAre({
+        '/r/talon': [
+          pr({branch: 'feat', number: 3, state: 'merged'}),
+          pr({branch: 'feat', number: 4}),
+        ],
+      });
+      await service.refreshPullRequests();
+      expect(service.pullRequestFor('talon/.worktrees/feat')?.number).toBe(4);
+      expect(service.pullRequestFor('talon/.worktrees/fix')).toBeNull();
+    });
+
+    it('Should return null for an unknown worktree or without a workspace', async () => {
+      pullRequestsAre({'/r/talon': [pr({branch: 'feat', number: 4})]});
+      await service.refreshPullRequests();
+      expect(service.pullRequestFor('nope')).toBeNull();
+      currentWorkspace.mockReturnValue(null);
+      expect(service.pullRequestFor('talon/.worktrees/feat')).toBeNull();
+    });
+  });
+
+  describe('task records', () => {
+    const feat = 'talon/.worktrees/feat';
+
+    it('Should show a stopped task as waiting even with failing checks', async () => {
+      pullRequestsAre({'/r/talon': [pr({branch: 'feat', checks: 'failing'})]});
+      await service.refreshPullRequests();
+      const stop = {kind: 'open' as const, message: 'Nada para abrir'};
+      taskList.mockResolvedValue([
+        record(feat, {
+          phase: 'stopped',
+          ciAttempts: 2,
+          stop,
+          review: {count: 1, state: 'queued'},
+          prNumber: 1,
+        }),
+      ]);
+      const snap = await service.snapshot(now);
+      expect(statusOf(snap, feat)).toBe('waiting');
+      expect(queueOf(snap, feat)?.task).toEqual({
+        phase: 'stopped',
+        ciAttempts: 2,
+        stop,
+        review: {count: 1, state: 'queued'},
+      });
+      expect(queueOf(snap, feat)?.task?.stop?.message).toBe('Nada para abrir');
+      expect(queueOf(snap, 'talon/.worktrees/fix')?.task).toBeNull();
+      expect(taskList).toHaveBeenCalledTimes(1);
+    });
+
+    it('Should show an opening task as engineer beside an open PR', async () => {
+      pullRequestsAre({'/r/talon': [pr({branch: 'feat'})]});
+      await service.refreshPullRequests();
+      taskList.mockResolvedValue([record(feat, {phase: 'opening'})]);
+      const snap = await service.snapshot(now);
+      expect(statusOf(snap, feat)).toBe('engineer');
+      expect(queueOf(snap, feat)?.task?.phase).toBe('opening');
+    });
+
+    it('Should ignore a record whose path or branch differs', async () => {
+      pullRequestsAre({'/r/talon': [pr({branch: 'feat', checks: 'failing'})]});
+      await service.refreshPullRequests();
+      taskList.mockResolvedValue([
+        record(feat, {branch: 'old', phase: 'stopped'}),
+        // Same branch name, another path.
+        record('talon/.worktrees/gone', {phase: 'stopped'}),
+      ]);
+      const snap = await service.snapshot(now);
+      expect(statusOf(snap, feat)).toBe('failed');
+      expect(queueOf(snap, feat)?.task).toBeNull();
+    });
+  });
+
+  describe('canOpenPr', () => {
+    const feat = 'talon/.worktrees/feat';
+    const fix = 'talon/.worktrees/fix';
+    const canOpen = (snap: QueueSnapshot, id: string) =>
+      queueOf(snap, id)?.canOpenPr;
+    const flyAt = (worktreeId: string, sessionId: string, createdAt: number) =>
+      item(worktreeId, {
+        name: sessionId,
+        createdAt,
+        options: {
+          '@fly_session_id': sessionId,
+          '@fly_worktree': `/r/${worktreeId}`,
+        },
+      });
+    const activityBySession = (states: Record<string, TranscriptSummary>) =>
+      forSession.mockImplementation(({sessionId}: {sessionId: string}) =>
+        Promise.resolve(states[sessionId] ?? null),
+      );
+
+    it('Should allow only a branch worktree with a waiting fly session and no open PR', async () => {
+      pullRequestsAre({
+        '/r/talon': [
+          pr({branch: 'feat', state: 'merged'}),
+          pr({branch: 'fix', number: 2}),
+        ],
+      });
+      await service.refreshPullRequests();
+      sessionsAre([
+        fly(feat, 's1'),
+        fly(fix, 's2'),
+        fly('talon', 's3'),
+        fly('docs/.worktrees/detached', 's4'),
+        fly('nest/.worktrees/x', 's5'),
+      ]);
+      forSession.mockResolvedValue(waiting);
+      const snap = await service.snapshot(now);
+      expect(canOpen(snap, feat)).toBe(true);
+      expect(canOpen(snap, 'nest/.worktrees/x')).toBe(true);
+      expect(canOpen(snap, fix)).toBe(false);
+      expect(canOpen(snap, 'talon')).toBe(false);
+      expect(canOpen(snap, 'docs/.worktrees/detached')).toBe(false);
+    });
+
+    it('Should allow a promptless fly session without a transcript once started', async () => {
+      sessionsAre([fly(feat, 'p')]);
+      forSession.mockResolvedValue(null);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(true);
+    });
+
+    it('Should allow again once CI shows the PR in the list', async () => {
+      pullRequestsAre({'/r/talon': [pr({branch: 'feat', state: 'merged'})]});
+      await service.refreshPullRequests();
+      sessionsAre([flyAt(feat, 's1', 1)]);
+      forSession.mockResolvedValue(waiting);
+      taskList.mockResolvedValue([record(feat, {phase: 'ci'})]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(true);
+    });
+
+    it('Should not allow a session still starting up or started with a task', async () => {
+      forSession.mockResolvedValue(null);
+      sessionsAre([
+        item(feat, {
+          createdAt: Math.floor(now / 1000),
+          options: {'@fly_session_id': 'p', '@fly_worktree': `/r/${feat}`},
+        }),
+      ]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(false);
+      sessionsAre([task(feat, 'p')]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(false);
+    });
+
+    it.each<[string, Partial<TaskRecord>, boolean]>([
+      [
+        'an unfinished request',
+        {pending: {kind: 'open', sentAt: 1, headSha: 'a'}},
+        false,
+      ],
+      ['an opening phase', {phase: 'opening'}, false],
+      ['CI with no PR listed', {phase: 'ci'}, false],
+      ['a stopped task', {phase: 'stopped'}, true],
+    ])('Should read %s from the task record', async (_name, over, expected) => {
+      sessionsAre([flyAt(feat, 's1', 1)]);
+      forSession.mockResolvedValue(waiting);
+      taskList.mockResolvedValue([record(feat, over)]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(expected);
+    });
+
+    it('Should refuse a worktree whose only waiting session is external', async () => {
+      sessionsAre([external(feat)]);
+      forDirectory.mockResolvedValue(waiting);
+      const snap = await service.snapshot(now);
+      expect(statusOf(snap, feat)).toBe('waiting');
+      expect(canOpen(snap, feat)).toBe(false);
+    });
+
+    it('Should follow the newest fly session of the worktree', async () => {
+      sessionsAre([
+        flyAt(feat, 'old', 1),
+        flyAt(feat, 'new', 2),
+        flyAt(fix, 'new2', 2),
+        flyAt(fix, 'old2', 1),
+      ]);
+      activityBySession({
+        old: waiting,
+        new: running,
+        old2: running,
+        new2: waiting,
+      });
+      const snap = await service.snapshot(now);
+      expect(canOpen(snap, feat)).toBe(false);
+      expect(canOpen(snap, fix)).toBe(true);
     });
   });
 });

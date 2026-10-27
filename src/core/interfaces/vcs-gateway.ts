@@ -44,6 +44,11 @@ export abstract class VcsGateway {
     branch: string;
     base: string;
   }): Promise<void>;
+  abstract headSha(worktreePath: string): Promise<string>;
+  // Commits in `ref..HEAD`.
+  abstract aheadCount(worktreePath: string, ref: string): Promise<number>;
+  // `git push -u origin <branch>`.
+  abstract push(worktreePath: string, branch: string): Promise<void>;
   // Adds /<entry>/ to the shared .git/info/exclude unless already ignored.
   abstract ensureIgnored(repoPath: string, entry: string): Promise<void>;
 }

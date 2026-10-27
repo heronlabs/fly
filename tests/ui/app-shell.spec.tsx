@@ -662,6 +662,8 @@ describe('AppShell', () => {
             worktreeId: 'w1',
             status: 'ci',
             receipt: null,
+            task: null,
+            canOpenPr: false,
             pullRequest: {
               number: 1,
               title: 't',
@@ -788,7 +790,14 @@ describe('AppShell', () => {
         github: 'missing',
         message: 'gh não encontrado — instale com: brew install gh',
         worktrees: [
-          {worktreeId: 'w1', status: 'ready', pullRequest: null, receipt: null},
+          {
+            worktreeId: 'w1',
+            status: 'ready',
+            pullRequest: null,
+            receipt: null,
+            task: null,
+            canOpenPr: false,
+          },
         ],
       }),
     );

@@ -547,6 +547,8 @@ describe('errorMessage', () => {
         status,
         pullRequest: null,
         receipt: null,
+        task: null,
+        canOpenPr: false,
       })),
     });
 
@@ -701,6 +703,27 @@ describe('errorMessage', () => {
       expect(window.fly.queue.list).not.toHaveBeenCalled();
     });
 
+    it('openPullRequest forwards to the main process and propagates a refusal', async () => {
+      vi.mocked(window.fly.pullRequests.open).mockResolvedValueOnce(undefined);
+      await useFlyStore.getState().openPullRequest('a/x#main');
+      expect(window.fly.pullRequests.open).toHaveBeenCalledWith('a/x#main');
+      vi.mocked(window.fly.pullRequests.open).mockRejectedValueOnce(
+        new Error('ocupada'),
+      );
+      await expect(
+        useFlyStore.getState().openPullRequest('a/x#main'),
+      ).rejects.toThrow('ocupada');
+    });
+
+    it("openPullRequest drops Electron's IPC prefix from a refusal", async () => {
+      vi.mocked(window.fly.pullRequests.open).mockRejectedValueOnce(
+        new Error("Error invoking remote method 'pr:open': Error: ocupada"),
+      );
+      await expect(
+        useFlyStore.getState().openPullRequest('a/x#main'),
+      ).rejects.toThrow(/^ocupada$/);
+    });
+
     it('setDiffPanel persists and stores the config', async () => {
       vi.mocked(window.fly.settings.set).mockResolvedValue({
         recentRoots: [],
@@ -727,6 +750,8 @@ describe('errorMessage', () => {
         status: 'idle' as QueueStatus,
         pullRequest: null,
         receipt: null,
+        task: null,
+        canOpenPr: false,
       };
       const snapshot: QueueSnapshot = {
         github: 'ok',

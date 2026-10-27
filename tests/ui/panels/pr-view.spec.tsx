@@ -34,6 +34,8 @@ const queueOf = (
   status: 'ready',
   pullRequest,
   receipt,
+  task: null,
+  canOpenPr: false,
 });
 
 const renderView = (
@@ -43,6 +45,7 @@ const renderView = (
     merging?: boolean;
     onMerge?: () => void;
     onOpenExternal?: (url: string) => void;
+    onOpenPr?: () => Promise<void>;
   } = {},
 ) =>
   render(
@@ -52,10 +55,21 @@ const renderView = (
       merging={options.merging ?? false}
       onMerge={options.onMerge ?? (() => {})}
       onOpenExternal={options.onOpenExternal ?? (() => {})}
+      onOpenPr={options.onOpenPr ?? (async () => {})}
     />,
   );
 
 describe('PrView', () => {
+  it('Should render the task section above the PR section', () => {
+    const queue = {...queueOf(pr()), canOpenPr: true};
+    renderView(queue);
+    const button = screen.getByRole('button', {name: 'Abrir PR'});
+    const title = screen.getByText('#12 Add diff panel');
+    expect(
+      button.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('Should say there is no open PR', () => {
     renderView(null);
     expect(screen.getByText('Sem PR aberto')).toBeVisible();
@@ -204,6 +218,39 @@ describe('PrView', () => {
     expect(screen.queryByText('Receipt do engineer')).toBeNull();
   });
 
+  it('Should not carry a rejection or an in-flight open to another worktree', async () => {
+    let release!: () => void;
+    const onOpenPr = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ocupada em A'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>(resolve => {
+            release = resolve;
+          }),
+      );
+    const view = (id: string) => (
+      <PrView
+        queue={{...queueOf(null), worktreeId: id, canOpenPr: true}}
+        status="idle"
+        merging={false}
+        onMerge={() => {}}
+        onOpenExternal={() => {}}
+        onOpenPr={onOpenPr}
+      />
+    );
+    const {rerender} = render(view('A'));
+    await userEvent.click(screen.getByRole('button', {name: 'Abrir PR'}));
+    expect(await screen.findByText('ocupada em A')).toBeVisible();
+    rerender(view('B'));
+    expect(screen.queryByText('ocupada em A')).toBeNull();
+    await userEvent.click(screen.getByRole('button', {name: 'Abrir PR'}));
+    expect(screen.getByRole('button', {name: 'Abrir PR'})).toBeDisabled();
+    rerender(view('C'));
+    expect(screen.getByRole('button', {name: 'Abrir PR'})).toBeEnabled();
+    release();
+  });
+
   it('Should drop the confirmation when another PR is shown', async () => {
     const view = (queue: WorktreeQueue) => (
       <PrView
@@ -212,6 +259,7 @@ describe('PrView', () => {
         merging={false}
         onMerge={() => {}}
         onOpenExternal={() => {}}
+        onOpenPr={async () => {}}
       />
     );
     const {rerender} = render(view(queueOf(pr())));
@@ -232,6 +280,7 @@ describe('PrView', () => {
         merging={false}
         onMerge={onMerge}
         onOpenExternal={() => {}}
+        onOpenPr={async () => {}}
       />
     );
     const {rerender} = render(view('ready'));

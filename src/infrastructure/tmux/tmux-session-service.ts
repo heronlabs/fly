@@ -139,6 +139,18 @@ export class TmuxSessionService extends SessionLauncher {
     );
   }
 
+  async sendText(name: string, text: string): Promise<void> {
+    const target = `=${name}:`;
+    // `--` keeps a leading `-` from being read as a flag; tmux treats a
+    // trailing `;` as a command separator unless it is escaped.
+    const literal = text.endsWith(';') ? `${text.slice(0, -1)}\\;` : text;
+    await this.checked(
+      ['send-keys', '-t', target, '-l', '--', literal],
+      'send-keys',
+    );
+    await this.checked(['send-keys', '-t', target, 'Enter'], 'send-keys');
+  }
+
   async kill(name: string): Promise<void> {
     await this.checked(['kill-session', '-t', `=${name}`], 'kill-session');
   }
