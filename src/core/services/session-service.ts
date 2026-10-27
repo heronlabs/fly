@@ -1,6 +1,7 @@
 import {Injectable} from '@nestjs/common';
 
 import {Session, SessionsSnapshot} from '../domain/session';
+import {PROMPT_FILE_ENV} from '../domain/task';
 import {Workspace, Worktree} from '../domain/workspace';
 import {IdGenerator} from '../interfaces/id-generator';
 import {
@@ -107,15 +108,30 @@ export class SessionService {
 
   // Claude in a new session at path, named after id (path under the root).
   // The CLI starts its sessions here too, so the app tracks them alike.
-  async launch(id: string, path: string): Promise<string> {
+  async launch(
+    id: string,
+    path: string,
+    extra: {promptFile?: string; model?: string | null; task?: string} = {},
+  ): Promise<string> {
     const uuid = this.ids.uuid();
     const name = sessionName(sessionPrefix(id), this.ids.hex(3));
     try {
       await this.launcher.start({
         name,
         cwd: path,
-        command: claudeCommand({sessionId: uuid}),
-        options: {'@fly_session_id': uuid, '@fly_worktree': path},
+        command: claudeCommand({
+          sessionId: uuid,
+          promptFile: extra.promptFile !== undefined,
+          model: extra.model,
+        }),
+        ...(extra.promptFile === undefined
+          ? {}
+          : {env: {[PROMPT_FILE_ENV]: extra.promptFile}}),
+        options: {
+          '@fly_session_id': uuid,
+          '@fly_worktree': path,
+          ...(extra.task === undefined ? {} : {'@fly_task': extra.task}),
+        },
       });
     } catch (error) {
       rethrowMissing(error);

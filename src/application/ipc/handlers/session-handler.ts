@@ -2,6 +2,7 @@ import {Inject, Injectable, Logger} from '@nestjs/common';
 
 import {channels} from '../../../core/domain/fly-api';
 import type {SessionsSnapshot} from '../../../core/domain/session';
+import {NewTaskInput} from '../../../core/domain/task';
 import {SessionService} from '../../../core/services/session-service';
 import {TaskService} from '../../../core/services/task-service';
 import type {Broadcaster, IpcHost} from '../ipc-types';
@@ -34,10 +35,8 @@ export class SessionHandler {
     this.host.handle(channels.sessionKill, (_event, name: string) =>
       this.refreshAfter(this.sessions.kill(name)),
     );
-    this.host.handle(
-      channels.taskCreate,
-      (_event, input: {repoId: string; description: string}) =>
-        this.refreshAfter(this.tasks.create(input)),
+    this.host.handle(channels.taskCreate, (_event, input: NewTaskInput) =>
+      this.refreshAfter(this.tasks.create(input)),
     );
     this.stop();
     this.timer = setInterval(() => void this.tick(), SESSION_POLL_MS);

@@ -1,3 +1,5 @@
+import {PROMPT_FILE_ENV} from '../domain/task';
+
 // Hidden components (including `..`) are dropped; runs of `.`, `:` or whitespace become `-`.
 export const sessionPrefix = (relativePath: string): string =>
   relativePath
@@ -20,10 +22,19 @@ export const normalizePrompt = (prompt: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Control characters (C0, DEL, C1) are dropped, except newline and tab.
+export const cleanPrompt = (text: string): string =>
+  // eslint-disable-next-line no-control-regex
+  text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '');
+
 export const claudeCommand = (input: {
   sessionId: string;
   withPrompt?: boolean;
+  promptFile?: boolean;
+  model?: string | null;
 }): string => {
-  const base = `claude --dangerously-skip-permissions --session-id ${input.sessionId}`;
+  const model = input.model ? ` --model ${input.model}` : '';
+  const base = `claude --dangerously-skip-permissions --session-id ${input.sessionId}${model}`;
+  if (input.promptFile) return `${base} "$(cat "$${PROMPT_FILE_ENV}")"; exit`;
   return input.withPrompt ? `${base} "$${PROMPT_ENV}"; exit` : `${base}; exit`;
 };

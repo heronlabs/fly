@@ -1,5 +1,6 @@
 import {
   claudeCommand,
+  cleanPrompt,
   normalizePrompt,
   PROMPT_ENV,
   sessionName,
@@ -36,6 +37,22 @@ describe('claudeCommand', () => {
       'claude --dangerously-skip-permissions --session-id u1; exit',
     ));
 
+  it('Should read the prompt from a file and pass the model', () =>
+    expect(
+      claudeCommand({sessionId: 'u', promptFile: true, model: 'opus'}),
+    ).toBe(
+      'claude --dangerously-skip-permissions --session-id u --model opus "$(cat "$FLY_PROMPT_FILE")"; exit',
+    ));
+
+  it('Should leave out --model without a model', () => {
+    expect(claudeCommand({sessionId: 'u', promptFile: true})).toBe(
+      'claude --dangerously-skip-permissions --session-id u "$(cat "$FLY_PROMPT_FILE")"; exit',
+    );
+    expect(claudeCommand({sessionId: 'u', model: null})).toBe(
+      'claude --dangerously-skip-permissions --session-id u; exit',
+    );
+  });
+
   it('Should read the prompt from the pane environment, never inline it', () => {
     expect(PROMPT_ENV).toBe('FLY_PROMPT');
     expect(claudeCommand({sessionId: 'u1', withPrompt: true})).toBe(
@@ -52,4 +69,12 @@ describe('normalizePrompt', () => {
 
   it('Should turn control characters into spaces', () =>
     expect(normalizePrompt('a\x03b\x1bc\x7fd\u0085e')).toBe('a b c d e'));
+});
+
+describe('cleanPrompt', () => {
+  it('Should drop control characters except newline and tab', () =>
+    expect(cleanPrompt('a\u0007b\n\tc\r\n')).toBe('ab\n\tc\n'));
+
+  it('Should drop DEL and C1 controls and keep quotes and dollars', () =>
+    expect(cleanPrompt('a\x7fb\u0085c "$x" `y`')).toBe('abc "$x" `y`'));
 });
