@@ -25,7 +25,8 @@ and xterm.js. macOS first.
 - [Why This Project](#why-this-project)
 - [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
+- [Install](#install)
+- [Development](#development)
 - [CLI](#cli)
 - [Queue States](#queue-states)
 - [Status](#status)
@@ -71,7 +72,17 @@ fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or
 `tmux ls` and `tmux attach -t <name>`) from any terminal reach the same
 sessions.
 
-## Quick Start
+## Install
+
+Download `fly-<versão>-arm64.dmg` from the
+[latest Release](https://github.com/heronlabs/fly/releases/latest), drag fly to
+Aplicativos and open it. The app is not signed, so macOS blocks the first
+launch: open Ajustes > Privacidade e Segurança and choose "Abrir mesmo
+assim", or run `xattr -dr com.apple.quarantine /Applications/fly.app`.
+
+To update, drag the new dmg's app over the old one in Aplicativos.
+
+## Development
 
 ```bash
 git clone https://github.com/heronlabs/fly.git
@@ -88,12 +99,14 @@ pnpm cli:install
 fly ~/Workfolder
 ```
 
+`~/.local/bin` usually precedes `/usr/local/bin` on `PATH`, so the `fly` from
+`pnpm cli:install` wins over an installed one. Dev builds keep their data in
+`~/Library/Application Support/fly-dev`, apart from the installed app's
+`~/Library/Application Support/fly`, so recent folders are not shared.
+
 Pick a workspace folder on the welcome screen. Each repo under it appears in
 the left panel with its worktrees; select one and press "Iniciar sessão" to get
 its terminal, or press "Nova tarefa" to ship something new.
-
-Packaged builds (`.dmg`) are planned for milestone 6; until then fly runs from
-source.
 
 ## CLI
 
