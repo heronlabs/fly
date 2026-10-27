@@ -17,14 +17,13 @@ import {TaskStore} from '../interfaces/task-store';
 import {TranscriptSource} from '../interfaces/transcript-source';
 import {VcsGateway} from '../interfaces/vcs-gateway';
 import {resolveDefaultBranch} from './default-branch';
+import {createPullRequest, PR_FILE} from './lifecycle-steps';
 import {QueueService} from './queue-service';
 import {errorMessage, MappedSessions, SessionService} from './session-service';
 import {
-  isConventionalTitle,
   isSessionIdle,
   newestFlySession,
   openInstruction,
-  parsePrText,
   prRequest,
 } from './task-rules';
 import {TerminalService} from './terminal-service';
@@ -34,8 +33,6 @@ const BUSY = 'A sessão está ocupada; aguarde o turno terminar';
 
 const PROMPT_FILE = 'prompt.md';
 const REQUEST_FILE = 'pr-request.md';
-const PR_FILE = 'pr.json';
-const BODY_FILE = 'pr-body.md';
 
 // The record fields an open request sets, whatever they were before: a new
 // PR starts its CI loop and its review forwarding from scratch.
@@ -43,12 +40,6 @@ type Unopened = Omit<
   TaskRecord,
   'phase' | 'stop' | 'pending' | 'ciAttempts' | 'fixedSha' | 'review' | 'outbox'
 >;
-
-// A gateway error already carrying the stop's prefix keeps it once.
-const prefixed = (prefix: string, error: unknown): string => {
-  const message = errorMessage(error);
-  return message.startsWith(prefix) ? message : prefix + message;
-};
 
 @Injectable()
 export class LifecycleService {
@@ -196,7 +187,16 @@ export class LifecycleService {
     // From here the request is settled: any failure is a stop with its
     // message, never a request left pending.
     try {
-      const number = await this.createPullRequest(record, worktree.path);
+      const number = await createPullRequest(
+        {
+          vcs: this.vcs,
+          prs: this.prs,
+          queue: this.queue,
+          taskFiles: this.taskFiles,
+        },
+        record,
+        worktree.path,
+      );
       await this.tasks.save({
         ...record,
         prNumber: number,
@@ -206,55 +206,6 @@ export class LifecycleService {
       });
     } catch (error) {
       await this.stop(record, {kind: 'open', message: errorMessage(error)});
-    }
-  }
-
-  // P8 on turn done: the first failed check throws the stop's message.
-  private async createPullRequest(
-    record: TaskRecord,
-    path: string,
-  ): Promise<number> {
-    const dirty = Object.keys(await this.vcs.status(path));
-    if (dirty.length > 0) {
-      throw new Error(`Ficaram mudanças sem commit: ${dirty.join(', ')}`);
-    }
-    if ((await this.vcs.aheadCount(path, `origin/${record.base}`)) === 0) {
-      throw new Error(
-        `Nada para abrir: o branch não tem commits à frente de ${record.base}`,
-      );
-    }
-    const text = parsePrText(await this.taskFiles.read(record.id, PR_FILE));
-    if (!text) {
-      throw new Error('A sessão não escreveu o título e o corpo do PR');
-    }
-    if (!isConventionalTitle(text.title)) {
-      throw new Error(
-        `Título fora do padrão Conventional Commits: ${text.title}`,
-      );
-    }
-    try {
-      await this.vcs.push(path, record.branch);
-    } catch (error) {
-      throw new Error(prefixed('git push falhou: ', error));
-    }
-    const bodyFile = await this.taskFiles.write(
-      record.id,
-      BODY_FILE,
-      text.body,
-    );
-    try {
-      const {number} = await this.prs.create({
-        cwd: path,
-        title: text.title,
-        bodyFile,
-        base: record.base,
-        head: record.branch,
-      });
-      // The list shows the PR at once, so the button does not come back.
-      await this.queue.refreshPullRequests().catch(() => undefined);
-      return number;
-    } catch (error) {
-      throw new Error(prefixed('gh pr create falhou: ', error));
     }
   }
 
