@@ -1,3 +1,9 @@
+## v0.3.1 (2026-10-27)
+
+### Documentation
+
+* docs: add M6 distribution and task lifecycle design and plan (#24) (3499e897de195cb88cd184a6c3a2c9c6bebede2a)
+
 ## v0.3.0 (2026-10-26)
 
 ### Features
