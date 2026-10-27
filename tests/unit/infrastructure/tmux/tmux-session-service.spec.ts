@@ -338,7 +338,16 @@ describe('TmuxSessionService', () => {
       expect(run.mock.calls).toEqual([
         [
           'tmux',
-          ['-L', 'sock', 'send-keys', '-t', '=fly-a1b2c3:', '-l', 'fly: x'],
+          [
+            '-L',
+            'sock',
+            'send-keys',
+            '-t',
+            '=fly-a1b2c3:',
+            '-l',
+            '--',
+            'fly: x',
+          ],
           timeout,
         ],
         [
@@ -346,6 +355,30 @@ describe('TmuxSessionService', () => {
           ['-L', 'sock', 'send-keys', '-t', '=fly-a1b2c3:', 'Enter'],
           timeout,
         ],
+      ]);
+    });
+
+    it('Should escape a trailing semicolon and only that one', async () => {
+      run.mockResolvedValue(ok());
+
+      await plain().sendText('n', 'a; b;');
+      await plain().sendText('n', ';x');
+
+      expect(run.mock.calls[0]?.[1]).toEqual([
+        'send-keys',
+        '-t',
+        '=n:',
+        '-l',
+        '--',
+        'a; b\\;',
+      ]);
+      expect(run.mock.calls[2]?.[1]).toEqual([
+        'send-keys',
+        '-t',
+        '=n:',
+        '-l',
+        '--',
+        ';x',
       ]);
     });
 

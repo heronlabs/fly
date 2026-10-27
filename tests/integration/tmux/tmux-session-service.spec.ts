@@ -113,24 +113,33 @@ describe('TmuxSessionService (real tmux)', () => {
     expect(existsSync(join(cwd, 'pwned'))).toBe(false);
   }, 15_000);
 
-  it('Should type a line into the pane and submit it', async () => {
-    const out = join(cwd, 'typed.txt');
-    // The pane runs a recorder instead of claude, as the fake default-shell would.
-    tmux(
-      'new-session',
-      '-d',
-      '-s',
-      'it-type1',
-      '-c',
-      cwd,
-      `read line; printf %s "$line" > '${out}'; sleep 30`,
-    );
+  it.each([
+    ['plain text', 'fly: x'],
+    ['a leading dash', '-x y'],
+    ['a trailing semicolon', 'done;'],
+    ['an escaped-looking tail', 'a\\;'],
+  ])(
+    'Should type a line into the pane and submit it verbatim (%s)',
+    async (_label, text) => {
+      const out = join(cwd, 'typed.txt');
+      // The pane runs a recorder instead of claude.
+      tmux(
+        'new-session',
+        '-d',
+        '-s',
+        'it-type1',
+        '-c',
+        cwd,
+        `read -r line; printf %s "$line" > '${out}'; sleep 30`,
+      );
 
-    await service.sendText('it-type1', 'fly: x');
+      await service.sendText('it-type1', text);
 
-    await vi.waitFor(() => expect(readFileSync(out, 'utf8')).toBe('fly: x'), {
-      timeout: 10_000,
-      interval: 100,
-    });
-  }, 15_000);
+      await vi.waitFor(() => expect(readFileSync(out, 'utf8')).toBe(text), {
+        timeout: 10_000,
+        interval: 100,
+      });
+    },
+    15_000,
+  );
 });

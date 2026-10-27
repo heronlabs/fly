@@ -232,5 +232,93 @@ describe('TerminalService', () => {
 
       expect(service.hasDraft('nope')).toBe(false);
     });
+
+    it('Should treat a bracketed paste as a draft, whatever newlines it holds', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~text\r\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b[200~a\x03b\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should follow a paste split across writes', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~te');
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'xt\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should keep an open paste per session', () => {
+      const a = service.attach('a', size, sink);
+      const b = service.attach('b', size, sink);
+
+      service.write(a, '\x1b[200~x');
+      service.write(b, '\r');
+      service.write(b, 'y');
+      service.write(b, '\r');
+
+      expect(service.hasDraft('b')).toBe(false);
+      expect(service.hasDraft('a')).toBe(true);
+    });
+
+    it('Should leave the draft unchanged for an empty paste', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, '\x1b[200~\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r\x1b[200~\x1b[201~');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should text typed after a paste ends count again', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[200~x\x1b[201~\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b[200~x\x1b[201~y');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should read Alt+Enter and Shift+Enter as a newline, not a submit', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, 'abc\x1b\r');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'def\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc\x1b\r');
+      service.write(id, '\x1b\n');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'abc\x1b\rdef\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b\r');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should ignore SGR and X10 mouse reports', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[<0;10;5M\x1b[<0;10;5m');
+      service.write(id, '\x1b[M !!');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, '\x1b[<64;10;5M');
+      service.write(id, '\x1b[M`!!');
+      service.write(id, '\x1b[M\r\x03\x03');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r\x1b[<0;1;1M\x1b[M   ');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
   });
 });

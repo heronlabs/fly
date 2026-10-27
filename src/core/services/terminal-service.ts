@@ -15,9 +15,14 @@ export type TerminalSink = {
 
 const MIN_SIZE = 2;
 
-// Control sequences (CSI, SS3) are not typing.
+// Not typing: X10 mouse reports, CSI (incl. SGR mouse), SS3 and Alt+Enter.
 // eslint-disable-next-line no-control-regex
-const ESCAPES = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1bO./g;
+const ESCAPES = /\x1b\[M[\s\S]{3}|\x1b\[[0-?]*[ -/]*[@-~]|\x1bO.|\x1b[\r\n]/g;
+// Bracketed paste markers: what lies between them is content, not keystrokes.
+// eslint-disable-next-line no-control-regex
+const PASTE_MARKERS = /(\x1b\[20[01]~)/;
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
 // eslint-disable-next-line no-control-regex
 const PRINTABLE = /[^\x00-\x1f\x7f]/;
 
@@ -31,6 +36,8 @@ export class TerminalService {
   >();
   // Whether the user left unsent text in the session's input, per session.
   private readonly drafts = new Map<string, boolean>();
+  // Sessions whose last write left a bracketed paste open.
+  private readonly pasting = new Map<string, boolean>();
 
   constructor(
     private readonly launcher: SessionLauncher,
@@ -71,6 +78,22 @@ export class TerminalService {
   }
 
   private trackDraft(sessionName: string, data: string): void {
+    let inPaste = this.pasting.get(sessionName) ?? false;
+    for (const part of data.split(PASTE_MARKERS)) {
+      if (part === PASTE_START) {
+        inPaste = true;
+      } else if (part === PASTE_END) {
+        inPaste = false;
+      } else if (inPaste) {
+        if (part !== '') this.drafts.set(sessionName, true);
+      } else {
+        this.trackTyped(sessionName, part);
+      }
+    }
+    this.pasting.set(sessionName, inPaste);
+  }
+
+  private trackTyped(sessionName: string, data: string): void {
     const text = data.replace(ESCAPES, '');
     const submit = Math.max(text.lastIndexOf('\r'), text.lastIndexOf('\x03'));
     if (submit >= 0) {
