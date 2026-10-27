@@ -1,9 +1,9 @@
 #!/bin/sh
-# fly CLI: runs out/main/cli.js on this checkout's own Electron in Node mode,
-# the way VSCode's `code` does, so no separate Node is needed.
+# fly CLI: runs cli.js on fly's own Electron (the checkout's, or the installed
+# bundle's) in Node mode, the way VSCode's `code` does, so no separate Node is needed.
 set -eu
 
-# Follow the symlink chain (e.g. ~/.local/bin/fly) back to the checkout.
+# Follow the symlink chain (e.g. ~/.local/bin/fly) back to the checkout or the bundle (fly.app/Contents/Resources/bin/fly).
 self=$0
 while [ -L "$self" ]; do
   link=$(readlink "$self")

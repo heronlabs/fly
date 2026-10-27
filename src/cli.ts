@@ -14,8 +14,9 @@ import {ExecCommandRunnerService} from './infrastructure/process/exec-command-ru
 import {NodeProcessLauncherService} from './infrastructure/process/node-process-launcher-service';
 import {TmuxSessionService} from './infrastructure/tmux/tmux-session-service';
 
-// The `fly` CLI. bin/fly runs this file on the checkout's Electron in Node
-// mode (ELECTRON_RUN_AS_NODE), so it never imports electron.
+// The `fly` CLI. bin/fly runs this file on fly's own Electron in Node mode
+// (ELECTRON_RUN_AS_NODE: the checkout's, or Contents/MacOS/fly with the CLI inside
+// app.asar when installed), so it never imports electron.
 const runner = new ExecCommandRunnerService();
 const files = new NodeFileStoreService();
 // The default tmux server, the one the app uses.

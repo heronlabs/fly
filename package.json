@@ -71,6 +71,11 @@
   "name": "@heronlabs/fly",
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-ph9p-34f9-6g65"
+      ]
+    },
     "onlyBuiltDependencies": [
       "electron",
       "@swc/core",

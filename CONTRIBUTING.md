@@ -64,7 +64,7 @@ Every pull request must pass:
 | Job | Runs |
 |-----|------|
 | Install & Build | `pnpm typecheck`, `pnpm build` |
-| Audit & Supply Chain | `pnpm dep:cruise`, `pnpm audit --prod --audit-level=high` |
+| Audit & Supply Chain | `pnpm dep:cruise`, `pnpm audit --audit-level=high` |
 | Lint | `pnpm lint:check` |
 | Unit Tests | `pnpm test:unit` at 100% coverage, `pnpm test:di` |
 | Mutation Tests | `pnpm test:mutation` at a 100% mutation score, written to the job summary |
