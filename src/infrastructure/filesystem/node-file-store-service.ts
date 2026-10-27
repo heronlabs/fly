@@ -4,6 +4,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename as fsRename,
   stat as fsStat,
   writeFile,
 } from 'node:fs/promises';
@@ -48,6 +49,10 @@ export class NodeFileStoreService extends FileStore {
 
   createText(path: string, content: string): Promise<void> {
     return writeFile(path, content, {flag: 'wx'});
+  }
+
+  rename(from: string, to: string): Promise<void> {
+    return fsRename(from, to);
   }
 
   async stat(path: string): Promise<FileStat> {

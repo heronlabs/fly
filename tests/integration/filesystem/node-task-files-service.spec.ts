@@ -150,4 +150,50 @@ describe('NodeTaskFilesService', () => {
   it('Should resolve when removing a missing folder', async () => {
     await expect(files.remove('nope')).resolves.toBeUndefined();
   });
+
+  it.each(['', '.', '..', 'a/b', 'a.b', '-a', '../x'])(
+    'Should refuse the task id %j everywhere',
+    async id => {
+      const source = join(src, 'f');
+      await writeFile(source, 'x');
+
+      expect(() => files.dir(id)).toThrow(new Error('Caminho inválido'));
+      await expect(files.write(id, 'a.md', 'x')).rejects.toThrow(
+        'Caminho inválido',
+      );
+      await expect(files.read(id, 'a.md')).rejects.toThrow('Caminho inválido');
+      await expect(files.copyIn(id, source)).rejects.toThrow(
+        'Caminho inválido',
+      );
+      await expect(files.remove(id)).rejects.toThrow('Caminho inválido');
+    },
+  );
+
+  it.each(['', '../x', 'a/b', '.hidden', '.', '..', '-a'])(
+    'Should refuse the name %j in write and read',
+    async name => {
+      await expect(files.write('t1', name, 'x')).rejects.toThrow(
+        'Caminho inválido',
+      );
+      await expect(files.read('t1', name)).rejects.toThrow('Caminho inválido');
+    },
+  );
+
+  it.each([
+    'prompt.md',
+    'pr-request.md',
+    'pr.json',
+    'ci-123-abc1234.log',
+    'review-42-1730000000000.md',
+  ])('Should accept the name %s', async name => {
+    await files.write('t1', name, 'x');
+
+    expect(await files.read('t1', name)).toBe('x');
+  });
+
+  it('Should accept a uuid task id', () => {
+    const id = '3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e';
+
+    expect(files.dir(id)).toBe(join(dir, 'tasks', id));
+  });
 });

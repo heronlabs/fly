@@ -53,6 +53,7 @@ describe('FileService', () => {
     writeText,
     createText,
     stat,
+    rename: vi.fn(),
   };
   const vcs: VcsGateway = {
     listWorktrees: vi.fn(),

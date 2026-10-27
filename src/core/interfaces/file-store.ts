@@ -17,4 +17,6 @@ export abstract class FileStore {
   abstract createText(path: string, content: string): Promise<void>;
   // Rejects when the path does not exist (ENOENT).
   abstract stat(path: string): Promise<FileStat>;
+  // Replaces `to` atomically when it exists (same filesystem).
+  abstract rename(from: string, to: string): Promise<void>;
 }
