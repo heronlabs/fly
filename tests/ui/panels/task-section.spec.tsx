@@ -120,4 +120,23 @@ describe('TaskSection', () => {
     await userEvent.click(screen.getByRole('button', {name: 'Abrir PR'}));
     expect(await screen.findByText('boom')).toBeVisible();
   });
+
+  it('Should drop a rejection once the queue moves to a new state', async () => {
+    const onOpenPr = vi
+      .fn()
+      .mockRejectedValue(new Error('A sessão está ocupada'));
+    const {rerender} = render(
+      <TaskSection queue={queueOf({canOpenPr: true})} onOpenPr={onOpenPr} />,
+    );
+    await userEvent.click(screen.getByRole('button', {name: 'Abrir PR'}));
+    expect(await screen.findByText('A sessão está ocupada')).toBeVisible();
+    rerender(
+      <TaskSection
+        queue={queueOf({task: task({phase: 'opening'})})}
+        onOpenPr={onOpenPr}
+      />,
+    );
+    expect(screen.queryByText('A sessão está ocupada')).toBeNull();
+    expect(screen.getByText(/Abrindo PR/)).toBeVisible();
+  });
 });

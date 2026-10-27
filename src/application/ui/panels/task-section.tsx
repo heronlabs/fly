@@ -20,16 +20,25 @@ const errorStyle: CSSProperties = {color: 'var(--err)'};
 
 export const TaskSection = ({queue, onOpenPr}: Props) => {
   const [sending, setSending] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [rejection, setRejection] = useState<{
+    message: string;
+    state: string;
+  } | null>(null);
   if (!queue) return null;
   const {task, canOpenPr} = queue;
+  // A rejection belongs to the state it happened in; a new state drops it.
+  const state = `${canOpenPr}|${task?.phase}|${task?.stop?.message}`;
+  const failure = rejection?.state === state ? rejection.message : null;
   const open = async () => {
     setSending(true);
-    setFailure(null);
+    setRejection(null);
     try {
       await onOpenPr();
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
+      setRejection({
+        message: error instanceof Error ? error.message : String(error),
+        state,
+      });
     } finally {
       setSending(false);
     }

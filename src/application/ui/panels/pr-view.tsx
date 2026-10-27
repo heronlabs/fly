@@ -190,7 +190,7 @@ export const PrView = ({queue, onOpenPr, ...props}: Props) => (
       color: 'var(--text2)',
     }}
   >
-    <TaskSection queue={queue} onOpenPr={onOpenPr} />
+    <TaskSection key={queue?.worktreeId} queue={queue} onOpenPr={onOpenPr} />
     {queue?.pullRequest ? (
       <PullRequestSection
         key={queue.pullRequest.url}
