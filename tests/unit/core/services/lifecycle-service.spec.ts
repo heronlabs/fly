@@ -312,15 +312,18 @@ describe('LifecycleService', () => {
       expect(hasDraft).toHaveBeenCalledExactlyOnceWith('fly-new');
       expect(get).toHaveBeenCalledWith(PATH);
       expect(read).toHaveBeenCalledExactlyOnceWith('t1', 'prompt.md');
-      expect(write).toHaveBeenCalledExactlyOnceWith(
-        't1',
-        'pr-request.md',
-        prRequest({
-          template: PR_TEMPLATE,
-          prompt: 'Faz X\ncom exemplo',
-          outFile: `${DIR}/pr.json`,
-        }),
-      );
+      expect(write.mock.calls).toEqual([
+        [
+          't1',
+          'pr-request.md',
+          prRequest({
+            template: PR_TEMPLATE,
+            prompt: 'Faz X\ncom exemplo',
+            outFile: `${DIR}/pr.json`,
+          }),
+        ],
+        ['t1', 'pr.json', ''],
+      ]);
       expect(headSha).toHaveBeenCalledWith(PATH);
       expect(sendText).toHaveBeenCalledExactlyOnceWith('fly-new', OPEN);
       expect(save).toHaveBeenCalledExactlyOnceWith(
@@ -330,15 +333,111 @@ describe('LifecycleService', () => {
           pending: {kind: 'open', sentAt: 1000, headSha: 'abc'},
         }),
       );
-      expect(calls).toEqual(['write', 'headSha', 'sendText', 'save']);
+      expect(calls).toEqual(['write', 'write', 'headSha', 'sendText', 'save']);
       expect(vcsDefault).not.toHaveBeenCalled();
       expect(uuid).not.toHaveBeenCalled();
     });
 
-    it('Should open a PR beside a merged one', async () => {
+    it('Should open a PR beside a merged one, starting its CI loop over', async () => {
       pullRequestFor.mockReturnValue(openPr('merged'));
+      const merged = record({
+        phase: 'ci',
+        prNumber: 7,
+        ciAttempts: 3,
+        fixedSha: 'old',
+        reviewSeenAt: 900,
+        review: {count: 2, state: 'done'},
+        outbox: {kind: 'review', text: 'antes', headSha: 'old'},
+      });
+      get.mockResolvedValue(merged);
+
       await service.openPullRequest(WT, 1000);
+
       expect(sendText).toHaveBeenCalledWith('fly-feat', OPEN);
+      expect(save).toHaveBeenCalledExactlyOnceWith({
+        ...merged,
+        phase: 'opening',
+        stop: null,
+        pending: {kind: 'open', sentAt: 1000, headSha: 'abc'},
+        ciAttempts: 0,
+        fixedSha: null,
+        review: null,
+        outbox: null,
+      });
+    });
+
+    it('Should refuse an overlapping open of the same worktree, then free it', async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>(resolve => {
+        release = resolve;
+      });
+      sendText.mockImplementationOnce(() => gate);
+
+      const first = service.openPullRequest(WT, 1000);
+      await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(
+        'A sessão está ocupada; aguarde o turno terminar',
+      );
+      release();
+      await first;
+      expect(sendText).toHaveBeenCalledTimes(1);
+
+      await service.openPullRequest(WT, 1000);
+      expect(sendText).toHaveBeenCalledTimes(2);
+    });
+
+    it.each<[string, () => void]>([
+      [
+        'typing fails',
+        () => sendText.mockRejectedValueOnce(new Error('tmux falhou')),
+      ],
+      ['there is a draft', () => hasDraft.mockReturnValueOnce(true)],
+    ])(
+      'Should free the worktree after a request where %s',
+      async (_n, arrange) => {
+        arrange();
+        await expect(service.openPullRequest(WT, 1000)).rejects.toThrow();
+        await service.openPullRequest(WT, 1000);
+        expect(save).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('Should not take a pr.json left by an earlier request', async () => {
+      const disk = new Map<string, string>([
+        ['t1/pr.json', '{"title": "feat: old", "body": "old"}'],
+      ]);
+      write.mockImplementation((id: string, name: string, text: string) => {
+        disk.set(`${id}/${name}`, text);
+        calls.push(`write ${name}`);
+        return Promise.resolve(`/data/tasks/${id}/${name}`);
+      });
+      read.mockImplementation((id: string, name: string) =>
+        Promise.resolve(disk.get(`${id}/${name}`) ?? null),
+      );
+      track('sendText', sendText, undefined);
+
+      await service.openPullRequest(WT, 1000);
+      expect(calls).toEqual([
+        'write pr-request.md',
+        'write pr.json',
+        'sendText',
+      ]);
+      list.mockResolvedValue([save.mock.calls[0]?.[0]]);
+      save.mockClear();
+      forSession.mockResolvedValue(summary({lastTurnEndAt: 1500}));
+      aheadCount.mockResolvedValue(1);
+
+      await service.tick(1500);
+
+      expect(push).not.toHaveBeenCalled();
+      expect(save).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          phase: 'stopped',
+          stop: {
+            kind: 'open',
+            message: 'A sessão não escreveu o título e o corpo do PR',
+          },
+        }),
+      );
     });
 
     it('Should create the record when absent, with the default branch and no prompt', async () => {
@@ -677,6 +776,52 @@ describe('LifecycleService', () => {
       expect(save.mock.calls[0]?.[0]).toMatchObject({reviewSeenAt: 2000});
     });
 
+    it.each<[string, () => void]>([
+      [
+        'git status',
+        () => status.mockRejectedValue(new Error('git falhou: lock')),
+      ],
+      [
+        'the ahead count',
+        () => aheadCount.mockRejectedValue(new Error('git falhou: lock')),
+      ],
+      [
+        'reading pr.json',
+        () => read.mockRejectedValue(new Error('git falhou: lock')),
+      ],
+      [
+        'writing pr-body.md',
+        () => write.mockRejectedValue(new Error('git falhou: lock')),
+      ],
+      [
+        'saving the PR number',
+        () => save.mockRejectedValueOnce(new Error('git falhou: lock')),
+      ],
+    ])(
+      'Should stop with the message when %s fails after the turn',
+      async (_name, arrange) => {
+        arrange();
+        await service.tick(1500);
+        expect(save).toHaveBeenLastCalledWith(
+          stopped({kind: 'open', message: 'git falhou: lock'}),
+        );
+      },
+    );
+
+    it('Should stop when the ahead count throws on a missing base ref', async () => {
+      aheadCount.mockRejectedValue(
+        new Error("git falhou: fatal: bad revision 'origin/main..HEAD'"),
+      );
+      await service.tick(1500);
+      expect(save).toHaveBeenCalledExactlyOnceWith(
+        stopped({
+          kind: 'open',
+          message: "git falhou: fatal: bad revision 'origin/main..HEAD'",
+        }),
+      );
+      expect(read).not.toHaveBeenCalled();
+    });
+
     it('Should finish the other records before rejecting with the first failure', async () => {
       const other = {
         ...opening,
@@ -686,17 +831,32 @@ describe('LifecycleService', () => {
       };
       list.mockResolvedValue([opening, other]);
       sessionsAre([item(WT, 'fly-x', 1, 's1'), item(OTHER, 'fly-y', 1, 's2')]);
-      status.mockImplementation((path: string) =>
-        path === PATH
-          ? Promise.reject(new Error('git falhou: lock'))
-          : Promise.resolve({}),
+      forSession.mockImplementation(({sessionId}: {sessionId: string}) =>
+        sessionId === 's1'
+          ? Promise.reject(new Error('EACCES'))
+          : Promise.resolve(summary({lastTurnEndAt: 1500})),
       );
 
-      await expect(service.tick(1500)).rejects.toThrow('git falhou: lock');
+      await expect(service.tick(1500)).rejects.toThrow('EACCES');
 
       expect(save).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({id: 't2', phase: 'ci', prNumber: 42}),
       );
+    });
+
+    it('Should not settle a request twice when ticks overlap', async () => {
+      const first = service.tick(1500);
+      await service.tick(1500);
+      await first;
+      expect(push).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it('Should tick again after a tick that rejected', async () => {
+      forSession.mockRejectedValueOnce(new Error('EACCES'));
+      await expect(service.tick(1500)).rejects.toThrow('EACCES');
+      await service.tick(1500);
+      expect(create).toHaveBeenCalledTimes(1);
     });
   });
 });

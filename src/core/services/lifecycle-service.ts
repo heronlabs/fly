@@ -36,8 +36,12 @@ const REQUEST_FILE = 'pr-request.md';
 const PR_FILE = 'pr.json';
 const BODY_FILE = 'pr-body.md';
 
-// The record fields an open request sets, whatever they were before.
-type Unopened = Omit<TaskRecord, 'phase' | 'stop' | 'pending'>;
+// The record fields an open request sets, whatever they were before: a new
+// PR starts its CI loop and its review forwarding from scratch.
+type Unopened = Omit<
+  TaskRecord,
+  'phase' | 'stop' | 'pending' | 'ciAttempts' | 'fixedSha' | 'review' | 'outbox'
+>;
 
 // P6: the transcript's last turn ended, with no question or agent open.
 const isIdle = (summary: TranscriptSummary | null): boolean =>
@@ -66,10 +70,31 @@ export class LifecycleService {
     private readonly ids: IdGenerator,
   ) {}
 
+  // Worktree paths with an open request between its checks and its save.
+  private readonly requesting = new Set<string>();
+  private ticking = false;
+
   // P8: asks the worktree's idle session to commit and write the PR's text;
-  // tick finishes the job once that turn ends.
+  // tick finishes the job once that turn ends. An overlapping request for the
+  // same worktree is refused before anything is read, so one click types once.
   async openPullRequest(worktreeId: string, now = Date.now()): Promise<void> {
     const {repo, worktree, branch} = this.locate(worktreeId);
+    if (this.requesting.has(worktree.path)) throw new Error(BUSY);
+    this.requesting.add(worktree.path);
+    try {
+      await this.requestOpen(worktreeId, repo, worktree, branch, now);
+    } finally {
+      this.requesting.delete(worktree.path);
+    }
+  }
+
+  private async requestOpen(
+    worktreeId: string,
+    repo: Repo,
+    worktree: Worktree,
+    branch: string,
+    now: number,
+  ): Promise<void> {
     if (this.queue.pullRequestFor(worktreeId)?.state === 'open') {
       throw new Error('Já existe um PR aberto');
     }
@@ -97,6 +122,8 @@ export class LifecycleService {
         outFile: join(this.taskFiles.dir(record.id), PR_FILE),
       }),
     );
+    // A pr.json left by an earlier request must not pass for this one's.
+    await this.taskFiles.write(record.id, PR_FILE, '');
     const headSha = await this.vcs.headSha(worktree.path);
     await this.launcher.sendText(target.name, openInstruction(requestFile));
     await this.tasks.save({
@@ -104,12 +131,28 @@ export class LifecycleService {
       phase: 'opening',
       stop: null,
       pending: {kind: 'open', sentAt: now, headSha},
+      ciAttempts: 0,
+      fixedSha: null,
+      review: null,
+      outbox: null,
     });
   }
 
   // Settles every pending open request whose turn has ended. One record's
-  // failure never holds up another's; the first one rejects at the end.
+  // failure never holds up another's; the first one rejects at the end. A
+  // tick that starts while another runs returns at once, so a request is
+  // never pushed or created twice.
   async tick(now = Date.now()): Promise<void> {
+    if (this.ticking) return;
+    this.ticking = true;
+    try {
+      await this.settleAll(now);
+    } finally {
+      this.ticking = false;
+    }
+  }
+
+  private async settleAll(now: number): Promise<void> {
     const workspace = this.sessions.currentWorkspace();
     if (!workspace) return;
     const opening = (await this.tasks.list()).flatMap(record =>
@@ -154,44 +197,49 @@ export class LifecycleService {
     const summary = await this.summaryOf(worktree, target);
     // P6: the turn that follows the instruction has ended.
     if ((summary?.lastTurnEndAt ?? 0) <= sentAt) return;
-    const result = await this.createPullRequest(record, worktree.path);
-    if ('stop' in result) {
-      return this.stop(record, {kind: 'open', message: result.stop});
+    // From here the request is settled: any failure is a stop with its
+    // message, never a request left pending.
+    try {
+      const number = await this.createPullRequest(record, worktree.path);
+      await this.tasks.save({
+        ...record,
+        prNumber: number,
+        phase: 'ci',
+        pending: null,
+        reviewSeenAt: now,
+      });
+    } catch (error) {
+      await this.stop(record, {kind: 'open', message: errorMessage(error)});
     }
-    await this.tasks.save({
-      ...record,
-      prNumber: result.number,
-      phase: 'ci',
-      pending: null,
-      reviewSeenAt: now,
-    });
   }
 
-  // P8 on turn done: the first failed check stops the flow.
+  // P8 on turn done: the first failed check throws the stop's message.
   private async createPullRequest(
     record: TaskRecord,
     path: string,
-  ): Promise<{stop: string} | {number: number}> {
+  ): Promise<number> {
     const dirty = Object.keys(await this.vcs.status(path));
     if (dirty.length > 0) {
-      return {stop: `Ficaram mudanças sem commit: ${dirty.join(', ')}`};
+      throw new Error(`Ficaram mudanças sem commit: ${dirty.join(', ')}`);
     }
     if ((await this.vcs.aheadCount(path, `origin/${record.base}`)) === 0) {
-      return {
-        stop: `Nada para abrir: o branch não tem commits à frente de ${record.base}`,
-      };
+      throw new Error(
+        `Nada para abrir: o branch não tem commits à frente de ${record.base}`,
+      );
     }
     const text = parsePrText(await this.taskFiles.read(record.id, PR_FILE));
-    if (!text) return {stop: 'A sessão não escreveu o título e o corpo do PR'};
+    if (!text) {
+      throw new Error('A sessão não escreveu o título e o corpo do PR');
+    }
     if (!isConventionalTitle(text.title)) {
-      return {
-        stop: `Título fora do padrão Conventional Commits: ${text.title}`,
-      };
+      throw new Error(
+        `Título fora do padrão Conventional Commits: ${text.title}`,
+      );
     }
     try {
       await this.vcs.push(path, record.branch);
     } catch (error) {
-      return {stop: prefixed('git push falhou: ', error)};
+      throw new Error(prefixed('git push falhou: ', error));
     }
     const bodyFile = await this.taskFiles.write(
       record.id,
@@ -206,9 +254,9 @@ export class LifecycleService {
         base: record.base,
         head: record.branch,
       });
-      return {number};
+      return number;
     } catch (error) {
-      return {stop: prefixed('gh pr create falhou: ', error)};
+      throw new Error(prefixed('gh pr create falhou: ', error));
     }
   }
 
@@ -275,11 +323,7 @@ export class LifecycleService {
       model: null,
       promptFile: null,
       prNumber: null,
-      ciAttempts: 0,
-      fixedSha: null,
       reviewSeenAt: null,
-      review: null,
-      outbox: null,
       createdAt: now,
     };
   }
