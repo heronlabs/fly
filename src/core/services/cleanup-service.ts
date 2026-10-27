@@ -87,7 +87,7 @@ export class CleanupService {
     if (!(await this.vcs.branchExists(repo.path, branch))) return true;
     return (
       pr.headSha !== null &&
-      (await this.vcs.isAncestor(repo.path, branch, pr.headSha))
+      (await this.vcs.isAncestor(repo.path, `refs/heads/${branch}`, pr.headSha))
     );
   }
 

@@ -684,7 +684,13 @@ describe('GitCliService', () => {
       expect(run.mock.calls).toEqual([
         [
           'git',
-          ['ls-remote', '--exit-code', '--heads', 'origin', 'feat-x'],
+          [
+            'ls-remote',
+            '--exit-code',
+            '--heads',
+            'origin',
+            'refs/heads/feat-x',
+          ],
           {cwd: '/r', timeoutMs: 60_000},
         ],
         [

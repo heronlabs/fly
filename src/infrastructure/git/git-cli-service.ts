@@ -262,7 +262,7 @@ export class GitCliService extends VcsGateway {
   async deleteRemoteBranch(repoPath: string, branch: string): Promise<void> {
     const listed = await this.run(
       repoPath,
-      ['ls-remote', '--exit-code', '--heads', 'origin', branch],
+      ['ls-remote', '--exit-code', '--heads', 'origin', `refs/heads/${branch}`],
       PUSH_TIMEOUT_MS,
     );
     if (listed.code === 2) return;

@@ -278,7 +278,7 @@ describe('CleanupService', () => {
 
       expect(isAncestor).toHaveBeenCalledExactlyOnceWith(
         '/r/talon',
-        'feat-x',
+        'refs/heads/feat-x',
         'pr-head',
       );
       expect(removeWorktree).toHaveBeenCalled();
