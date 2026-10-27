@@ -1,0 +1,23 @@
+appId: com.heronlabs.fly
+productName: fly
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+extraResources:
+  - from: bin/fly
+    to: bin/fly
+npmRebuild: false
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  identity: '-'
+  hardenedRuntime: false
+  category: public.app-category.developer-tools
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}

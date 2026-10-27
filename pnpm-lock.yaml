@@ -74,9 +74,6 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
-      electron:
-        specifier: ^44.9.3
-        version: 44.9.3
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -141,6 +138,9 @@ importers:
       dependency-cruiser:
         specifier: ^18.7.0
         version: 18.7.0
+      electron:
+        specifier: ^44.9.3
+        version: 44.9.3
       electron-builder:
         specifier: ^26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)

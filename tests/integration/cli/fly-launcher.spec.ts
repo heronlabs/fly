@@ -146,4 +146,49 @@ describe('bin/fly and scripts/install-cli.sh (real sh)', () => {
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
   });
+
+  describe('inside the app bundle', () => {
+    let bundle: string;
+    let bundleExe: string;
+
+    beforeEach(() => {
+      bundle = join(dir, 'fly.app/Contents');
+      bundleExe = join(bundle, 'MacOS/fly');
+      mkdirSync(join(bundle, 'MacOS'), {recursive: true});
+      mkdirSync(join(bundle, 'Resources/bin'), {recursive: true});
+      writeFileSync(join(bundle, 'Resources/app.asar'), '');
+      copyFileSync(resolve('bin/fly'), join(bundle, 'Resources/bin/fly'));
+      chmodSync(join(bundle, 'Resources/bin/fly'), 0o755);
+      executable(
+        bundleExe,
+        '#!/bin/sh\nprintf \'%s\\n\' "${ELECTRON_RUN_AS_NODE-unset}" "$@"\n',
+      );
+    });
+
+    it('Should run cli.js inside the asar on the bundle executable through /usr/local/bin-style link', () => {
+      mkdirSync(join(dir, 'links'));
+      symlinkSync(join(bundle, 'Resources/bin/fly'), join(dir, 'links/fly'));
+
+      const result = run(join(dir, 'links/fly'), ['ls']);
+
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe(
+        ['1', `${bundle}/Resources/app.asar/out/main/cli.js`, 'ls', ''].join(
+          '\n',
+        ),
+      );
+      expect(result.status).toBe(0);
+    });
+
+    it('Should report a bundle without its executable', () => {
+      rmSync(bundleExe);
+
+      const result = run(join(bundle, 'Resources/bin/fly'), []);
+
+      expect(result.stderr).toBe(
+        `fly: executável não encontrado em ${bundle}/MacOS: reinstale o fly\n`,
+      );
+      expect(result.status).toBe(1);
+    });
+  });
 });
