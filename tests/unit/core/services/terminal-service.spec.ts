@@ -320,5 +320,45 @@ describe('TerminalService', () => {
       service.write(id, '\r\x1b[<0;1;1M\x1b[M   ');
       expect(service.hasDraft('s1')).toBe(false);
     });
+
+    it.each([
+      ['an OSC 11 reply ended by ST', '\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\'],
+      ['an OSC 10 reply ended by BEL', '\x1b]10;rgb:cccc/cccc/cccc\x07'],
+      ['a DCS reply', '\x1bP1$r0m\x1b\\'],
+      ['an APC string', '\x1b_Gi=1;OK\x1b\\'],
+    ])('Should not read %s as a draft', (_name, reply) => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, reply);
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, reply);
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should read a backslash then Enter as a newline, even across writes', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, 'abc\\');
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'def\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\x');
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'a\\\r\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\\x03\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\');
+      service.write(id, '\x03');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'x\r');
+      service.write(id, '\x7f\n');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\\\x1b[200~p\x1b[201~\r');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
   });
 });

@@ -715,6 +715,15 @@ describe('errorMessage', () => {
       ).rejects.toThrow('ocupada');
     });
 
+    it("openPullRequest drops Electron's IPC prefix from a refusal", async () => {
+      vi.mocked(window.fly.pullRequests.open).mockRejectedValueOnce(
+        new Error("Error invoking remote method 'pr:open': Error: ocupada"),
+      );
+      await expect(
+        useFlyStore.getState().openPullRequest('a/x#main'),
+      ).rejects.toThrow(/^ocupada$/);
+    });
+
     it('setDiffPanel persists and stores the config', async () => {
       vi.mocked(window.fly.settings.set).mockResolvedValue({
         recentRoots: [],

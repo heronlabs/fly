@@ -5,6 +5,7 @@ import {
   TaskPhase,
   TaskRecord,
 } from '../domain/task';
+import type {TranscriptSummary} from '../domain/transcript';
 import type {MultiplexerSession} from '../interfaces/session-launcher';
 
 export type PrText = {title: string; body: string};
@@ -13,19 +14,23 @@ export type PrText = {title: string; body: string};
 export const isConventionalTitle = (title: string): boolean =>
   CONVENTIONAL_TITLE.test(title) && Array.from(title).length <= MAX_TITLE_CHARS;
 
+const ATTACHMENTS = '\n\nArquivos anexados:\n';
+
 // P9: what the session reads before writing the PR's title and body.
 export const prRequest = (input: {
   template: string;
   prompt: string | null;
   outFile: string;
 }): string => {
+  // The attachments block lists local paths, which must not reach GitHub.
+  const prompt = input.prompt?.split(ATTACHMENTS)[0] ?? null;
   const motivation =
-    input.prompt === null
+    prompt === null
       ? ['- Motivation: write Motivation from this conversation.']
       : [
           '- Motivation: quote the original task under Motivation:',
           '',
-          ...input.prompt.split('\n').map(line => `> ${line}`),
+          ...prompt.split('\n').map(line => `> ${line}`),
         ];
   return [
     `Write the pull request for this branch as JSON to ${input.outFile}: {"title": string, "body": string}.`,
@@ -40,6 +45,32 @@ export const prRequest = (input: {
     '',
     input.template,
   ].join('\n');
+};
+
+// A session this young may still be starting up.
+const MIN_SESSION_AGE_MS = 5000;
+
+// P6: the session fly talks to takes a new instruction: its last turn ended
+// with no question or agent open, or it was started without a prompt (no
+// transcript yet) and is past start-up. createdAt is in seconds.
+export const isSessionIdle = (
+  summary: TranscriptSummary | null,
+  session: MultiplexerSession,
+  now: number,
+): boolean => {
+  if (summary !== null && summary.phase !== 'none') {
+    return (
+      summary.phase === 'turn-ended' &&
+      !summary.asking &&
+      summary.backgroundAgents === 0
+    );
+  }
+  const {options} = session;
+  return (
+    options['@fly_task'] === undefined &&
+    options['@fly_task_repo'] === undefined &&
+    now - session.createdAt * 1000 >= MIN_SESSION_AGE_MS
+  );
 };
 
 export const openInstruction = (requestFile: string): string =>

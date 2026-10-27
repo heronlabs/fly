@@ -18,6 +18,10 @@ const MIN_SIZE = 2;
 // Not typing: X10 mouse reports, CSI (incl. SGR mouse), SS3 and Alt+Enter.
 // eslint-disable-next-line no-control-regex
 const ESCAPES = /\x1b\[M[\s\S]{3}|\x1b\[[0-?]*[ -/]*[@-~]|\x1bO.|\x1b[\r\n]/g;
+// Not typing either: terminal replies (OSC colour queries answered by xterm.js,
+// ended by BEL or ST; DCS, SOS, PM and APC strings ended by ST).
+// eslint-disable-next-line no-control-regex
+const REPLIES = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][\s\S]*?\x1b\\/g;
 // Bracketed paste markers: what lies between them is content, not keystrokes.
 // eslint-disable-next-line no-control-regex
 const PASTE_MARKERS = /(\x1b\[20[01]~)/;
@@ -38,6 +42,9 @@ export class TerminalService {
   private readonly drafts = new Map<string, boolean>();
   // Sessions whose last write left a bracketed paste open.
   private readonly pasting = new Map<string, boolean>();
+  // Sessions whose last printable character written was a backslash: an Enter
+  // right after it is a newline, not a submit.
+  private readonly continued = new Map<string, boolean>();
 
   constructor(
     private readonly launcher: SessionLauncher,
@@ -85,7 +92,10 @@ export class TerminalService {
       } else if (part === PASTE_END) {
         inPaste = false;
       } else if (inPaste) {
-        if (part !== '') this.drafts.set(sessionName, true);
+        if (part !== '') {
+          this.drafts.set(sessionName, true);
+          this.continued.set(sessionName, false);
+        }
       } else {
         this.trackTyped(sessionName, part);
       }
@@ -94,13 +104,18 @@ export class TerminalService {
   }
 
   private trackTyped(sessionName: string, data: string): void {
-    const text = data.replace(ESCAPES, '');
-    const submit = Math.max(text.lastIndexOf('\r'), text.lastIndexOf('\x03'));
-    if (submit >= 0) {
-      this.drafts.set(sessionName, PRINTABLE.test(text.slice(submit + 1)));
-    } else if (PRINTABLE.test(text)) {
-      this.drafts.set(sessionName, true);
+    let continued = this.continued.get(sessionName) === true;
+    for (const char of data.replace(REPLIES, '').replace(ESCAPES, '')) {
+      if (char === '\r' && continued) {
+        continued = false;
+      } else if (char === '\r' || char === '\x03') {
+        this.drafts.set(sessionName, false);
+      } else if (PRINTABLE.test(char)) {
+        this.drafts.set(sessionName, true);
+        continued = char === '\\';
+      }
     }
+    this.continued.set(sessionName, continued);
   }
 
   resize(terminalId: string, size: TerminalSize): void {

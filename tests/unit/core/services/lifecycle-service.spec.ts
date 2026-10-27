@@ -143,7 +143,11 @@ describe('LifecycleService', () => {
   const create = vi.fn();
   const prs = {defaultBranch: prDefault, create} as unknown as PrGateway;
   const pullRequestFor = vi.fn();
-  const queue = {pullRequestFor} as unknown as QueueService;
+  const refreshPullRequests = vi.fn();
+  const queue = {
+    pullRequestFor,
+    refreshPullRequests,
+  } as unknown as QueueService;
   const get = vi.fn();
   const list = vi.fn();
   const save = vi.fn();
@@ -183,6 +187,7 @@ describe('LifecycleService', () => {
       url: 'https://github.com/o/r/pull/42',
     });
     pullRequestFor.mockReturnValue(null);
+    refreshPullRequests.mockResolvedValue(undefined);
     get.mockResolvedValue(record());
     list.mockResolvedValue([]);
     save.mockResolvedValue(undefined);
@@ -276,6 +281,15 @@ describe('LifecycleService', () => {
       arrange();
       hasDraft.mockReturnValue(true);
       await refused('A sessão está ocupada; aguarde o turno terminar');
+    });
+
+    it('Should treat a promptless session without a transcript as idle once started', async () => {
+      forSession.mockResolvedValue(null);
+      sessionsAre([item(WT, 'fly-feat', 5, 's1')]);
+
+      await service.openPullRequest(WT, 10_000);
+
+      expect(sendText).toHaveBeenCalledWith('fly-feat', OPEN);
     });
 
     it('Should propagate a transcript that cannot be read', async () => {
@@ -742,6 +756,7 @@ describe('LifecycleService', () => {
       track('push', push, undefined);
       track('write', write, `${DIR}/pr-body.md`);
       track('create', create, {number: 42, url: 'u'});
+      track('refresh', refreshPullRequests, undefined);
       track('save', save, undefined);
       prJson('feat(ui)!: add x', '## Description\n\nX');
 
@@ -767,7 +782,23 @@ describe('LifecycleService', () => {
         pending: null,
         reviewSeenAt: 1500,
       });
-      expect(calls).toEqual(['push', 'write', 'create', 'save']);
+      expect(calls).toEqual(['push', 'write', 'create', 'refresh', 'save']);
+    });
+
+    it('Should save the watch even when the PR list refresh fails', async () => {
+      refreshPullRequests.mockRejectedValue(new Error('gh'));
+      prJson('feat(ui)!: add x', 'X');
+
+      await service.tick(1500);
+
+      expect(refreshPullRequests).toHaveBeenCalledTimes(1);
+      expect(save).toHaveBeenCalledExactlyOnceWith({
+        ...opening,
+        prNumber: 42,
+        phase: 'ci',
+        pending: null,
+        reviewSeenAt: 1500,
+      });
     });
 
     it('Should stamp the current time by default', async () => {

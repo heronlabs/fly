@@ -778,6 +778,50 @@ describe('QueueService', () => {
       expect(canOpen(snap, 'docs/.worktrees/detached')).toBe(false);
     });
 
+    it('Should allow a promptless fly session without a transcript once started', async () => {
+      sessionsAre([fly(feat, 'p')]);
+      forSession.mockResolvedValue(null);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(true);
+    });
+
+    it('Should allow again once CI shows the PR in the list', async () => {
+      pullRequestsAre({'/r/talon': [pr({branch: 'feat', state: 'merged'})]});
+      await service.refreshPullRequests();
+      sessionsAre([flyAt(feat, 's1', 1)]);
+      forSession.mockResolvedValue(waiting);
+      taskList.mockResolvedValue([record(feat, {phase: 'ci'})]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(true);
+    });
+
+    it('Should not allow a session still starting up or started with a task', async () => {
+      forSession.mockResolvedValue(null);
+      sessionsAre([
+        item(feat, {
+          createdAt: Math.floor(now / 1000),
+          options: {'@fly_session_id': 'p', '@fly_worktree': `/r/${feat}`},
+        }),
+      ]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(false);
+      sessionsAre([task(feat, 'p')]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(false);
+    });
+
+    it.each<[string, Partial<TaskRecord>, boolean]>([
+      [
+        'an unfinished request',
+        {pending: {kind: 'open', sentAt: 1, headSha: 'a'}},
+        false,
+      ],
+      ['an opening phase', {phase: 'opening'}, false],
+      ['CI with no PR listed', {phase: 'ci'}, false],
+      ['a stopped task', {phase: 'stopped'}, true],
+    ])('Should read %s from the task record', async (_name, over, expected) => {
+      sessionsAre([flyAt(feat, 's1', 1)]);
+      forSession.mockResolvedValue(waiting);
+      taskList.mockResolvedValue([record(feat, over)]);
+      expect(canOpen(await service.snapshot(now), feat)).toBe(expected);
+    });
+
     it('Should refuse a worktree whose only waiting session is external', async () => {
       sessionsAre([external(feat)]);
       forDirectory.mockResolvedValue(waiting);

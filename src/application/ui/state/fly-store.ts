@@ -484,8 +484,13 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     }
   },
 
-  openPullRequest(worktreeId) {
-    return window.fly.pullRequests.open(worktreeId);
+  async openPullRequest(worktreeId) {
+    try {
+      await window.fly.pullRequests.open(worktreeId);
+    } catch (error) {
+      // Electron prefixes the main process's message with its IPC channel.
+      throw new Error(errorMessage(error));
+    }
   },
 
   async setDiffPanel(mode) {

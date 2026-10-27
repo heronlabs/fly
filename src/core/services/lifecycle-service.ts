@@ -21,6 +21,7 @@ import {QueueService} from './queue-service';
 import {errorMessage, MappedSessions, SessionService} from './session-service';
 import {
   isConventionalTitle,
+  isSessionIdle,
   newestFlySession,
   openInstruction,
   parsePrText,
@@ -42,12 +43,6 @@ type Unopened = Omit<
   TaskRecord,
   'phase' | 'stop' | 'pending' | 'ciAttempts' | 'fixedSha' | 'review' | 'outbox'
 >;
-
-// P6: the transcript's last turn ended, with no question or agent open.
-const isIdle = (summary: TranscriptSummary | null): boolean =>
-  summary?.phase === 'turn-ended' &&
-  !summary.asking &&
-  summary.backgroundAgents === 0;
 
 // A gateway error already carrying the stop's prefix keeps it once.
 const prefixed = (prefix: string, error: unknown): string => {
@@ -103,7 +98,8 @@ export class LifecycleService {
     const summary = await this.summaryOf(worktree, target);
     const existing = await this.recordOf(worktree);
     // A request already typed counts as busy until tick settles it.
-    if (!isIdle(summary) || existing?.pending) throw new Error(BUSY);
+    if (!isSessionIdle(summary, target, now) || existing?.pending)
+      throw new Error(BUSY);
     if (this.terminals.hasDraft(target.name)) {
       throw new Error('Há texto digitado e não enviado na sessão');
     }
@@ -254,6 +250,8 @@ export class LifecycleService {
         base: record.base,
         head: record.branch,
       });
+      // The list shows the PR at once, so the button does not come back.
+      await this.queue.refreshPullRequests().catch(() => undefined);
       return number;
     } catch (error) {
       throw new Error(prefixed('gh pr create falhou: ', error));

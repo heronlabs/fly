@@ -1,8 +1,10 @@
 import {QueueStatus} from '../../../../src/core/domain/queue';
 import {TaskPhase, TaskRecord} from '../../../../src/core/domain/task';
+import {TranscriptSummary} from '../../../../src/core/domain/transcript';
 import {MultiplexerSession} from '../../../../src/core/interfaces/session-launcher';
 import {
   isConventionalTitle,
+  isSessionIdle,
   newestFlySession,
   openInstruction,
   parsePrText,
@@ -83,6 +85,17 @@ describe('prRequest', () => {
         ...tail,
       ].join('\n'),
     );
+  });
+
+  it('Should keep the attachments block, and its local paths, out of the quote', () => {
+    const text = prRequest({
+      template: TEMPLATE,
+      prompt: 'line1\nline2\n\nArquivos anexados:\n- /data/tasks/t1/a.png',
+      outFile: '/d/tasks/t1/pr.json',
+    });
+    expect(text).toContain('> line1\n> line2\n\nDo not push');
+    expect(text).not.toContain('/data/tasks');
+    expect(text).not.toContain('Arquivos anexados');
   });
 
   it('Should ask for Motivation from the conversation without a prompt', () => {
@@ -182,4 +195,56 @@ describe('newestFlySession', () => {
     const items = [item('a', 3, 's1'), item('b', 3, 's2')];
     expect(newestFlySession(items)?.session.name).toBe('a');
   });
+});
+
+describe('isSessionIdle', () => {
+  const summary = (over: Partial<TranscriptSummary> = {}) =>
+    ({
+      phase: 'turn-ended',
+      asking: false,
+      backgroundAgents: 0,
+      ...over,
+    }) as TranscriptSummary;
+  const session = (
+    createdAt: number,
+    options: Record<string, string> = {},
+  ): MultiplexerSession => ({
+    name: 's',
+    cwd: '/r',
+    createdAt,
+    attachedClients: 0,
+    options,
+  });
+
+  it.each<[string, Partial<TranscriptSummary>, boolean]>([
+    ['a turn that ended', {}, true],
+    ['a turn in progress', {phase: 'mid-turn'}, false],
+    ['a question open', {asking: true}, false],
+    ['a background agent', {backgroundAgents: 1}, false],
+  ])('Should read %s from the transcript', (_name, over, expected) => {
+    expect(isSessionIdle(summary(over), session(1), 1_000_000)).toBe(expected);
+  });
+
+  it('Should not look at start-up for a session with a turn', () => {
+    expect(
+      isSessionIdle(summary({phase: 'mid-turn'}), session(100), 100_000),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['no transcript', null],
+    ['no turn yet', summary({phase: 'none'})],
+  ])('Should take %s as idle at 5 s old, not before', (_name, value) => {
+    expect(isSessionIdle(value, session(100), 104_999)).toBe(false);
+    expect(isSessionIdle(value, session(100), 105_000)).toBe(true);
+  });
+
+  it.each(['@fly_task', '@fly_task_repo'])(
+    'Should not take a %s session without a transcript as idle',
+    key => {
+      expect(isSessionIdle(null, session(100, {[key]: 'x'}), 200_000)).toBe(
+        false,
+      );
+    },
+  );
 });

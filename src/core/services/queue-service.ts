@@ -18,7 +18,7 @@ import {
   MappedSessions,
   SessionService,
 } from './session-service';
-import {newestFlySession} from './task-rules';
+import {isSessionIdle, newestFlySession} from './task-rules';
 
 export const NO_OPEN_PR = 'Sem PR aberto para fazer merge';
 export const GH_MISSING = 'gh não encontrado — instale com: brew install gh';
@@ -31,6 +31,9 @@ type SessionRead = {
   session: MultiplexerSession;
   activity: Activity | null;
   receipt: ReceiptResult | null;
+  // The session takes a new instruction (isSessionIdle).
+  // Only a fly session reports it.
+  idle?: boolean;
 };
 
 const hasBranch = (worktree: Worktree): boolean =>
@@ -170,10 +173,11 @@ export class QueueService {
     } catch {
       return {activity: classifyActivity(null, now), receipt: null};
     }
-    const idle = started && (summary === null || summary.phase === 'none');
+    const fresh = started && (summary === null || summary.phase === 'none');
     return {
-      activity: idle ? 'waiting' : classifyActivity(summary, now),
+      activity: fresh ? 'waiting' : classifyActivity(summary, now),
       receipt: summary?.receipt ?? null,
+      idle: isSessionIdle(summary, session, now),
     };
   }
 
@@ -228,11 +232,15 @@ export class QueueService {
         stop: task.stop,
         review: task.review,
       },
-      // The session LifecycleService would talk to looks idle (P6, P8).
+      // The session LifecycleService would talk to looks idle (P6, P8), and
+      // no request or CI wait is under way for a PR the list does not show yet.
       canOpenPr:
         hasBranch(worktree) &&
         pullRequest?.state !== 'open' &&
-        newestFlySession(reads)?.activity === 'waiting',
+        !task?.pending &&
+        task?.phase !== 'opening' &&
+        !(task?.phase === 'ci' && pullRequest === null) &&
+        newestFlySession(reads)?.idle === true,
     };
   }
 
