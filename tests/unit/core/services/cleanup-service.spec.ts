@@ -41,8 +41,11 @@ const workspace: Workspace = {
   ],
 };
 
-const pull = (state: PullRequest['state']): PullRequest =>
-  ({number: 42, state, branch: 'feat-x'}) as PullRequest;
+const pull = (
+  state: PullRequest['state'],
+  headSha: string | null = 'pr-head',
+): PullRequest =>
+  ({number: 42, state, branch: 'feat-x', headSha}) as PullRequest;
 
 const item = (
   worktreeId: string,
@@ -90,7 +93,11 @@ describe('CleanupService', () => {
   const branchExists = vi.fn();
   const deleteBranch = vi.fn();
   const deleteRemoteBranch = vi.fn();
+  const isAncestor = vi.fn();
+  const status = vi.fn();
   const vcs = {
+    isAncestor,
+    status,
     listWorktrees,
     removeWorktree,
     branchExists,
@@ -115,6 +122,8 @@ describe('CleanupService', () => {
       listWorktrees,
       removeWorktree,
       branchExists,
+      isAncestor,
+      status,
       deleteBranch,
       deleteRemoteBranch,
       get,
@@ -141,6 +150,8 @@ describe('CleanupService', () => {
     pullRequestFor.mockReturnValue(pull('merged'));
     listWorktrees.mockResolvedValue([{path: PATH}, {path: '/r/talon'}]);
     branchExists.mockResolvedValue(true);
+    isAncestor.mockResolvedValue(true);
+    status.mockResolvedValue({});
     get.mockResolvedValue(record());
     track('kill', kill);
     track('removeWorktree', removeWorktree);
@@ -248,6 +259,97 @@ describe('CleanupService', () => {
     });
   });
 
+  describe('the local branch against the merged PR', () => {
+    const wrote = () => {
+      for (const fn of [
+        kill,
+        removeWorktree,
+        deleteBranch,
+        deleteRemoteBranch,
+        removeFiles,
+        remove,
+      ]) {
+        expect(fn).not.toHaveBeenCalled();
+      }
+    };
+
+    it("Should require the branch to be an ancestor of the PR's head", async () => {
+      await service.clean(WT, {confirmed: false});
+
+      expect(isAncestor).toHaveBeenCalledExactlyOnceWith(
+        '/r/talon',
+        'feat-x',
+        'pr-head',
+      );
+      expect(removeWorktree).toHaveBeenCalled();
+    });
+
+    it('Should refuse a diverged branch before any kill or write', async () => {
+      isAncestor.mockResolvedValue(false);
+
+      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+        new Error('O branch local não corresponde ao PR #42'),
+      );
+      wrote();
+      expect(mapped).not.toHaveBeenCalled();
+    });
+
+    it('Should refuse a PR without a head sha', async () => {
+      pullRequestFor.mockReturnValue(pull('merged', null));
+
+      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+        new Error('O branch local não corresponde ao PR #42'),
+      );
+      expect(isAncestor).not.toHaveBeenCalled();
+      wrote();
+    });
+
+    it('Should skip the check once the branch is deleted', async () => {
+      branchExists.mockResolvedValue(false);
+      isAncestor.mockResolvedValue(false);
+
+      await service.clean(WT, {confirmed: false});
+
+      expect(isAncestor).not.toHaveBeenCalled();
+      expect(deleteBranch).not.toHaveBeenCalled();
+      expect(deleteRemoteBranch).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['branchExists', branchExists],
+      ['isAncestor', isAncestor],
+    ])('Should prefix a failing %s', async (_name, step) => {
+      step.mockRejectedValue(new Error('boom'));
+
+      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+        new Error('Falha ao limpar: boom'),
+      );
+      wrote();
+    });
+  });
+
+  describe('uncommitted changes', () => {
+    it('Should refuse a dirty listed worktree before any kill or write', async () => {
+      status.mockResolvedValue({'a.ts': 'M', 'b.ts': '?'});
+
+      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+        new Error('Falha ao limpar: Ficaram mudanças sem commit: a.ts, b.ts'),
+      );
+      expect(status).toHaveBeenCalledWith(PATH);
+      expect(kill).not.toHaveBeenCalled();
+      expect(removeWorktree).not.toHaveBeenCalled();
+      expect(deleteBranch).not.toHaveBeenCalled();
+    });
+
+    it('Should not read the status of a worktree that is no longer listed', async () => {
+      listWorktrees.mockResolvedValue([{path: '/r/talon'}]);
+
+      await service.clean(WT, {confirmed: false});
+
+      expect(status).not.toHaveBeenCalled();
+    });
+  });
+
   describe('a closed PR', () => {
     beforeEach(() => pullRequestFor.mockReturnValue(pull('closed')));
 
@@ -259,9 +361,12 @@ describe('CleanupService', () => {
       nothingRan();
     });
 
-    it('Should run with confirmation', async () => {
+    it('Should run with confirmation, without comparing the branch', async () => {
+      isAncestor.mockResolvedValue(false);
+
       await service.clean(WT, {confirmed: true});
 
+      expect(isAncestor).not.toHaveBeenCalled();
       expect(calls).toContain('removeWorktree');
       expect(calls.at(-1)).toBe('removeRecord');
     });

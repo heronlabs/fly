@@ -50,7 +50,6 @@ describe('TaskSection', () => {
     render(
       <TaskSection
         {...noop}
-        {...noop}
         queue={queueOf({canOpenPr: true})}
         onOpenPr={onOpenPr}
       />,
@@ -72,7 +71,6 @@ describe('TaskSection', () => {
     );
     render(
       <TaskSection
-        {...noop}
         {...noop}
         queue={queueOf({canOpenPr: true})}
         onOpenPr={onOpenPr}
@@ -128,7 +126,6 @@ describe('TaskSection', () => {
     render(
       <TaskSection
         {...noop}
-        {...noop}
         queue={queueOf({canOpenPr: true})}
         onOpenPr={onOpenPr}
       />,
@@ -145,7 +142,6 @@ describe('TaskSection', () => {
     render(
       <TaskSection
         {...noop}
-        {...noop}
         queue={queueOf({canOpenPr: true})}
         onOpenPr={onOpenPr}
       />,
@@ -160,7 +156,6 @@ describe('TaskSection', () => {
       .mockRejectedValue(new Error('A sessão está ocupada'));
     const {rerender} = render(
       <TaskSection
-        {...noop}
         {...noop}
         queue={queueOf({canOpenPr: true})}
         onOpenPr={onOpenPr}
@@ -184,7 +179,6 @@ describe('TaskSection', () => {
       const onResume = vi.fn().mockResolvedValue(undefined);
       const {rerender} = render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({
             task: task({
@@ -210,7 +204,6 @@ describe('TaskSection', () => {
       rerender(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({
             task: task({
               phase: 'stopped',
@@ -233,7 +226,6 @@ describe('TaskSection', () => {
       render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({task: task({phase: 'ci', ciAttempts: 1})})}
           onOpenPr={vi.fn()}
         />,
@@ -245,7 +237,6 @@ describe('TaskSection', () => {
       const {rerender} = render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({task: task({phase: 'ci', ciAttempts: 2})})}
           onOpenPr={vi.fn()}
         />,
@@ -255,7 +246,6 @@ describe('TaskSection', () => {
 
       rerender(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({task: task({phase: 'fixing', ciAttempts: 2})})}
           onOpenPr={vi.fn()}
@@ -271,7 +261,6 @@ describe('TaskSection', () => {
       render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({task: task({phase: 'ci'})})}
           onOpenPr={vi.fn()}
         />,
@@ -286,7 +275,6 @@ describe('TaskSection', () => {
     ] as const)('Should show a %s review', (state, text) => {
       render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({task: task({review: {count: 1, state}})})}
           onOpenPr={vi.fn()}
@@ -305,7 +293,6 @@ describe('TaskSection', () => {
       );
       render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({
             task: task({
@@ -342,7 +329,6 @@ describe('TaskSection', () => {
       const {rerender} = render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={stopped('CI falhou 3 vezes; parei de corrigir')}
           onOpenPr={vi.fn()}
           onResume={onResume}
@@ -354,7 +340,6 @@ describe('TaskSection', () => {
       });
       rerender(
         <TaskSection
-          {...noop}
           {...noop}
           queue={stopped('Conflito com main')}
           onOpenPr={vi.fn()}
@@ -370,7 +355,6 @@ describe('TaskSection', () => {
         .mockRejectedValue(new Error('Nada para rodar de novo'));
       render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({
             task: task({
@@ -398,7 +382,6 @@ describe('TaskSection', () => {
       render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({pullRequest: pull('merged')})}
           onOpenPr={vi.fn()}
           onClean={onClean}
@@ -411,7 +394,6 @@ describe('TaskSection', () => {
     it('Should offer no Limpar for an open PR', () => {
       render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({pullRequest: pull('open'), canOpenPr: true})}
           onOpenPr={vi.fn()}
@@ -426,7 +408,6 @@ describe('TaskSection', () => {
       const onClean = vi.fn().mockResolvedValue(undefined);
       render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({pullRequest: pull('closed')})}
           onOpenPr={vi.fn()}
@@ -464,7 +445,6 @@ describe('TaskSection', () => {
       render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({pullRequest: pull('merged')})}
           onOpenPr={vi.fn()}
           onClean={onClean}
@@ -484,7 +464,6 @@ describe('TaskSection', () => {
       render(
         <TaskSection
           {...noop}
-          {...noop}
           queue={queueOf({pullRequest: pull('merged')})}
           onOpenPr={vi.fn()}
           onClean={onClean}
@@ -503,7 +482,6 @@ describe('TaskSection', () => {
         .mockRejectedValue(new Error('Falha ao limpar: x'));
       render(
         <TaskSection
-          {...noop}
           {...noop}
           queue={queueOf({pullRequest: pull('closed')})}
           onOpenPr={vi.fn()}

@@ -304,13 +304,33 @@ export class LifecycleService {
   // P12: merges the PR, then removes its worktree, branches and record. A
   // cleanup failure after the merge still rejects; "Limpar" runs it again.
   async merge(worktreeId: string): Promise<void> {
-    await this.queue.mergePullRequest(worktreeId);
-    await this.cleanup.clean(worktreeId, {confirmed: true});
+    await this.holding(worktreeId, async () => {
+      await this.queue.mergePullRequest(worktreeId);
+      await this.cleanup.clean(worktreeId, {confirmed: true});
+    });
   }
 
   // "Limpar": a merged PR's task, or a closed one's once confirmed.
   async clean(worktreeId: string, confirmed: boolean): Promise<void> {
-    await this.cleanup.clean(worktreeId, {confirmed});
+    await this.holding(worktreeId, () =>
+      this.cleanup.clean(worktreeId, {confirmed}),
+    );
+  }
+
+  // A worktree with a request or an outbox being typed is not merged or
+  // removed under it; it stays held while `work` runs.
+  private async holding(
+    worktreeId: string,
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const {path} = this.locate(worktreeId).worktree;
+    if (this.requesting.has(path)) throw new Error(BUSY);
+    this.requesting.add(path);
+    try {
+      await work();
+    } finally {
+      this.requesting.delete(path);
+    }
   }
 
   // "Rodar de novo": reruns the failed jobs of each run an infrastructure

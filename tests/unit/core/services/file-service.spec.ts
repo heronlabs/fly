@@ -70,6 +70,7 @@ describe('FileService', () => {
     aheadCount: vi.fn(),
     push: vi.fn(),
     removeWorktree: vi.fn(),
+    isAncestor: vi.fn(),
     deleteBranch: vi.fn(),
     deleteRemoteBranch: vi.fn(),
     ensureIgnored: vi.fn(),

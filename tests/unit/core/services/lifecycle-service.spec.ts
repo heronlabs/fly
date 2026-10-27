@@ -2298,4 +2298,66 @@ describe('LifecycleService', () => {
       );
     });
   });
+  describe('merge and clean hold the worktree', () => {
+    const BUSY = 'A sessão está ocupada; aguarde o turno terminar';
+    const gateway = () => {
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => {
+        release = resolve;
+      });
+      return {gate, release};
+    };
+
+    it.each<[string, () => Promise<void>]>([
+      ['merge', () => service.merge(WT)],
+      ['clean', () => service.clean(WT, true)],
+    ])('Should refuse %s while a request is being typed', async (_n, act) => {
+      const {gate, release} = gateway();
+      sendText.mockImplementationOnce(() => gate);
+      const opening = service.openPullRequest(WT, 1000);
+
+      await expect(act()).rejects.toThrow(BUSY);
+      expect(mergePullRequest).not.toHaveBeenCalled();
+      expect(clean).not.toHaveBeenCalled();
+      release();
+      await opening;
+    });
+
+    it.each<[string, () => Promise<void>, ReturnType<typeof vi.fn>]>([
+      ['merge', () => service.merge(WT), mergePullRequest],
+      ['clean', () => service.clean(WT, true), clean],
+    ])(
+      'Should keep a request out while %s runs, and free the worktree after',
+      async (_n, act, step) => {
+        const {gate, release} = gateway();
+        step.mockImplementation(() => gate);
+        clean.mockImplementation(() => gate);
+        const running = act();
+
+        await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(BUSY);
+        release();
+        await running;
+        await service.openPullRequest(WT, 1000);
+        expect(sendText).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('Should free the worktree after a rejected merge', async () => {
+      mergePullRequest.mockRejectedValue(new Error('conflito'));
+      await expect(service.merge(WT)).rejects.toThrow('conflito');
+
+      await service.openPullRequest(WT, 1000);
+      expect(sendText).toHaveBeenCalledTimes(1);
+    });
+
+    it.each<[string, () => Promise<void>]>([
+      ['merge', () => service.merge('nope')],
+      ['clean', () => service.clean('nope', true)],
+      ['merge of the main worktree', () => service.merge('talon')],
+    ])('Should refuse %s without a branch worktree', async (_n, act) => {
+      await expect(act()).rejects.toThrow('Worktree não encontrado');
+      expect(mergePullRequest).not.toHaveBeenCalled();
+      expect(clean).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1,10 +1,12 @@
 import {Injectable} from '@nestjs/common';
 
+import {PullRequest} from '../domain/queue';
 import {Repo, Worktree} from '../domain/workspace';
 import {SessionLauncher} from '../interfaces/session-launcher';
 import {TaskFiles} from '../interfaces/task-files';
 import {TaskStore} from '../interfaces/task-store';
 import {VcsGateway} from '../interfaces/vcs-gateway';
+import {assertClean} from './lifecycle-steps';
 import {QueueService} from './queue-service';
 import {errorMessage, SessionService} from './session-service';
 
@@ -35,7 +37,16 @@ export class CleanupService {
     worktreeId: string,
     options: {confirmed: boolean},
   ): Promise<void> {
-    const {repo, worktree, branch} = this.locate(worktreeId, options);
+    const {repo, worktree, branch, pr} = this.locate(worktreeId, options);
+    let matches: boolean;
+    try {
+      matches = await this.matchesPr(repo, branch, pr);
+    } catch (error) {
+      throw failure(error);
+    }
+    if (!matches) {
+      throw new Error(`O branch local não corresponde ao PR #${pr.number}`);
+    }
     try {
       await this.removeAll(repo, worktree, branch);
     } catch (error) {
@@ -48,17 +59,36 @@ export class CleanupService {
   private locate(
     worktreeId: string,
     {confirmed}: {confirmed: boolean},
-  ): {repo: Repo; worktree: Worktree; branch: string} {
+  ): {repo: Repo; worktree: Worktree; branch: string; pr: PullRequest} {
     const workspace = this.sessions.currentWorkspace();
     const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
     const repo = workspace?.repos.find(r => r.id === worktree?.repoId);
     if (!worktree?.branch || worktree.isMain || !repo) {
       throw new Error(NO_WORKTREE);
     }
-    const state = this.queue.pullRequestFor(worktreeId)?.state;
-    if (state === 'closed' && !confirmed) throw new Error(CONFIRM);
-    if (state !== 'merged' && state !== 'closed') throw new Error(NO_WORKTREE);
-    return {repo, worktree, branch: worktree.branch};
+    const pr = this.queue.pullRequestFor(worktreeId);
+    if (pr?.state === 'closed' && !confirmed) throw new Error(CONFIRM);
+    if (pr?.state !== 'merged' && pr?.state !== 'closed') {
+      throw new Error(NO_WORKTREE);
+    }
+    return {repo, worktree, branch: worktree.branch, pr};
+  }
+
+  // The PR is found by branch name, so a reused name or commits made after
+  // the merge must not lose work: a merged PR's local branch holds nothing
+  // beyond the PR's head. A deleted branch (a retry) has nothing to lose, and
+  // a closed PR was confirmed by the user.
+  private async matchesPr(
+    repo: Repo,
+    branch: string,
+    pr: PullRequest,
+  ): Promise<boolean> {
+    if (pr.state !== 'merged') return true;
+    if (!(await this.vcs.branchExists(repo.path, branch))) return true;
+    return (
+      pr.headSha !== null &&
+      (await this.vcs.isAncestor(repo.path, branch, pr.headSha))
+    );
   }
 
   private async removeAll(
@@ -69,13 +99,15 @@ export class CleanupService {
     const {tmux, message, items} = await this.sessions.mapped();
     // Without a tmux listing, a live session would be left running.
     if (tmux === 'error') throw new Error(String(message));
+    const listed = (await this.vcs.listWorktrees(repo.path)).some(
+      w => w.path === worktree.path,
+    );
+    // Before any session dies; git's own refusal stays the fallback.
+    if (listed) await assertClean(this.vcs, worktree.path);
     for (const {session, worktreeId} of items) {
       if (worktreeId === worktree.id) await this.launcher.kill(session.name);
     }
-    const listed = await this.vcs.listWorktrees(repo.path);
-    if (listed.some(w => w.path === worktree.path)) {
-      await this.vcs.removeWorktree(repo.path, worktree.path);
-    }
+    if (listed) await this.vcs.removeWorktree(repo.path, worktree.path);
     if (await this.vcs.branchExists(repo.path, branch)) {
       await this.vcs.deleteBranch(repo.path, branch);
     }

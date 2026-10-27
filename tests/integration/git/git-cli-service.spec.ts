@@ -543,6 +543,22 @@ describe('GitCliService (real git)', () => {
         ).resolves.toBeUndefined();
       });
 
+      it('Should tell ancestry: equal, ancestor, diverged and unknown commits', async () => {
+        const base = git(clone, 'rev-parse', 'HEAD').trim();
+        git(path, 'commit', '--allow-empty', '-m', 'ahead');
+        const ahead = git(path, 'rev-parse', 'HEAD').trim();
+        git(clone, 'commit', '--allow-empty', '-m', 'other');
+        const other = git(clone, 'rev-parse', 'HEAD').trim();
+
+        expect(await service.isAncestor(clone, ahead, ahead)).toBe(true);
+        expect(await service.isAncestor(clone, base, ahead)).toBe(true);
+        expect(await service.isAncestor(clone, ahead, base)).toBe(false);
+        expect(await service.isAncestor(clone, ahead, other)).toBe(false);
+        expect(await service.isAncestor(clone, 'f'.repeat(40), ahead)).toBe(
+          false,
+        );
+      });
+
       it('Should reject a remote delete when origin is not reachable', async () => {
         git(clone, 'remote', 'set-url', 'origin', join(dir, 'missing.git'));
 
