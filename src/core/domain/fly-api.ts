@@ -11,6 +11,7 @@ import type {QueueSnapshot} from './queue';
 import type {SearchQuery, SearchResult} from './search';
 import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
+import type {NewTaskInput} from './task';
 import type {Workspace} from './workspace';
 
 export const channels = {
@@ -36,6 +37,7 @@ export const channels = {
   prMerge: 'pr:merge',
   shellOpenExternal: 'shell:open-external',
   taskCreate: 'task:create',
+  taskPickAttachments: 'task:pick-attachments',
   terminalAttach: 'terminal:attach',
   terminalDetach: 'terminal:detach',
   terminalInput: 'terminal:input',
@@ -90,7 +92,8 @@ export type FlyApi = {
   };
   pullRequests: {merge(worktreeId: string): Promise<void>};
   tasks: {
-    create(input: {repoId: string; description: string}): Promise<string>;
+    create(input: NewTaskInput): Promise<string>;
+    pickAttachments(): Promise<string[]>;
   };
   terminal: {
     attach(

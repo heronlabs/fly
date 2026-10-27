@@ -5,8 +5,8 @@ import type {SessionsSnapshot} from '../../../core/domain/session';
 import {NewTaskInput} from '../../../core/domain/task';
 import {SessionService} from '../../../core/services/session-service';
 import {TaskService} from '../../../core/services/task-service';
-import type {Broadcaster, IpcHost} from '../ipc-types';
-import {BROADCASTER, IPC_HOST} from '../ipc-types';
+import type {Broadcaster, FilePicker, IpcHost} from '../ipc-types';
+import {BROADCASTER, FILE_PICKER, IPC_HOST} from '../ipc-types';
 
 export const SESSION_POLL_MS = 3000;
 
@@ -25,6 +25,7 @@ export class SessionHandler {
     @Inject(BROADCASTER) private readonly broadcaster: Broadcaster,
     private readonly sessions: SessionService,
     private readonly tasks: TaskService,
+    @Inject(FILE_PICKER) private readonly picker: FilePicker,
   ) {}
 
   register(): void {
@@ -38,6 +39,7 @@ export class SessionHandler {
     this.host.handle(channels.taskCreate, (_event, input: NewTaskInput) =>
       this.refreshAfter(this.tasks.create(input)),
     );
+    this.host.handle(channels.taskPickAttachments, () => this.picker.pick());
     this.stop();
     this.timer = setInterval(() => void this.tick(), SESSION_POLL_MS);
     this.timer.unref();

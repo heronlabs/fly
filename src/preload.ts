@@ -82,6 +82,7 @@ const api: FlyApi = {
   },
   tasks: {
     create: input => ipcRenderer.invoke(channels.taskCreate, input),
+    pickAttachments: () => ipcRenderer.invoke(channels.taskPickAttachments),
   },
   terminal: {
     attach: (sessionName, size) =>

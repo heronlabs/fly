@@ -918,6 +918,9 @@ describe('AppShell', () => {
     expect(window.fly.tasks.create).toHaveBeenCalledWith({
       repoId: 'repo-a',
       description: 'corrigir bug',
+      branch: 'corrigir-bug',
+      model: null,
+      attachments: [],
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

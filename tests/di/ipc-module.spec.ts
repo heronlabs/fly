@@ -10,7 +10,7 @@ const userData = vi.hoisted(() => ({path: ''}));
 vi.mock('electron', () => ({
   app: {getPath: () => userData.path},
   BrowserWindow: {getAllWindows: () => []},
-  dialog: {},
+  dialog: {showOpenDialog: vi.fn()},
   ipcMain: {handle: vi.fn(), on: vi.fn()},
   shell: {openExternal: vi.fn()},
 }));

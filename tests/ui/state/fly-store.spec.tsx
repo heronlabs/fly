@@ -433,13 +433,20 @@ describe('errorMessage', () => {
       vi.mocked(window.fly.sessions.list).mockResolvedValue(
         snapshot([{name: 'task-1', worktreeId: 'b/y#main'}]),
       );
-      const ok = await useFlyStore
-        .getState()
-        .createTask({repoId: 'b/y', description: 'fazer'});
+      const ok = await useFlyStore.getState().createTask({
+        repoId: 'b/y',
+        description: 'fazer',
+        branch: 'x',
+        model: null,
+        attachments: [],
+      });
       expect(ok).toBe(true);
       expect(window.fly.tasks.create).toHaveBeenCalledWith({
         repoId: 'b/y',
         description: 'fazer',
+        branch: 'x',
+        model: null,
+        attachments: [],
       });
       expect(useFlyStore.getState().selectedWorktreeId).toBe('b/y#main');
       expect(useFlyStore.getState().activeSessionName).toBe('task-1');
@@ -451,17 +458,25 @@ describe('errorMessage', () => {
         selectedWorktreeId: 'a/x#main',
       });
       vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
-      await useFlyStore
-        .getState()
-        .createTask({repoId: 'zzz', description: 'fazer'});
+      await useFlyStore.getState().createTask({
+        repoId: 'zzz',
+        description: 'fazer',
+        branch: 'x',
+        model: null,
+        attachments: [],
+      });
       expect(useFlyStore.getState().selectedWorktreeId).toBe('a/x#main');
     });
 
     it('Should keep the selection when no workspace is open', async () => {
       vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
-      const ok = await useFlyStore
-        .getState()
-        .createTask({repoId: 'a/x', description: 'fazer'});
+      const ok = await useFlyStore.getState().createTask({
+        repoId: 'a/x',
+        description: 'fazer',
+        branch: 'x',
+        model: null,
+        attachments: [],
+      });
       expect(ok).toBe(true);
       expect(useFlyStore.getState().selectedWorktreeId).toBeNull();
     });
@@ -470,9 +485,13 @@ describe('errorMessage', () => {
       vi.mocked(window.fly.tasks.create).mockRejectedValue(
         new Error('Descreva a tarefa'),
       );
-      const ok = await useFlyStore
-        .getState()
-        .createTask({repoId: 'a/x', description: ''});
+      const ok = await useFlyStore.getState().createTask({
+        repoId: 'a/x',
+        description: '',
+        branch: '',
+        model: null,
+        attachments: [],
+      });
       expect(ok).toBe(false);
       expect(useFlyStore.getState().error).toBe('Descreva a tarefa');
     });

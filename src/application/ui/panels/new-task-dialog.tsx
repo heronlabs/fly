@@ -1,6 +1,16 @@
-import {type CSSProperties, type KeyboardEvent, useState} from 'react';
+import {
+  type ClipboardEvent,
+  type CSSProperties,
+  type DragEvent,
+  type KeyboardEvent,
+  useState,
+} from 'react';
 
+import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo} from '../../../core/domain/workspace';
+import {MODEL_OPTIONS, suggestBranch} from './branch-name';
+
+const SHIP_PREFIX = '/supera:ship ';
 
 type Props = {
   open: boolean;
@@ -9,7 +19,7 @@ type Props = {
   error?: string | null;
   submitting?: boolean;
   onCancel(): void;
-  onSubmit(input: {repoId: string; description: string}): void;
+  onSubmit(input: NewTaskInput): void;
 };
 
 const fieldStyle: CSSProperties = {
@@ -40,11 +50,69 @@ const DialogBody = ({
 }: Omit<Props, 'open'>) => {
   const [repoId, setRepoId] = useState(defaultRepoId ?? repos[0]?.id ?? '');
   const [description, setDescription] = useState('');
+  const [branch, setBranch] = useState('');
+  const [branchEdited, setBranchEdited] = useState(false);
+  const [model, setModel] = useState('');
+  const [attachments, setAttachments] = useState<string[]>([]);
   const trimmed = description.trim();
+  const ready =
+    trimmed !== '' &&
+    (branch.trim() !== '' || trimmed.startsWith(SHIP_PREFIX)) &&
+    !submitting;
+
+  const changeDescription = (value: string) => {
+    setDescription(value);
+    if (!branchEdited) {
+      setBranch(suggestBranch(value));
+    }
+  };
+
+  const addAttachments = (paths: string[]) =>
+    setAttachments(current => [
+      ...current,
+      ...paths.filter(path => !current.includes(path)),
+    ]);
+
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault();
+    addAttachments(
+      Array.from(event.dataTransfer?.files ?? [], file =>
+        window.fly.attachments.pathForFile(file),
+      ).filter(path => path !== ''),
+    );
+  };
+
+  const onPaste = (event: ClipboardEvent) => {
+    const image = Array.from(event.clipboardData?.files ?? []).find(
+      file => file.type === 'image/png',
+    );
+    if (!image) {
+      return;
+    }
+    event.preventDefault();
+    image
+      .arrayBuffer()
+      .then(bytes => window.fly.attachments.saveImage(new Uint8Array(bytes)))
+      .then(
+        path => addAttachments([path]),
+        () => undefined,
+      );
+  };
+
+  const pick = () =>
+    void window.fly.tasks
+      .pickAttachments()
+      .then(addAttachments, () => undefined);
 
   const submit = () => {
-    if (trimmed && !submitting) {
-      onSubmit({repoId, description: trimmed});
+    if (ready) {
+      onSubmit({
+        repoId,
+        description: trimmed,
+        branch: branch.trim(),
+        model: model || null,
+        attachments,
+      });
     }
   };
 
@@ -73,6 +141,7 @@ const DialogBody = ({
         aria-modal="true"
         aria-labelledby="new-task-title"
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         style={{
           width: 480,
           display: 'flex',
@@ -112,10 +181,74 @@ const DialogBody = ({
             rows={5}
             maxLength={2000}
             value={description}
-            onChange={event => setDescription(event.target.value)}
+            onChange={event => changeDescription(event.target.value)}
             style={{...fieldStyle, resize: 'vertical'}}
           />
         </label>
+        <label style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+          Branch
+          <input
+            value={branch}
+            onChange={event => {
+              setBranchEdited(true);
+              setBranch(event.target.value);
+            }}
+            style={fieldStyle}
+          />
+        </label>
+        <label style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+          Modelo
+          <select
+            value={model}
+            onChange={event => setModel(event.target.value)}
+            style={fieldStyle}
+          >
+            <option value="">Padrão do Claude Code</option>
+            {MODEL_OPTIONS.map(option => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div
+          onDragOver={event => event.preventDefault()}
+          onDrop={onDrop}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            padding: 8,
+            border: '1px dashed var(--border)',
+            borderRadius: 6,
+          }}
+        >
+          <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+            <button type="button" onClick={pick} style={buttonStyle}>
+              Anexar arquivos
+            </button>
+            <span style={{color: 'var(--text2)'}}>
+              Arraste arquivos aqui ou cole uma imagem
+            </span>
+          </div>
+          {attachments.map(path => (
+            <div
+              key={path}
+              style={{display: 'flex', alignItems: 'center', gap: 8}}
+            >
+              <span style={{flex: 1, wordBreak: 'break-all'}}>{path}</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setAttachments(current => current.filter(p => p !== path))
+                }
+                style={buttonStyle}
+              >
+                Remover
+              </button>
+            </div>
+          ))}
+        </div>
         {error && (
           <p role="alert" style={{margin: 0, color: 'var(--err)'}}>
             {error}
@@ -127,9 +260,9 @@ const DialogBody = ({
           </button>
           <button
             type="button"
-            disabled={!trimmed || submitting}
+            disabled={!ready}
             onClick={submit}
-            style={{...buttonStyle, opacity: trimmed && !submitting ? 1 : 0.5}}
+            style={{...buttonStyle, opacity: ready ? 1 : 0.5}}
           >
             Iniciar
           </button>

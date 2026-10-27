@@ -25,6 +25,7 @@ import type {
   ExplorerMode,
   ThemeMode,
 } from '../../../core/domain/settings';
+import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
 
 export const DIFF_POLL_MS = 3000;
@@ -94,7 +95,7 @@ export type FlyState = {
   applyQueue(snapshot: QueueSnapshot): void;
   startSession(worktreeId: string): Promise<void>;
   killSession(name: string): Promise<void>;
-  createTask(input: {repoId: string; description: string}): Promise<boolean>;
+  createTask(input: NewTaskInput): Promise<boolean>;
   setActiveSession(name: string | null): void;
   loadDiff(worktreeId: string, scope: DiffScope): Promise<void>;
   applyDiff(result: WorktreeDiff): void;

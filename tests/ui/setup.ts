@@ -28,7 +28,7 @@ const fly: FlyApi = {
     onChanged: vi.fn(),
   },
   queue: {list: vi.fn(), onChanged: vi.fn(() => () => {})},
-  tasks: {create: vi.fn()},
+  tasks: {create: vi.fn(), pickAttachments: vi.fn()},
   terminal: {
     attach: vi.fn(),
     detach: vi.fn(),

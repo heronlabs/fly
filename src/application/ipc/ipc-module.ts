@@ -55,8 +55,19 @@ import {SettingsHandler} from './handlers/settings-handler';
 import {ShellHandler} from './handlers/shell-handler';
 import {TerminalHandler} from './handlers/terminal-handler';
 import {WorkspaceHandler} from './handlers/workspace-handler';
-import type {Broadcaster, FolderPicker, LinkOpener} from './ipc-types';
-import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
+import type {
+  Broadcaster,
+  FilePicker,
+  FolderPicker,
+  LinkOpener,
+} from './ipc-types';
+import {
+  BROADCASTER,
+  FILE_PICKER,
+  FOLDER_PICKER,
+  IPC_HOST,
+  LINK_OPENER,
+} from './ipc-types';
 
 @Module({
   providers: [
@@ -93,6 +104,17 @@ import {BROADCASTER, FOLDER_PICKER, IPC_HOST, LINK_OPENER} from './ipc-types';
           (await dialog.showOpenDialog({properties: ['openDirectory']}))
             .filePaths[0] ?? null,
       } satisfies FolderPicker,
+    },
+    {
+      provide: FILE_PICKER,
+      useValue: {
+        pick: async () => {
+          const result = await dialog.showOpenDialog({
+            properties: ['openFile', 'multiSelections'],
+          });
+          return result.canceled ? [] : result.filePaths;
+        },
+      } satisfies FilePicker,
     },
     {
       provide: LINK_OPENER,
