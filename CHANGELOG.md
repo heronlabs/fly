@@ -1,3 +1,9 @@
+## v0.5.0 (2026-10-27)
+
+### Features
+
+* feat: start tasks in their own worktree from the default branch (#26) (2eb301d38d2efbf5c6a169cef6326000d36a5459)
+
 ## v0.4.0 (2026-10-27)
 
 ### Features
