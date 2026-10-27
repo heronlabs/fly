@@ -94,9 +94,11 @@ describe('CleanupService', () => {
   const deleteBranch = vi.fn();
   const deleteRemoteBranch = vi.fn();
   const isAncestor = vi.fn();
+  const fetch = vi.fn();
   const status = vi.fn();
   const vcs = {
     isAncestor,
+    fetch,
     status,
     listWorktrees,
     removeWorktree,
@@ -123,6 +125,7 @@ describe('CleanupService', () => {
       removeWorktree,
       branchExists,
       isAncestor,
+      fetch,
       status,
       deleteBranch,
       deleteRemoteBranch,
@@ -294,6 +297,54 @@ describe('CleanupService', () => {
       expect(mapped).not.toHaveBeenCalled();
     });
 
+    it('Should fetch an unknown PR head once and run when the branch then descends from it', async () => {
+      isAncestor.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+      await service.clean(WT, {confirmed: false});
+
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(
+        '/r/talon',
+        'refs/pull/42/head',
+      );
+      expect(isAncestor).toHaveBeenCalledTimes(2);
+      expect(isAncestor).toHaveBeenLastCalledWith(
+        '/r/talon',
+        'refs/heads/feat-x',
+        'pr-head',
+      );
+      expect(removeWorktree).toHaveBeenCalled();
+    });
+
+    it('Should not fetch when the branch already descends from the head', async () => {
+      await service.clean(WT, {confirmed: false});
+
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('Should refuse a branch that still diverges after the fetch', async () => {
+      isAncestor.mockResolvedValue(false);
+
+      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+        new Error('O branch local não corresponde ao PR #42'),
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(isAncestor).toHaveBeenCalledTimes(2);
+      wrote();
+      expect(mapped).not.toHaveBeenCalled();
+    });
+
+    it('Should refuse as a mismatch when the fetch fails, without a second check', async () => {
+      isAncestor.mockResolvedValue(false);
+      fetch.mockRejectedValue(new Error('no network'));
+
+      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+        new Error('O branch local não corresponde ao PR #42'),
+      );
+      expect(isAncestor).toHaveBeenCalledTimes(1);
+      wrote();
+      expect(mapped).not.toHaveBeenCalled();
+    });
+
     it('Should refuse a PR without a head sha', async () => {
       pullRequestFor.mockReturnValue(pull('merged', null));
 
@@ -301,6 +352,7 @@ describe('CleanupService', () => {
         new Error('O branch local não corresponde ao PR #42'),
       );
       expect(isAncestor).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
       wrote();
     });
 

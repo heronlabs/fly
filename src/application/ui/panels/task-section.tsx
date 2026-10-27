@@ -119,6 +119,7 @@ export const TaskSection = ({
           <div style={errorStyle}>{task.stop.message}</div>
           <div style={rowStyle}>
             {task.stop.kind === 'infra' &&
+              !!task.stop.runIds?.length &&
               button('Rodar de novo', () => void run(onRerun))}
             {button('Retomar', () => void run(onResume))}
           </div>

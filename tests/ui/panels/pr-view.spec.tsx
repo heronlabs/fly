@@ -282,7 +282,11 @@ describe('PrView', () => {
         phase: 'stopped',
         ciAttempts: 0,
         review: null,
-        stop: {kind: 'infra', message: 'Falha de infraestrutura na CI: a'},
+        stop: {
+          kind: 'infra',
+          message: 'Falha de infraestrutura na CI: a',
+          runIds: ['7'],
+        },
       },
     };
     renderView(stopped, {onRerun, onResume, onClean});

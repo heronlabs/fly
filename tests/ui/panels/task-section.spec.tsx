@@ -185,6 +185,7 @@ describe('TaskSection', () => {
               stop: {
                 kind: 'infra',
                 message: 'Falha de infraestrutura na CI: a',
+                runIds: ['7'],
               },
             }),
           })}
@@ -220,6 +221,35 @@ describe('TaskSection', () => {
         screen.queryByRole('button', {name: 'Rodar de novo'}),
       ).not.toBeInTheDocument();
     });
+
+    it.each([
+      ['no run ids', undefined],
+      ['an empty list of run ids', []],
+    ])(
+      'Should not offer Rodar de novo for an infra stop with %s',
+      (_name, runIds) => {
+        render(
+          <TaskSection
+            {...noop}
+            queue={queueOf({
+              task: task({
+                phase: 'stopped',
+                stop: {
+                  kind: 'infra',
+                  message: 'Falha de infraestrutura na CI: a',
+                  runIds,
+                },
+              }),
+            })}
+            onOpenPr={vi.fn()}
+          />,
+        );
+        expect(screen.getByRole('button', {name: 'Retomar'})).toBeVisible();
+        expect(
+          screen.queryByRole('button', {name: 'Rodar de novo'}),
+        ).not.toBeInTheDocument();
+      },
+    );
 
     it('Should show neither button without a stop', () => {
       render(
@@ -299,6 +329,7 @@ describe('TaskSection', () => {
               stop: {
                 kind: 'infra',
                 message: 'Falha de infraestrutura na CI: a',
+                runIds: ['7'],
               },
             }),
           })}
@@ -361,6 +392,7 @@ describe('TaskSection', () => {
               stop: {
                 kind: 'infra',
                 message: 'Falha de infraestrutura na CI: a',
+                runIds: ['7'],
               },
             }),
           })}

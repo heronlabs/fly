@@ -356,22 +356,23 @@ export class LifecycleService {
   // PR again, else goes back to work. A queued action stays: its comments are
   // already counted as seen.
   async resume(worktreeId: string): Promise<void> {
-    const {worktree} = this.locate(worktreeId);
-    if (this.requesting.has(worktree.path)) throw new Error(BUSY);
-    const record = await this.recordOf(worktree);
-    if (!record) return;
-    const open = this.queue.pullRequestFor(worktreeId)?.state === 'open';
-    await this.tasks.save({
-      ...record,
-      phase: open ? 'ci' : 'working',
-      stop: null,
-      pending: null,
-      ciAttempts: 0,
-      fixedSha: null,
-      review:
-        record.review?.state === 'sent'
-          ? {...record.review, state: 'done'}
-          : record.review,
+    await this.holding(worktreeId, async () => {
+      const {worktree} = this.locate(worktreeId);
+      const record = await this.recordOf(worktree);
+      if (!record) return;
+      const open = this.queue.pullRequestFor(worktreeId)?.state === 'open';
+      await this.tasks.save({
+        ...record,
+        phase: open ? 'ci' : 'working',
+        stop: null,
+        pending: null,
+        ciAttempts: 0,
+        fixedSha: null,
+        review:
+          record.review?.state === 'sent'
+            ? {...record.review, state: 'done'}
+            : record.review,
+      });
     });
   }
 

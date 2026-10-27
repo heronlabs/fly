@@ -41,7 +41,7 @@ describe('GhCliService', () => {
         '--limit',
         '50',
         '--json',
-        'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title,headRefOid,mergeStateStatus',
+        'number,url,headRefName,isCrossRepository,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title,headRefOid,mergeStateStatus',
       ],
       {cwd: '/r', timeoutMs: 15_000},
     );
@@ -474,7 +474,7 @@ describe('GhCliService', () => {
       expect(run).toHaveBeenNthCalledWith(
         1,
         'gh',
-        ['pr', 'view', '42', '--json', 'reviews,comments'],
+        ['pr', 'view', '42', '--json', 'reviews,comments,url'],
         {cwd: '/r', timeoutMs: 15_000},
       );
       expect(run).toHaveBeenNthCalledWith(

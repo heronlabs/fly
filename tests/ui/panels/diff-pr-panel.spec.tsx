@@ -143,7 +143,7 @@ describe('DiffPrPanel', () => {
           phase: 'stopped',
           ciAttempts: 0,
           review: null,
-          stop: {kind: 'infra', message: 'x'},
+          stop: {kind: 'infra', message: 'x', runIds: ['7']},
         },
         canOpenPr: false,
       },

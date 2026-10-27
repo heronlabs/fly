@@ -7,7 +7,6 @@ const review = (over: Record<string, unknown> = {}) => ({
   author: {login: 'rev'},
   body: 'looks off',
   submittedAt: '2026-10-27T10:00:00Z',
-  url: 'https://github.com/o/r/pull/7#pullrequestreview-1',
   ...over,
 });
 
@@ -32,11 +31,17 @@ const line = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const PR_URL = 'https://github.com/o/r/pull/7';
+
+// gh's `reviews` entries carry no url: the PR's own url travels at the top.
 const parse = (
   view: Record<string, unknown> = {},
   lines: unknown[] = [],
 ): ReturnType<typeof parseReviewComments> =>
-  parseReviewComments(JSON.stringify(view), JSON.stringify(lines));
+  parseReviewComments(
+    JSON.stringify({url: PR_URL, ...view}),
+    JSON.stringify(lines),
+  );
 
 describe('parseReviewComments', () => {
   it('Should map a review with a null path and line', () => {
@@ -47,7 +52,7 @@ describe('parseReviewComments', () => {
         body: 'looks off',
         path: null,
         line: null,
-        url: 'https://github.com/o/r/pull/7#pullrequestreview-1',
+        url: PR_URL,
         createdAt: Date.parse('2026-10-27T10:00:00Z'),
       },
     ]);
@@ -130,12 +135,34 @@ describe('parseReviewComments', () => {
     ['submittedAt', undefined],
     ['submittedAt', 'not a date'],
     ['submittedAt', 5],
-    ['url', undefined],
-    ['url', 5],
   ])('Should skip a review whose %s is %s', (field, value) => {
     expect(parse({reviews: [review({[field]: value}), review()]})).toHaveLength(
       1,
     );
+  });
+
+  it('Should prefer a review url of its own over the PR url', () => {
+    const own = `${PR_URL}#pullrequestreview-1`;
+    expect(parse({reviews: [review({url: own})]})[0]!.url).toBe(own);
+  });
+
+  it.each([undefined, 5, null])(
+    'Should skip a review without its own url when the PR url is %s',
+    url => {
+      expect(
+        parse({url, reviews: [review()], comments: [comment()]}),
+      ).toHaveLength(1);
+    },
+  );
+
+  it('Should keep a review with its own url when the PR url is missing', () => {
+    expect(
+      parse({url: undefined, reviews: [review({url: `${PR_URL}#r`})]}),
+    ).toHaveLength(1);
+  });
+
+  it('Should not give a conversation comment the PR url', () => {
+    expect(parse({comments: [comment({url: undefined})]})).toEqual([]);
   });
 
   it.each([

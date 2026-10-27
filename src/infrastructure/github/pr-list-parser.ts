@@ -103,7 +103,9 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
     typeof entry.number !== 'number' ||
     typeof entry.url !== 'string' ||
     typeof entry.headRefName !== 'string' ||
-    typeof entry.state !== 'string'
+    typeof entry.state !== 'string' ||
+    // A fork's PR may share a branch name with a local worktree.
+    entry.isCrossRepository === true
   ) {
     return null;
   }

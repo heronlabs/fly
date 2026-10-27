@@ -1431,6 +1431,15 @@ describe('LifecycleService', () => {
         expect(reviewComments).not.toHaveBeenCalled();
       });
 
+      it('Should not watch the open PR of a record that has no PR number', async () => {
+        holds({...unwatched, phase: 'ci'});
+        failing(run());
+        await service.poll(5000);
+        expect(save).not.toHaveBeenCalled();
+        expect(failedLog).not.toHaveBeenCalled();
+        expect(reviewComments).not.toHaveBeenCalled();
+      });
+
       it('Should bring "Abrir PR" back when the PR closed unmerged', async () => {
         holds({
           ...stopOf({kind: 'ci', message: 'x'}),
@@ -1459,6 +1468,13 @@ describe('LifecycleService', () => {
         await service.poll(5000);
         expect(save).not.toHaveBeenCalled();
         expect(failedLog).not.toHaveBeenCalled();
+      });
+
+      it('Should not reset a live loop for an older closed PR of the branch', async () => {
+        holds({...watching, ciAttempts: 2, fixedSha: 'old'});
+        prIs({state: 'closed', number: 41});
+        await service.poll(5000);
+        expect(save).not.toHaveBeenCalled();
       });
 
       it('Should leave a record whose PR is not listed', async () => {
@@ -1513,12 +1529,11 @@ describe('LifecycleService', () => {
 
     it('Should wait for every check of the head before fixing', async () => {
       failedLog.mockResolvedValue(RAW);
-      reviewComments.mockResolvedValue([comment({})]);
+      reviewComments.mockResolvedValue([]);
       failing(run(), run({name: 'e2e', state: 'pending', jobId: '71'}));
 
       await service.poll(5000);
       expect(failedLog).not.toHaveBeenCalled();
-      expect(reviewComments).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
 
       failing(run(), run({name: 'e2e', jobId: '71'}));
@@ -1531,6 +1546,19 @@ describe('LifecycleService', () => {
       expect(saved()[0]?.outbox?.text).toContain(
         `Logs: ${DIR}/ci-70-abc1234.log, ${DIR}/ci-71-abc1234.log.`,
       );
+    });
+
+    it('Should still forward a new review while a failing head has pending checks', async () => {
+      reviewComments.mockResolvedValue([comment({})]);
+      failing(run(), run({name: 'e2e', state: 'pending', jobId: '71'}));
+
+      await service.poll(5000);
+
+      expect(failedLog).not.toHaveBeenCalled();
+      expect(saved()).toHaveLength(1);
+      expect(saved()[0]?.outbox).toMatchObject({kind: 'review', headSha: SHA});
+      expect(saved()[0]?.outbox?.text).toContain('comentários de review novos');
+      expect(saved()[0]?.ciAttempts).toBe(0);
     });
 
     describe('a newer PR on the branch', () => {
@@ -2240,6 +2268,28 @@ describe('LifecycleService', () => {
       holds(...(task ? [task] : []));
       await service.resume(WT);
       expect(save).not.toHaveBeenCalled();
+    });
+
+    it('Should hold the worktree while it saves, then free it', async () => {
+      let release!: () => void;
+      save.mockImplementationOnce(
+        () =>
+          new Promise<void>(resolve => {
+            release = resolve;
+          }),
+      );
+      const resuming = service.resume(WT);
+
+      await expect(service.resume(WT)).rejects.toThrow(
+        'A sessão está ocupada; aguarde o turno terminar',
+      );
+      await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(
+        'A sessão está ocupada; aguarde o turno terminar',
+      );
+      release();
+      await resuming;
+      await service.resume(WT);
+      expect(save).toHaveBeenCalledTimes(2);
     });
 
     it('Should refuse an unknown worktree', async () => {

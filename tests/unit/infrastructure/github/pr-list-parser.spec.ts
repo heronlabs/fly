@@ -348,6 +348,21 @@ describe('parsePrList', () => {
     expect(parsePrList(JSON.stringify([pr({state: 'WAT'})]))).toEqual([]);
   });
 
+  it('Should skip a PR from a fork', () => {
+    expect(
+      parsePrList(
+        JSON.stringify([pr({isCrossRepository: true}), pr({number: 8})]),
+      ).map(p => p.number),
+    ).toEqual([8]);
+  });
+
+  it.each([false, undefined, 'true', 1])(
+    'Should keep a PR whose isCrossRepository is %s',
+    value => {
+      expect(parse({isCrossRepository: value}).number).toBe(7);
+    },
+  );
+
   it.each(['{', '{}', 'null'])('Should throw on %s', json => {
     expect(() => parsePrList(json)).toThrow('Resposta inválida do gh');
   });

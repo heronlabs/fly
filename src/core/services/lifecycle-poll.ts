@@ -182,14 +182,14 @@ const watch = async (
   if (pr.checks === 'passing') next = {...next, ciAttempts: 0, fixedSha: null};
   if (stop) return next;
   const {headSha} = pr;
+  // Step 5 waits for every check of the head, so one fix carries all of its
+  // failed jobs; the review step does not wait for them.
   if (
     pr.checks === 'failing' &&
     headSha !== null &&
-    headSha !== next.fixedSha
+    headSha !== next.fixedSha &&
+    !pr.checkRuns.some(c => c.state === 'pending')
   ) {
-    // Step 5 waits for every check of the head, so one fix carries all of
-    // its failed jobs.
-    if (pr.checkRuns.some(c => c.state === 'pending')) return next;
     return fixOrStop(gateways, next, {...pr, headSha});
   }
   return forwardReview(gateways, next, pr, now);
@@ -209,7 +209,11 @@ export const pollRecord = async (
   if (record.prNumber === null) return record;
   // Ruling: a PR closed unmerged brings "Abrir PR" back; a merged one waits
   // for the cleanup.
-  if (pr?.state === 'closed' && record.pending === null) {
+  if (
+    pr?.state === 'closed' &&
+    pr.number === record.prNumber &&
+    record.pending === null
+  ) {
     return {
       ...record,
       phase: 'working',

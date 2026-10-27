@@ -85,10 +85,17 @@ export class CleanupService {
   ): Promise<boolean> {
     if (pr.state !== 'merged') return true;
     if (!(await this.vcs.branchExists(repo.path, branch))) return true;
-    return (
-      pr.headSha !== null &&
-      (await this.vcs.isAncestor(repo.path, `refs/heads/${branch}`, pr.headSha))
-    );
+    const {headSha} = pr;
+    if (headSha === null) return false;
+    const ref = `refs/heads/${branch}`;
+    if (await this.vcs.isAncestor(repo.path, ref, headSha)) return true;
+    // "Update branch" on GitHub leaves a head this clone has never seen.
+    try {
+      await this.vcs.fetch(repo.path, `refs/pull/${pr.number}/head`);
+    } catch {
+      return false;
+    }
+    return this.vcs.isAncestor(repo.path, ref, headSha);
   }
 
   private async removeAll(

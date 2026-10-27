@@ -157,7 +157,7 @@ export class GhCliService extends PrGateway {
   ): Promise<ReviewComment[]> {
     const view = await this.call(
       repoPath,
-      ['pr', 'view', String(number), '--json', 'reviews,comments'],
+      ['pr', 'view', String(number), '--json', 'reviews,comments,url'],
       15_000,
       GH_TIMEOUT_MESSAGE,
     );
@@ -205,7 +205,7 @@ export class GhCliService extends PrGateway {
           '--limit',
           '50',
           '--json',
-          'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title,headRefOid,mergeStateStatus',
+          'number,url,headRefName,isCrossRepository,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title,headRefOid,mergeStateStatus',
         ],
         {cwd: repoPath, timeoutMs: 15_000},
       );

@@ -89,9 +89,10 @@ export const fixInstruction = (
 export const reviewInstruction = (number: number, file: string): string =>
   `fly: há comentários de review novos no PR #${number} em ${file}. Avalie cada um, corrija o que fizer sentido e commite (Conventional Commits, sem push).`;
 
-// The BOM opening each step and colour codes, real or as gh prints them (^[[).
+// The BOM opening each step and every CSI escape sequence (colours, erase,
+// cursor), real or as gh prints them (^[[).
 // eslint-disable-next-line no-control-regex
-const LOG_NOISE = /\uFEFF|(?:\x1b|\^\[)\[[\d;]*m/g;
+const LOG_NOISE = /\uFEFF|(?:\x1b|\^\[)\[[\d;?]*[@-~]/g;
 const ERROR_MARK = '##[error]';
 
 // The text of a `<job>\t<step>\t<timestamp> <text>` line, whose text may hold

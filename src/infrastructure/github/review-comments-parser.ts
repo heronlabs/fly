@@ -16,16 +16,18 @@ const idOf = (value: unknown): string | null => {
   return stringOrNull(value);
 };
 
-// `gh pr view` reviews and conversation comments differ only in the time key.
+// `gh pr view` reviews and conversation comments differ in the time key and
+// in the link: gh gives a review no url, so it falls back to the PR's own.
 const mapConversation = (
   entry: unknown,
   timeKey: string,
+  fallbackUrl: string | null,
 ): ReviewComment | null => {
   if (!isRecord(entry)) return null;
   const id = stringOrNull(entry.id);
   const author = login(entry.author);
   const body = stringOrNull(entry.body);
-  const url = stringOrNull(entry.url);
+  const url = stringOrNull(entry.url) ?? fallbackUrl;
   const createdAt = epoch(entry[timeKey]);
   if (
     id === null ||
@@ -90,8 +92,12 @@ export const parseReviewComments = (
 ): ReviewComment[] => {
   const {view, lines} = parseInputs(viewJson, linesJson);
   return [
-    ...list(view.reviews).flatMap(e => mapConversation(e, 'submittedAt') ?? []),
-    ...list(view.comments).flatMap(e => mapConversation(e, 'createdAt') ?? []),
+    ...list(view.reviews).flatMap(
+      e => mapConversation(e, 'submittedAt', stringOrNull(view.url)) ?? [],
+    ),
+    ...list(view.comments).flatMap(
+      e => mapConversation(e, 'createdAt', null) ?? [],
+    ),
     ...lines.flatMap(e => mapLineComment(e) ?? []),
   ].sort((a, b) => a.createdAt - b.createdAt);
 };

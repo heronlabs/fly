@@ -341,6 +341,13 @@ describe('logExcerpt', () => {
     ['a tab-less line, kept whole', 'plain line', 'plain line'],
     ['a line with one tab, kept whole', 'one\ttab', 'one\ttab'],
     ['real colour codes', line('\u001b[31mred\u001b[0m text'), 'red text'],
+    ['literal colour codes', line('^[[36;1mcyan^[[0m text'), 'cyan text'],
+    ['a real erase-line code', line('\u001b[2Kgone'), 'gone'],
+    ['a literal erase-line code', line('^[[Kgone'), 'gone'],
+    ['a real private-mode code', line('\u001b[?25lhid\u001b[?25h'), 'hid'],
+    ['a literal cursor code', line('a^[[1;5Hb'), 'ab'],
+    ['a code ending in a tilde', line('a\u001b[3~b'), 'ab'],
+    ['a lone bracket, kept', line('a [b] ^[c'), 'a [b] ^[c'],
     [
       'text after the first space',
       line(' indented  twice'),
