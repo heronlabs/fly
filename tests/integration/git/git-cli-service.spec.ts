@@ -409,6 +409,31 @@ describe('GitCliService (real git)', () => {
       expect(readFileSync(exclude, 'utf8')).toBe(before);
     });
 
+    it('Should start a new line after an exclude file without a trailing newline', async () => {
+      const exclude = join(clone, '.git', 'info', 'exclude');
+      writeFileSync(exclude, 'foo');
+      mkdirSync(join(clone, '.worktrees'));
+
+      await service.ensureIgnored(clone, '.worktrees');
+
+      expect(readFileSync(exclude, 'utf8')).toBe('foo\n/.worktrees/\n');
+    });
+
+    it('Should create info/exclude when the repo has no info directory', async () => {
+      const bare = join(dir, 'notemplate');
+      const empty = join(dir, 'empty-template');
+      mkdirSync(empty);
+      mkdirSync(bare);
+      git(bare, 'init', '-b', 'main', `--template=${empty}`);
+      mkdirSync(join(bare, '.worktrees'));
+
+      await service.ensureIgnored(bare, '.worktrees');
+
+      expect(readFileSync(join(bare, '.git', 'info', 'exclude'), 'utf8')).toBe(
+        '/.worktrees/\n',
+      );
+    });
+
     it('Should write to the shared exclude from a linked worktree', async () => {
       const path = join(clone, '.worktrees', 'feat-y');
       await service.addWorktree({

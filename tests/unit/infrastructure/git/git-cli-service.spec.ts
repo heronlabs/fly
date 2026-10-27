@@ -1,10 +1,14 @@
-import {appendFile} from 'node:fs/promises';
+import {appendFile, mkdir, readFile} from 'node:fs/promises';
 
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {GIT_TIMEOUT_MESSAGE} from '../../../../src/core/interfaces/vcs-gateway';
 import {GitCliService} from '../../../../src/infrastructure/git/git-cli-service';
 
-vi.mock('node:fs/promises', () => ({appendFile: vi.fn()}));
+vi.mock('node:fs/promises', () => ({
+  appendFile: vi.fn(),
+  mkdir: vi.fn(),
+  readFile: vi.fn(),
+}));
 
 describe('GitCliService', () => {
   const run = vi.fn();
@@ -410,6 +414,8 @@ describe('GitCliService', () => {
     beforeEach(() => {
       run.mockReset();
       vi.mocked(appendFile).mockReset();
+      vi.mocked(mkdir).mockReset();
+      vi.mocked(readFile).mockReset().mockRejectedValue(new Error('ENOENT'));
     });
 
     it('Should read the default branch from origin/HEAD', async () => {
@@ -451,18 +457,26 @@ describe('GitCliService', () => {
       );
     });
 
-    it('Should map a missing origin to its own message', async () => {
-      run.mockResolvedValue(
-        fail("fatal: 'origin' does not appear to be a git repository\n"),
-      );
+    it('Should report a missing origin when remote get-url fails', async () => {
+      run
+        .mockResolvedValueOnce(fail('localized failure\n'))
+        .mockResolvedValueOnce(fail('no such remote', 2));
 
       await expect(service.fetch('/r', 'trunk')).rejects.toThrow(
         'Repositório sem remote origin',
       );
+      expect(run).toHaveBeenNthCalledWith(
+        2,
+        'git',
+        ['remote', 'get-url', 'origin'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
     });
 
-    it('Should map other fetch failures with the trimmed stderr', async () => {
-      run.mockResolvedValue(fail('  fatal: unreachable \n'));
+    it('Should report the fetch stderr when origin exists', async () => {
+      run
+        .mockResolvedValueOnce(fail('  fatal: unreachable \n'))
+        .mockResolvedValueOnce(ok('git@example.com:x/y.git\n'));
 
       await expect(service.fetch('/r', 'trunk')).rejects.toThrow(
         /^git fetch falhou: fatal: unreachable$/,
@@ -561,12 +575,48 @@ describe('GitCliService', () => {
 
       await service.ensureIgnored('/r', '.worktrees');
 
+      expect(mkdir).toHaveBeenCalledExactlyOnceWith('/r/.git/info', {
+        recursive: true,
+      });
+      expect(readFile).toHaveBeenCalledExactlyOnceWith(
+        '/r/.git/info/exclude',
+        'utf8',
+      );
+
       expect(run).toHaveBeenNthCalledWith(
         2,
         'git',
         ['rev-parse', '--git-common-dir'],
         {cwd: '/r', timeoutMs: 15_000},
       );
+      expect(appendFile).toHaveBeenCalledExactlyOnceWith(
+        '/r/.git/info/exclude',
+        '/.worktrees/\n',
+      );
+    });
+
+    it('Should start a new line when the exclude file lacks a trailing newline', async () => {
+      run
+        .mockResolvedValueOnce(fail('', 1))
+        .mockResolvedValueOnce(ok('.git\n'));
+      vi.mocked(readFile).mockResolvedValue('foo');
+
+      await service.ensureIgnored('/r', '.worktrees');
+
+      expect(appendFile).toHaveBeenCalledExactlyOnceWith(
+        '/r/.git/info/exclude',
+        '\n/.worktrees/\n',
+      );
+    });
+
+    it('Should not add a blank line when the exclude file ends with a newline', async () => {
+      run
+        .mockResolvedValueOnce(fail('', 1))
+        .mockResolvedValueOnce(ok('.git\n'));
+      vi.mocked(readFile).mockResolvedValue('foo\n');
+
+      await service.ensureIgnored('/r', '.worktrees');
+
       expect(appendFile).toHaveBeenCalledExactlyOnceWith(
         '/r/.git/info/exclude',
         '/.worktrees/\n',

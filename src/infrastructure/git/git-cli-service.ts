@@ -1,4 +1,4 @@
-import {appendFile} from 'node:fs/promises';
+import {appendFile, mkdir, readFile} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 
 import {Injectable} from '@nestjs/common';
@@ -31,7 +31,6 @@ const DIFF_ARGS = [
 const GIT_TIMEOUT_MS = 15_000;
 const FETCH_TIMEOUT_MS = 60_000;
 const WORKTREE_ADD_TIMEOUT_MS = 30_000;
-const NO_ORIGIN_PATTERN = /'origin' does not appear to be a git repository/;
 
 @Injectable()
 export class GitCliService extends VcsGateway {
@@ -152,7 +151,9 @@ export class GitCliService extends VcsGateway {
       FETCH_TIMEOUT_MS,
     );
     if (result.code === 0) return;
-    if (NO_ORIGIN_PATTERN.test(result.stderr)) {
+    // Not parsed from stderr: git may be localized.
+    const origin = await this.run(repoPath, ['remote', 'get-url', 'origin']);
+    if (origin.code !== 0) {
       throw new Error('Repositório sem remote origin');
     }
     throw new Error(`git fetch falhou: ${result.stderr.trim()}`);
@@ -207,10 +208,12 @@ export class GitCliService extends VcsGateway {
     const commonDir = (
       await this.git(repoPath, ['rev-parse', '--git-common-dir'])
     ).trim();
-    await appendFile(
-      join(resolve(repoPath, commonDir), 'info', 'exclude'),
-      `/${entry}/\n`,
-    );
+    const infoDir = join(resolve(repoPath, commonDir), 'info');
+    const file = join(infoDir, 'exclude');
+    await mkdir(infoDir, {recursive: true});
+    const current = await readFile(file, 'utf8').catch(() => '');
+    const separator = current === '' || current.endsWith('\n') ? '' : '\n';
+    await appendFile(file, `${separator}/${entry}/\n`);
   }
 
   private async git(
