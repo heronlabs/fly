@@ -32,4 +32,18 @@ export abstract class VcsGateway {
   abstract status(worktreePath: string): Promise<Record<string, FileFlag>>;
   // Tracked and untracked, not ignored, text files; worktree-relative paths.
   abstract grep(request: GrepRequest): Promise<GrepHit[]>;
+  // Branch origin/HEAD points to, or null when origin/HEAD is unset.
+  abstract defaultBranch(repoPath: string): Promise<string | null>;
+  abstract fetch(repoPath: string, branch: string): Promise<void>;
+  abstract validBranchName(repoPath: string, name: string): Promise<boolean>;
+  abstract branchExists(repoPath: string, name: string): Promise<boolean>;
+  // New branch from `base` without tracking, so a plain `git push` is not aimed at base.
+  abstract addWorktree(input: {
+    repoPath: string;
+    path: string;
+    branch: string;
+    base: string;
+  }): Promise<void>;
+  // Adds /<entry>/ to the shared .git/info/exclude unless already ignored.
+  abstract ensureIgnored(repoPath: string, entry: string): Promise<void>;
 }

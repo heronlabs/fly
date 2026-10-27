@@ -1,6 +1,10 @@
+import {appendFile} from 'node:fs/promises';
+
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {GIT_TIMEOUT_MESSAGE} from '../../../../src/core/interfaces/vcs-gateway';
 import {GitCliService} from '../../../../src/infrastructure/git/git-cli-service';
+
+vi.mock('node:fs/promises', () => ({appendFile: vi.fn()}));
 
 describe('GitCliService', () => {
   const run = vi.fn();
@@ -396,6 +400,201 @@ describe('GitCliService', () => {
       await expect(service.resolveBase('/w', 'main')).rejects.toThrow(
         GIT_TIMEOUT_MESSAGE,
       );
+    });
+  });
+
+  describe('task start commands', () => {
+    const ok = (stdout = '') => ({code: 0, stdout, stderr: ''});
+    const fail = (stderr = '', code = 128) => ({code, stdout: '', stderr});
+
+    beforeEach(() => {
+      run.mockReset();
+      vi.mocked(appendFile).mockReset();
+    });
+
+    it('Should read the default branch from origin/HEAD', async () => {
+      run.mockResolvedValue(ok('origin/main\n'));
+
+      expect(await service.defaultBranch('/r')).toBe('main');
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+    });
+
+    it('Should keep slashes of the branch after origin/', async () => {
+      run.mockResolvedValue(ok('origin/release/1\n'));
+
+      expect(await service.defaultBranch('/r')).toBe('release/1');
+
+      run.mockResolvedValue(ok('fork/origin/x\n'));
+
+      expect(await service.defaultBranch('/r')).toBe('fork/origin/x');
+    });
+
+    it('Should return null when origin/HEAD is unset', async () => {
+      run.mockResolvedValue(fail('fatal: not a symbolic ref'));
+
+      expect(await service.defaultBranch('/r')).toBeNull();
+    });
+
+    it('Should fetch the branch from origin with a 60 s timeout', async () => {
+      run.mockResolvedValue(ok());
+
+      await service.fetch('/r', 'trunk');
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['fetch', 'origin', 'trunk'],
+        {cwd: '/r', timeoutMs: 60_000},
+      );
+    });
+
+    it('Should map a missing origin to its own message', async () => {
+      run.mockResolvedValue(
+        fail("fatal: 'origin' does not appear to be a git repository\n"),
+      );
+
+      await expect(service.fetch('/r', 'trunk')).rejects.toThrow(
+        'Repositório sem remote origin',
+      );
+    });
+
+    it('Should map other fetch failures with the trimmed stderr', async () => {
+      run.mockResolvedValue(fail('  fatal: unreachable \n'));
+
+      await expect(service.fetch('/r', 'trunk')).rejects.toThrow(
+        /^git fetch falhou: fatal: unreachable$/,
+      );
+    });
+
+    it('Should report a killed fetch as a 60 s timeout', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.fetch('/r', 'trunk')).rejects.toThrow(
+        'git não respondeu em 60 s',
+      );
+    });
+
+    it('Should validate a branch name with check-ref-format', async () => {
+      run.mockResolvedValueOnce(ok()).mockResolvedValueOnce(fail('', 1));
+
+      expect(await service.validBranchName('/r', 'feat-x')).toBe(true);
+      expect(await service.validBranchName('/r', 'a..b')).toBe(false);
+      expect(run).toHaveBeenNthCalledWith(
+        1,
+        'git',
+        ['check-ref-format', '--branch', 'feat-x'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+    });
+
+    it('Should check a local branch with show-ref', async () => {
+      run.mockResolvedValueOnce(ok()).mockResolvedValueOnce(fail('', 1));
+
+      expect(await service.branchExists('/r', 'feat-x')).toBe(true);
+      expect(await service.branchExists('/r', 'nope')).toBe(false);
+      expect(run).toHaveBeenNthCalledWith(
+        1,
+        'git',
+        ['show-ref', '--verify', '--quiet', 'refs/heads/feat-x'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+    });
+
+    it('Should add a worktree without tracking, with a 30 s timeout', async () => {
+      run.mockResolvedValue(ok());
+
+      await service.addWorktree({
+        repoPath: '/r',
+        path: '/r/.worktrees/feat-x',
+        branch: 'feat-x',
+        base: 'origin/trunk',
+      });
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        [
+          'worktree',
+          'add',
+          '--no-track',
+          '-b',
+          'feat-x',
+          '/r/.worktrees/feat-x',
+          'origin/trunk',
+        ],
+        {cwd: '/r', timeoutMs: 30_000},
+      );
+    });
+
+    it('Should reject addWorktree with git falhou and the stderr', async () => {
+      run.mockResolvedValue(fail('  fatal: exists\n'));
+
+      await expect(
+        service.addWorktree({
+          repoPath: '/r',
+          path: '/p',
+          branch: 'b',
+          base: 'origin/t',
+        }),
+      ).rejects.toThrow(/^git falhou: fatal: exists$/);
+    });
+
+    it('Should not write when the entry is already ignored', async () => {
+      run.mockResolvedValue(ok());
+
+      await service.ensureIgnored('/r', '.worktrees');
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['check-ignore', '-q', '.worktrees'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+      expect(appendFile).not.toHaveBeenCalled();
+    });
+
+    it('Should append the entry to the common-dir exclude when not ignored', async () => {
+      run
+        .mockResolvedValueOnce(fail('', 1))
+        .mockResolvedValueOnce(ok('.git\n'));
+
+      await service.ensureIgnored('/r', '.worktrees');
+
+      expect(run).toHaveBeenNthCalledWith(
+        2,
+        'git',
+        ['rev-parse', '--git-common-dir'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+      expect(appendFile).toHaveBeenCalledExactlyOnceWith(
+        '/r/.git/info/exclude',
+        '/.worktrees/\n',
+      );
+    });
+
+    it('Should keep an absolute common dir as it is', async () => {
+      run
+        .mockResolvedValueOnce(fail('', 1))
+        .mockResolvedValueOnce(ok('/main/.git\n'));
+
+      await service.ensureIgnored('/r', '.worktrees');
+
+      expect(appendFile).toHaveBeenCalledExactlyOnceWith(
+        '/main/.git/info/exclude',
+        '/.worktrees/\n',
+      );
+    });
+
+    it('Should fail ensureIgnored when the common dir cannot be read', async () => {
+      run
+        .mockResolvedValueOnce(fail('', 1))
+        .mockResolvedValueOnce(fail('boom'));
+
+      await expect(service.ensureIgnored('/r', '.worktrees')).rejects.toThrow(
+        'git falhou: boom',
+      );
+      expect(appendFile).not.toHaveBeenCalled();
     });
   });
 });

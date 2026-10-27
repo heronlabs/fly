@@ -60,6 +60,12 @@ describe('FileService', () => {
     diff: vi.fn(),
     status,
     grep,
+    defaultBranch: vi.fn(),
+    fetch: vi.fn(),
+    validBranchName: vi.fn(),
+    branchExists: vi.fn(),
+    addWorktree: vi.fn(),
+    ensureIgnored: vi.fn(),
   };
   const service = new FileService(
     {currentWorkspace} as unknown as SessionService,

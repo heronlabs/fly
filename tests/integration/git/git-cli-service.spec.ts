@@ -2,6 +2,7 @@ import {execFileSync} from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -283,6 +284,145 @@ describe('GitCliService (real git)', () => {
       await expect(grep({text: '(', regex: true})).rejects.toThrow(
         /^git falhou: /,
       );
+    });
+  });
+
+  describe('task start', () => {
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=fly-test',
+          '-c',
+          'user.email=fly-test@example.com',
+          '-c',
+          'commit.gpgsign=false',
+          ...args,
+        ],
+        {cwd, stdio: 'pipe', encoding: 'utf8'},
+      );
+    const service = new GitCliService(new ExecCommandRunnerService());
+    let origin: string;
+    let clone: string;
+
+    beforeEach(() => {
+      origin = join(dir, 'origin.git');
+      const seed = join(dir, 'seed');
+      clone = join(dir, 'clone');
+      mkdirSync(seed);
+      git(dir, 'init', '--bare', '-b', 'trunk', origin);
+      git(seed, 'init', '-b', 'trunk');
+      git(seed, 'commit', '--allow-empty', '-m', 'one');
+      git(seed, 'remote', 'add', 'origin', origin);
+      git(seed, 'push', 'origin', 'trunk');
+      git(dir, 'clone', origin, clone);
+    });
+
+    it('Should find the default branch, or null once origin/HEAD is gone', async () => {
+      expect(await service.defaultBranch(clone)).toBe('trunk');
+
+      git(clone, 'remote', 'set-head', 'origin', '-d');
+
+      expect(await service.defaultBranch(clone)).toBeNull();
+    });
+
+    it('Should fetch new commits from origin', async () => {
+      const other = join(dir, 'other');
+      git(dir, 'clone', origin, other);
+      git(other, 'commit', '--allow-empty', '-m', 'two');
+      git(other, 'push', 'origin', 'trunk');
+      const before = git(clone, 'rev-parse', 'origin/trunk');
+
+      await service.fetch(clone, 'trunk');
+
+      const after = git(clone, 'rev-parse', 'origin/trunk');
+      expect(after).not.toBe(before);
+      expect(after).toBe(git(origin, 'rev-parse', 'trunk'));
+    });
+
+    it('Should reject fetch without a remote origin', async () => {
+      git(clone, 'remote', 'remove', 'origin');
+
+      await expect(service.fetch(clone, 'trunk')).rejects.toThrow(
+        'Repositório sem remote origin',
+      );
+    });
+
+    it('Should reject fetch when origin is unreachable', async () => {
+      git(clone, 'remote', 'set-url', 'origin', join(dir, 'missing.git'));
+
+      await expect(service.fetch(clone, 'trunk')).rejects.toThrow(
+        /^git fetch falhou: /,
+      );
+    });
+
+    it('Should validate branch names', async () => {
+      expect(await service.validBranchName(clone, 'feat-x')).toBe(true);
+      expect(await service.validBranchName(clone, 'a..b')).toBe(false);
+      expect(await service.validBranchName(clone, '-x')).toBe(false);
+      expect(await service.validBranchName(clone, 'x y')).toBe(false);
+    });
+
+    it('Should tell whether a local branch exists', async () => {
+      expect(await service.branchExists(clone, 'trunk')).toBe(true);
+      expect(await service.branchExists(clone, 'nope')).toBe(false);
+    });
+
+    it('Should add an untracked worktree at the base and ignore the folder', async () => {
+      const head = git(clone, 'rev-parse', 'HEAD');
+      const path = join(clone, '.worktrees', 'feat-x');
+
+      await service.addWorktree({
+        repoPath: clone,
+        path,
+        branch: 'feat-x',
+        base: 'origin/trunk',
+      });
+
+      expect(git(path, 'rev-parse', 'HEAD')).toBe(
+        git(clone, 'rev-parse', 'origin/trunk'),
+      );
+      expect(() => git(path, 'rev-parse', '--abbrev-ref', '@{u}')).toThrow();
+      expect(git(clone, 'rev-parse', 'HEAD')).toBe(head);
+
+      // The folder exists now, so a dir-only pattern can match it.
+      const exclude = join(clone, '.git', 'info', 'exclude');
+      await service.ensureIgnored(clone, '.worktrees');
+      await service.ensureIgnored(clone, '.worktrees');
+      expect(readFileSync(exclude, 'utf8')).toMatch(/\n\/\.worktrees\/\n$/);
+      expect(readFileSync(exclude, 'utf8').split('/.worktrees/')).toHaveLength(
+        2,
+      );
+      expect(git(clone, 'status', '--porcelain')).toBe('');
+    });
+
+    it('Should leave exclude untouched when .gitignore covers the folder', async () => {
+      // The .worktrees folder exists, as it does once addWorktree has run.
+      mkdirSync(join(clone, '.worktrees'));
+      writeFileSync(join(clone, '.gitignore'), '.worktrees/\n');
+      const exclude = join(clone, '.git', 'info', 'exclude');
+      const before = readFileSync(exclude, 'utf8');
+
+      await service.ensureIgnored(clone, '.worktrees');
+
+      expect(readFileSync(exclude, 'utf8')).toBe(before);
+    });
+
+    it('Should write to the shared exclude from a linked worktree', async () => {
+      const path = join(clone, '.worktrees', 'feat-y');
+      await service.addWorktree({
+        repoPath: clone,
+        path,
+        branch: 'feat-y',
+        base: 'origin/trunk',
+      });
+
+      await service.ensureIgnored(path, 'scratch');
+
+      expect(
+        readFileSync(join(clone, '.git', 'info', 'exclude'), 'utf8'),
+      ).toContain('/scratch/\n');
     });
   });
 });
