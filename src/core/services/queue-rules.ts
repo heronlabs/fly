@@ -1,5 +1,7 @@
 import type {PullRequest, QueueStatus} from '../domain/queue';
+import type {TaskRecord} from '../domain/task';
 import type {Activity, TranscriptSummary} from '../domain/transcript';
+import {taskStatus} from './task-rules';
 
 export const WAKEUP_GRACE_MS = 20 * 60_000;
 export const LOOP_FALLBACK_MS = 1_500_000;
@@ -71,7 +73,10 @@ export const worktreeStatus = (input: {
   activities: Activity[];
   pullRequest: PullRequest | null;
   hasPlan: boolean;
+  task: TaskRecord | null;
 }): QueueStatus => {
+  const lifecycle = taskStatus(input.task);
+  if (lifecycle) return lifecycle;
   const prOpen = input.pullRequest?.state === 'open';
   // null (no PR status) is in the set but never in PRECEDENCE.
   const candidates = new Set<QueueStatus | null>([

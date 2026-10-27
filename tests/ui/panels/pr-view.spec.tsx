@@ -34,6 +34,8 @@ const queueOf = (
   status: 'ready',
   pullRequest,
   receipt,
+  task: null,
+  canOpenPr: false,
 });
 
 const renderView = (

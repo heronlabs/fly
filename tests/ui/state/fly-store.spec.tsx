@@ -547,6 +547,8 @@ describe('errorMessage', () => {
         status,
         pullRequest: null,
         receipt: null,
+        task: null,
+        canOpenPr: false,
       })),
     });
 
@@ -727,6 +729,8 @@ describe('errorMessage', () => {
         status: 'idle' as QueueStatus,
         pullRequest: null,
         receipt: null,
+        task: null,
+        canOpenPr: false,
       };
       const snapshot: QueueSnapshot = {
         github: 'ok',

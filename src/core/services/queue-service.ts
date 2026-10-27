@@ -3,11 +3,13 @@ import {join} from 'node:path';
 import {Injectable} from '@nestjs/common';
 
 import {PullRequest, QueueSnapshot, WorktreeQueue} from '../domain/queue';
+import {TaskRecord} from '../domain/task';
 import {Activity, ReceiptResult, TranscriptSummary} from '../domain/transcript';
 import {Workspace, Worktree} from '../domain/workspace';
 import {FileStore} from '../interfaces/file-store';
 import {PrGateway} from '../interfaces/pr-gateway';
 import {MultiplexerSession} from '../interfaces/session-launcher';
+import {TaskStore} from '../interfaces/task-store';
 import {TranscriptSource} from '../interfaces/transcript-source';
 import {classifyActivity, worktreeStatus} from './queue-rules';
 import {
@@ -16,6 +18,7 @@ import {
   MappedSessions,
   SessionService,
 } from './session-service';
+import {newestFlySession} from './task-rules';
 
 export const NO_OPEN_PR = 'Sem PR aberto para fazer merge';
 export const GH_MISSING = 'gh não encontrado — instale com: brew install gh';
@@ -25,6 +28,7 @@ type GithubStatus = Pick<QueueSnapshot, 'github' | 'message'>;
 // What one session contributes to its worktree.
 type SessionRead = {
   worktreeId: string;
+  session: MultiplexerSession;
   activity: Activity | null;
   receipt: ReceiptResult | null;
 };
@@ -49,6 +53,7 @@ export class QueueService {
     private readonly transcripts: TranscriptSource,
     private readonly prs: PrGateway,
     private readonly files: FileStore,
+    private readonly tasks: TaskStore,
   ) {}
 
   async refreshPullRequests(): Promise<void> {
@@ -92,16 +97,27 @@ export class QueueService {
     if (!workspace) return {...this.github, worktrees: []};
     const {items} = await this.sessions.mapped();
     const reads = await this.readSessions(items, now);
+    const records = await this.tasks.list();
     const worktrees = await Promise.all(
       workspace.worktrees.map(worktree =>
         this.queueOf(
           workspace,
           worktree,
           reads.filter(r => r.worktreeId === worktree.id),
+          records,
         ),
       ),
     );
     return {...this.github, worktrees};
+  }
+
+  // The PR the queue shows for a worktree (see pullRequestOf).
+  pullRequestFor(worktreeId: string): PullRequest | null {
+    const workspace = this.sessions.currentWorkspace();
+    const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
+    return workspace && worktree
+      ? this.pullRequestOf(workspace, worktree)
+      : null;
   }
 
   private readSessions(
@@ -118,7 +134,11 @@ export class QueueService {
       items.map(async ({session, worktreeId}): Promise<SessionRead> => {
         const sessionId = session.options['@fly_session_id'];
         if (sessionId) {
-          return {worktreeId, ...(await this.readFly(session, sessionId, now))};
+          return {
+            worktreeId,
+            session,
+            ...(await this.readFly(session, sessionId, now)),
+          };
         }
         // Two external claudes in one project dir can't be told apart (D8a).
         const shared =
@@ -126,7 +146,7 @@ export class QueueService {
         const activity = shared
           ? 'unknown'
           : await this.readExternal(session, flyIds, now);
-        return {worktreeId, activity, receipt: null};
+        return {worktreeId, session, activity, receipt: null};
       }),
     );
   }
@@ -136,7 +156,7 @@ export class QueueService {
     session: MultiplexerSession,
     sessionId: string,
     now: number,
-  ): Promise<Omit<SessionRead, 'worktreeId'>> {
+  ): Promise<Omit<SessionRead, 'worktreeId' | 'session'>> {
     const {options} = session;
     const launchCwd =
       options['@fly_task_repo'] ?? options['@fly_worktree'] ?? session.cwd;
@@ -185,17 +205,34 @@ export class QueueService {
     workspace: Workspace,
     worktree: Worktree,
     reads: SessionRead[],
+    records: TaskRecord[],
   ): Promise<WorktreeQueue> {
     const activities = reads.flatMap(r => r.activity ?? []);
     const pullRequest = this.pullRequestOf(workspace, worktree);
     const hasPlan =
       activities.includes('unknown') &&
       (await this.files.exists(join(worktree.path, '.supera', 'plan.md')));
+    // A record left by another branch at this path is stale: not this task's.
+    const task =
+      records.find(
+        r => r.worktreePath === worktree.path && r.branch === worktree.branch,
+      ) ?? null;
     return {
       worktreeId: worktree.id,
-      status: worktreeStatus({activities, pullRequest, hasPlan}),
+      status: worktreeStatus({activities, pullRequest, hasPlan, task}),
       pullRequest,
       receipt: reads.find(r => r.receipt)?.receipt ?? null,
+      task: task && {
+        phase: task.phase,
+        ciAttempts: task.ciAttempts,
+        stop: task.stop,
+        review: task.review,
+      },
+      // The session LifecycleService would talk to looks idle (P6, P8).
+      canOpenPr:
+        hasBranch(worktree) &&
+        pullRequest?.state !== 'open' &&
+        newestFlySession(reads)?.activity === 'waiting',
     };
   }
 
