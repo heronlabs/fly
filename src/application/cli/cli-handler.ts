@@ -16,8 +16,8 @@ import {
 
 export type CliContext = {
   cwd: string;
-  // The checkout Electron opens as the app.
-  appDir: string;
+  // The checkout Electron opens as the app; null on the installed app.
+  appDir: string | null;
   // The Electron binary, which runs the CLI itself in Node mode.
   execPath: string;
   env: Record<string, string | undefined>;
@@ -147,7 +147,10 @@ export class CliHandler {
   private async open(target: string | undefined): Promise<number> {
     const folder = await this.launches.folder(this.path(target));
     const {appDir, execPath, env} = this.context;
-    if (!(await this.files.exists(join(appDir, 'out/main/index.js')))) {
+    if (
+      appDir !== null &&
+      !(await this.files.exists(join(appDir, 'out/main/index.js')))
+    ) {
       this.output.err(
         `Build do fly não encontrado em ${appDir}: rode pnpm build`,
       );
@@ -157,7 +160,9 @@ export class CliHandler {
     const appEnv = Object.fromEntries(
       Object.entries(env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE'),
     );
-    await this.processes.detached(execPath, [appDir, folder], appEnv);
+    // The installed app is its own entry point; a checkout is opened by path.
+    const args = appDir === null ? [folder] : [appDir, folder];
+    await this.processes.detached(execPath, args, appEnv);
     return 0;
   }
 

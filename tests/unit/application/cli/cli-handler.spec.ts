@@ -206,6 +206,23 @@ describe('CliHandler', () => {
   });
 
   describe('open', () => {
+    it('Should open the folder on the installed app without an app dir', async () => {
+      folder.mockResolvedValueOnce('/w');
+      const code = await cli({
+        appDir: null,
+        execPath: '/Applications/fly.app/Contents/MacOS/fly',
+        env: {ELECTRON_RUN_AS_NODE: '1', HOME: '/h'},
+      }).run(['/w']);
+
+      expect(code).toBe(0);
+      expect(detached).toHaveBeenCalledWith(
+        '/Applications/fly.app/Contents/MacOS/fly',
+        ['/w'],
+        {HOME: '/h'},
+      );
+      expect(exists).not.toHaveBeenCalled();
+    });
+
     it('Should open the app on the current folder, outside Node mode', async () => {
       expect(await cli().run([])).toBe(0);
       expect(folder).toHaveBeenCalledWith('/home/me/w');

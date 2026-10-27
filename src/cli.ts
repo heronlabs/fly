@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 
 import {homedir} from 'node:os';
-import {join, resolve} from 'node:path';
 
 import {CliHandler} from './application/cli/cli-handler';
+import {cliLayout} from './application/cli/cli-layout';
 import {LaunchService} from './core/services/launch-service';
 import {SessionService} from './core/services/session-service';
 import {CryptoIdGeneratorService} from './infrastructure/environment/crypto-id-generator-service';
@@ -20,13 +20,12 @@ const runner = new ExecCommandRunnerService();
 const files = new NodeFileStoreService();
 // The default tmux server, the one the app uses.
 const tmux = new TmuxSessionService(null, runner);
-// Electron's userData for productName "fly" on macOS; only read here.
-const userData = join(homedir(), 'Library', 'Application Support', 'fly');
+const {appDir, userData} = cliLayout(__dirname, homedir());
 
 void new CliHandler(
   {
     cwd: process.cwd(),
-    appDir: resolve(__dirname, '../..'),
+    appDir,
     execPath: process.execPath,
     env: process.env,
     interactive: process.stdin.isTTY === true,
