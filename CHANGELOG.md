@@ -1,3 +1,9 @@
+## v0.4.0 (2026-10-27)
+
+### Features
+
+* feat: package fly as an arm64 dmg with separate dev data (#25) (aacd63cc268c1771d16be804e532fe5ec33f885b)
+
 ## v0.3.1 (2026-10-27)
 
 ### Documentation
