@@ -112,4 +112,25 @@ describe('TmuxSessionService (real tmux)', () => {
     expect(Buffer.byteLength(prompt)).toBeGreaterThan(3000);
     expect(existsSync(join(cwd, 'pwned'))).toBe(false);
   }, 15_000);
+
+  it('Should type a line into the pane and submit it', async () => {
+    const out = join(cwd, 'typed.txt');
+    // The pane runs a recorder instead of claude, as the fake default-shell would.
+    tmux(
+      'new-session',
+      '-d',
+      '-s',
+      'it-type1',
+      '-c',
+      cwd,
+      `read line; printf %s "$line" > '${out}'; sleep 30`,
+    );
+
+    await service.sendText('it-type1', 'fly: x');
+
+    await vi.waitFor(() => expect(readFileSync(out, 'utf8')).toBe('fly: x'), {
+      timeout: 10_000,
+      interval: 100,
+    });
+  }, 15_000);
 });

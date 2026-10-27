@@ -139,6 +139,12 @@ export class TmuxSessionService extends SessionLauncher {
     );
   }
 
+  async sendText(name: string, text: string): Promise<void> {
+    const target = `=${name}:`;
+    await this.checked(['send-keys', '-t', target, '-l', text], 'send-keys');
+    await this.checked(['send-keys', '-t', target, 'Enter'], 'send-keys');
+  }
+
   async kill(name: string): Promise<void> {
     await this.checked(['kill-session', '-t', `=${name}`], 'kill-session');
   }

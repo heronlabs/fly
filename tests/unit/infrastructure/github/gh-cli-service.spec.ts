@@ -213,4 +213,100 @@ describe('GhCliService', () => {
       await expect(service.defaultBranch('/r')).rejects.toBe(error);
     });
   });
+
+  describe('create', () => {
+    const input = {
+      cwd: '/w',
+      title: 't',
+      bodyFile: '/u/tasks/t/pr-body.md',
+      base: 'main',
+      head: 'feat-x',
+    };
+
+    it('Should run gh pr create and parse the URL it prints', async () => {
+      run.mockResolvedValue({
+        code: 0,
+        stdout: 'https://github.com/o/r/pull/42\n',
+        stderr: '',
+      });
+
+      const result = await service.create(input);
+
+      expect(run).toHaveBeenCalledWith(
+        'gh',
+        [
+          'pr',
+          'create',
+          '--title',
+          't',
+          '--body-file',
+          '/u/tasks/t/pr-body.md',
+          '--base',
+          'main',
+          '--head',
+          'feat-x',
+        ],
+        {cwd: '/w', timeoutMs: 60_000},
+      );
+      expect(result).toEqual({
+        number: 42,
+        url: 'https://github.com/o/r/pull/42',
+      });
+    });
+
+    it('Should reject with stderr on a non-zero exit', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: 'boom\n'});
+
+      await expect(service.create(input)).rejects.toMatchObject({
+        message: 'gh pr create falhou: boom',
+      });
+    });
+
+    it('Should reject with stdout when it has no pull URL', async () => {
+      run.mockResolvedValue({code: 0, stdout: 'nothing here\n', stderr: ''});
+
+      await expect(service.create(input)).rejects.toMatchObject({
+        message: 'gh pr create falhou: nothing here',
+      });
+    });
+
+    it('Should reject when the pull URL is not at the end of stdout', async () => {
+      run.mockResolvedValue({
+        code: 0,
+        stdout: 'https://github.com/o/r/pull/42/files\n',
+        stderr: '',
+      });
+
+      await expect(service.create(input)).rejects.toThrow(
+        'gh pr create falhou: https://github.com/o/r/pull/42/files',
+      );
+    });
+
+    it('Should reject a failed exit even when stdout has a pull URL', async () => {
+      run.mockResolvedValue({
+        code: 1,
+        stdout: 'https://github.com/o/r/pull/42\n',
+        stderr: 'late\n',
+      });
+
+      await expect(service.create(input)).rejects.toThrow(
+        'gh pr create falhou: late',
+      );
+    });
+
+    it('Should throw the 60 s timeout message when gh was killed', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.create(input)).rejects.toThrow(
+        GH_MERGE_TIMEOUT_MESSAGE,
+      );
+    });
+
+    it('Should propagate other spawn errors unchanged', async () => {
+      const error = new Error('x');
+      run.mockRejectedValue(error);
+
+      await expect(service.create(input)).rejects.toBe(error);
+    });
+  });
 });

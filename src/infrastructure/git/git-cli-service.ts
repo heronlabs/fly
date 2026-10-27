@@ -31,6 +31,7 @@ const DIFF_ARGS = [
 const GIT_TIMEOUT_MS = 15_000;
 const FETCH_TIMEOUT_MS = 60_000;
 const WORKTREE_ADD_TIMEOUT_MS = 30_000;
+const PUSH_TIMEOUT_MS = 60_000;
 
 @Injectable()
 export class GitCliService extends VcsGateway {
@@ -199,6 +200,30 @@ export class GitCliService extends VcsGateway {
     );
     if (result.code !== 0) {
       throw new Error(`git falhou: ${result.stderr.trim()}`);
+    }
+  }
+
+  async headSha(worktreePath: string): Promise<string> {
+    return (await this.git(worktreePath, ['rev-parse', 'HEAD'])).trim();
+  }
+
+  async aheadCount(worktreePath: string, ref: string): Promise<number> {
+    const output = await this.git(worktreePath, [
+      'rev-list',
+      '--count',
+      `${ref}..HEAD`,
+    ]);
+    return Number(output);
+  }
+
+  async push(worktreePath: string, branch: string): Promise<void> {
+    const result = await this.run(
+      worktreePath,
+      ['push', '-u', 'origin', branch],
+      PUSH_TIMEOUT_MS,
+    );
+    if (result.code !== 0) {
+      throw new Error(`git push falhou: ${result.stderr.trim()}`);
     }
   }
 

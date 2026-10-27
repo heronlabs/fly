@@ -149,4 +149,88 @@ describe('TerminalService', () => {
     expect(processes[0]!.write).not.toHaveBeenCalled();
     expect(processes[0]!.kill).not.toHaveBeenCalled();
   });
+
+  describe('hasDraft', () => {
+    it('Should follow typing, submit and cancel per session', () => {
+      const id = service.attach('s1', size, sink);
+
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'ab\rcd');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'x\x03');
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should look only after the last submit or cancel', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, 'a\x03b\r');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'a\rb\x03');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\rx\x03y');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, 'a\x03b\rc');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should leave the draft unchanged for control-only data', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[A');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'abc');
+      service.write(id, '\x1b[A');
+      service.write(id, '\x7f\n\t');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should ignore escape sequences, also after a submit', () => {
+      const id = service.attach('s1', size, sink);
+
+      service.write(id, '\x1b[1;5C\x1b[?25h\x1b[ q');
+      service.write(id, '\x1bOA\x1bOP');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, 'ab\r\x1b[A\x1bOB');
+      expect(service.hasDraft('s1')).toBe(false);
+      service.write(id, '\x1b[Ax');
+      expect(service.hasDraft('s1')).toBe(true);
+      service.write(id, '\x1bOA');
+      expect(service.hasDraft('s1')).toBe(true);
+    });
+
+    it('Should keep drafts per session, and across detach', () => {
+      const a = service.attach('a', size, sink);
+      const b = service.attach('b', size, sink);
+
+      service.write(a, 'x');
+      expect(service.hasDraft('a')).toBe(true);
+      expect(service.hasDraft('b')).toBe(false);
+      service.write(b, 'y');
+      service.write(b, '\r');
+      service.detach(a);
+      expect(service.hasDraft('a')).toBe(true);
+      expect(service.hasDraft('b')).toBe(false);
+    });
+
+    it('Should share the draft between terminals of one session', () => {
+      const first = service.attach('s1', size, sink);
+      const second = service.attach('s1', size, sink);
+
+      service.write(first, 'x');
+      service.write(second, '\r');
+
+      expect(service.hasDraft('s1')).toBe(false);
+    });
+
+    it('Should return false for an unknown session and ignore writes to unknown terminals', () => {
+      service.write('nope', 'x');
+
+      expect(service.hasDraft('nope')).toBe(false);
+    });
+  });
 });

@@ -66,6 +66,9 @@ describe('FileService', () => {
     validBranchName: vi.fn(),
     branchExists: vi.fn(),
     addWorktree: vi.fn(),
+    headSha: vi.fn(),
+    aheadCount: vi.fn(),
+    push: vi.fn(),
     ensureIgnored: vi.fn(),
   };
   const service = new FileService(

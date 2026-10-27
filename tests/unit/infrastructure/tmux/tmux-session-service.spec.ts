@@ -329,6 +329,52 @@ describe('TmuxSessionService', () => {
     });
   });
 
+  describe('sendText', () => {
+    it('Should type the text literally, then press Enter, on the session target', async () => {
+      run.mockResolvedValue(ok());
+
+      await onSocket().sendText('fly-a1b2c3', 'fly: x');
+
+      expect(run.mock.calls).toEqual([
+        [
+          'tmux',
+          ['-L', 'sock', 'send-keys', '-t', '=fly-a1b2c3:', '-l', 'fly: x'],
+          timeout,
+        ],
+        [
+          'tmux',
+          ['-L', 'sock', 'send-keys', '-t', '=fly-a1b2c3:', 'Enter'],
+          timeout,
+        ],
+      ]);
+    });
+
+    it('Should not press Enter when typing fails', async () => {
+      run.mockResolvedValueOnce({code: 1, stdout: '', stderr: 'no pane\n'});
+
+      await expect(plain().sendText('n', 'x')).rejects.toThrow('no pane');
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('Should name send-keys when typing fails without stderr', async () => {
+      run.mockResolvedValueOnce({code: 1, stdout: '', stderr: ''});
+
+      await expect(plain().sendText('n', 'x')).rejects.toThrow(
+        'tmux send-keys failed',
+      );
+    });
+
+    it('Should name send-keys when Enter fails without stderr', async () => {
+      run
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce({code: 1, stdout: '', stderr: ''});
+
+      await expect(plain().sendText('n', 'x')).rejects.toThrow(
+        'tmux send-keys failed',
+      );
+    });
+  });
+
   describe('kill', () => {
     it('Should kill the exact session', async () => {
       run.mockResolvedValue(ok());
