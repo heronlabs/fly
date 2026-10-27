@@ -51,6 +51,8 @@ const classifyCheck = (entry: unknown): Check | null => {
 const stringOrNull = (value: unknown): string | null =>
   typeof value === 'string' ? value : null;
 
+const JOB_URL = /\/actions\/runs\/(\d+)\/job\/(\d+)$/;
+
 const mapCheckRun = (entry: unknown): CheckRun | null => {
   const state = classifyCheck(entry);
   if (!state || !isRecord(entry)) {
@@ -61,10 +63,16 @@ const mapCheckRun = (entry: unknown): CheckRun | null => {
   if (name === null) {
     return null;
   }
+  const url = stringOrNull(isRun ? entry.detailsUrl : entry.targetUrl);
+  const ids = isRun ? JOB_URL.exec(String(url)) : null;
   return {
     name,
     state,
-    url: stringOrNull(isRun ? entry.detailsUrl : entry.targetUrl),
+    url,
+    kind: isRun ? 'run' : 'status',
+    conclusion: isRun ? stringOrNull(entry.conclusion) : null,
+    runId: ids?.[1] ?? null,
+    jobId: ids?.[2] ?? null,
   };
 };
 
@@ -120,6 +128,8 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
     checks: aggregateChecks(entry.statusCheckRollup),
     title: stringOrNull(entry.title) ?? '',
     checkRuns: mapCheckRuns(entry.statusCheckRollup),
+    headSha: stringOrNull(entry.headRefOid),
+    behind: entry.mergeStateStatus === 'BEHIND',
   };
 };
 

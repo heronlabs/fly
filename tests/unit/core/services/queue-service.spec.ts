@@ -90,6 +90,8 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   checks: 'passing',
   title: 'Add x',
   checkRuns: [],
+  headSha: null,
+  behind: false,
   ...over,
 });
 

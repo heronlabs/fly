@@ -22,6 +22,8 @@ const run = (status: string, conclusion: string | null) => ({
   conclusion,
 });
 const ctx = (state: string) => ({__typename: 'StatusContext', state});
+const RUN_IDS_NONE = {kind: 'run', runId: null, jobId: null};
+const STATUS = {kind: 'status', conclusion: null, runId: null, jobId: null};
 
 describe('parsePrList', () => {
   it('Should map the basic fields', () => {
@@ -36,6 +38,8 @@ describe('parsePrList', () => {
       checks: 'none',
       title: 'Add x',
       checkRuns: [],
+      headSha: null,
+      behind: false,
     });
   });
 
@@ -54,18 +58,117 @@ describe('parsePrList', () => {
       ],
     });
     expect(checkRuns).toEqual([
-      {name: 'build', state: 'passing', url: 'u1'},
-      {name: 'ci/legacy', state: 'pending', url: null},
-      {name: 'lint', state: 'pending', url: null},
-      {name: 'test', state: 'failing', url: 'u4'},
+      {
+        ...RUN_IDS_NONE,
+        name: 'build',
+        state: 'passing',
+        url: 'u1',
+        conclusion: 'SUCCESS',
+      },
+      {...STATUS, name: 'ci/legacy', state: 'pending', url: null},
+      {
+        ...RUN_IDS_NONE,
+        name: 'lint',
+        state: 'pending',
+        url: null,
+        conclusion: null,
+      },
+      {
+        ...RUN_IDS_NONE,
+        name: 'test',
+        state: 'failing',
+        url: 'u4',
+        conclusion: 'FAILURE',
+      },
     ]);
+  });
+
+  it('Should read the run and job ids from the details url of a CheckRun', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [
+        {
+          ...run('COMPLETED', 'CANCELLED'),
+          name: 'build',
+          detailsUrl:
+            'https://github.com/o/r/actions/runs/40097015929/job/121586961078',
+        },
+      ],
+    });
+    expect(checkRuns).toEqual([
+      {
+        kind: 'run',
+        name: 'build',
+        state: 'failing',
+        url: 'https://github.com/o/r/actions/runs/40097015929/job/121586961078',
+        conclusion: 'CANCELLED',
+        runId: '40097015929',
+        jobId: '121586961078',
+      },
+    ]);
+  });
+
+  it.each([
+    'https://github.com/o/r/actions/runs/1',
+    'https://ci.example/x/actions/runs/12/job/ab',
+    'https://github.com/o/r/actions/runs/12/job/34/extra',
+    'https://github.com/o/r/runs/12/job/34',
+    'prefix/actions/runs/12/jobs/34',
+  ])('Should leave the ids null when the details url is %s', detailsUrl => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [
+        {...run('COMPLETED', 'FAILURE'), name: 'n', detailsUrl},
+      ],
+    });
+    expect(checkRuns[0]).toMatchObject({runId: null, jobId: null});
+  });
+
+  it('Should map a non-string conclusion of a CheckRun to null', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [{...run('IN_PROGRESS', null), name: 'n'}],
+    });
+    expect(checkRuns[0]!.conclusion).toBeNull();
+    const other = parse({
+      statusCheckRollup: [{...run('COMPLETED', 5 as never), name: 'n'}],
+    });
+    expect(other.checkRuns[0]!.conclusion).toBeNull();
+  });
+
+  it('Should map headRefOid to headSha and anything else to null', () => {
+    expect(parse({headRefOid: 'abc123'}).headSha).toBe('abc123');
+    expect(parse({headRefOid: 5}).headSha).toBeNull();
+    expect(parse({headRefOid: undefined}).headSha).toBeNull();
+  });
+
+  it.each([
+    ['BEHIND', true],
+    ['CLEAN', false],
+    ['DIRTY', false],
+    [null, false],
+    [undefined, false],
+  ])('Should map mergeStateStatus %s to behind %s', (status, expected) => {
+    expect(parse({mergeStateStatus: status}).behind).toBe(expected);
+  });
+
+  it('Should not read ids from the target url of a StatusContext', () => {
+    const {checkRuns} = parse({
+      statusCheckRollup: [
+        {
+          ...ctx('FAILURE'),
+          context: 'c',
+          targetUrl: 'https://github.com/o/r/actions/runs/1/job/2',
+        },
+      ],
+    });
+    expect(checkRuns[0]).toMatchObject({runId: null, jobId: null});
   });
 
   it('Should read StatusContext url from targetUrl', () => {
     const {checkRuns} = parse({
       statusCheckRollup: [{...ctx('SUCCESS'), context: 'c', targetUrl: 't'}],
     });
-    expect(checkRuns).toEqual([{name: 'c', state: 'passing', url: 't'}]);
+    expect(checkRuns).toEqual([
+      {...STATUS, name: 'c', state: 'passing', url: 't'},
+    ]);
   });
 
   it('Should not read a CheckRun name from context nor a StatusContext name from name', () => {

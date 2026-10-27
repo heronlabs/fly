@@ -675,6 +675,8 @@ describe('AppShell', () => {
               review: 'none',
               checks: 'pending',
               checkRuns: [],
+              headSha: null,
+              behind: false,
             },
           },
         ],

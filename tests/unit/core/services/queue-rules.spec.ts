@@ -43,6 +43,8 @@ const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   checks: 'passing',
   title: 'Add x',
   checkRuns: [],
+  headSha: null,
+  behind: false,
   ...overrides,
 });
 

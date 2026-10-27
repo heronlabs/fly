@@ -17,6 +17,10 @@ export type CheckRun = {
   name: string;
   state: 'passing' | 'pending' | 'failing';
   url: string | null;
+  kind: 'run' | 'status';
+  conclusion: string | null;
+  runId: string | null;
+  jobId: string | null;
 };
 
 export type PullRequest = {
@@ -30,6 +34,18 @@ export type PullRequest = {
   checks: ChecksState;
   title: string;
   checkRuns: CheckRun[];
+  headSha: string | null;
+  behind: boolean;
+};
+
+export type ReviewComment = {
+  id: string;
+  author: string;
+  body: string;
+  path: string | null;
+  line: number | null;
+  url: string;
+  createdAt: number;
 };
 
 // What the PR tab shows of a worktree's task record.

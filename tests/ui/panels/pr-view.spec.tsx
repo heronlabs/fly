@@ -9,6 +9,8 @@ import type {
 } from '../../../src/core/domain/queue';
 import type {ReceiptResult} from '../../../src/core/domain/transcript';
 
+const RUN = {kind: 'run', conclusion: null, runId: null, jobId: null} as const;
+
 const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   number: 12,
   url: 'https://github.com/o/r/pull/12',
@@ -20,9 +22,11 @@ const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   checks: 'failing',
   title: 'Add diff panel',
   checkRuns: [
-    {name: 'lint', state: 'passing', url: 'https://ci/lint'},
-    {name: 'test', state: 'failing', url: null},
+    {...RUN, name: 'lint', state: 'passing', url: 'https://ci/lint'},
+    {...RUN, name: 'test', state: 'failing', url: null},
   ],
+  headSha: null,
+  behind: false,
   ...overrides,
 });
 
@@ -106,7 +110,9 @@ describe('PrView', () => {
     ['passing', 'ok'],
     ['failing', 'falhou'],
   ] as const)('Should word the %s check as %s', (state, word) => {
-    renderView(queueOf(pr({checkRuns: [{name: 'x', state, url: null}]})));
+    renderView(
+      queueOf(pr({checkRuns: [{...RUN, name: 'x', state, url: null}]})),
+    );
     expect(screen.getByText(word)).toBeVisible();
   });
 

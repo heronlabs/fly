@@ -2,6 +2,7 @@ import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {
   GH_AUTH_MESSAGE,
   GH_MERGE_TIMEOUT_MESSAGE,
+  GH_RERUN_TIMEOUT_MESSAGE,
   GH_TIMEOUT_MESSAGE,
 } from '../../../../src/core/interfaces/pr-gateway';
 import {GhCliService} from '../../../../src/infrastructure/github/gh-cli-service';
@@ -40,7 +41,7 @@ describe('GhCliService', () => {
         '--limit',
         '50',
         '--json',
-        'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title',
+        'number,url,headRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,title,headRefOid,mergeStateStatus',
       ],
       {cwd: '/r', timeoutMs: 15_000},
     );
@@ -56,6 +57,8 @@ describe('GhCliService', () => {
         checks: 'none',
         title: '',
         checkRuns: [],
+        headSha: null,
+        behind: false,
       },
     ]);
   });
@@ -307,6 +310,280 @@ describe('GhCliService', () => {
       run.mockRejectedValue(error);
 
       await expect(service.create(input)).rejects.toBe(error);
+    });
+  });
+
+  describe('failedLog', () => {
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should read the failed log of the job with a 60 s timeout', async () => {
+      run.mockResolvedValue({code: 0, stdout: 'a\nb\n', stderr: ''});
+
+      expect(await service.failedLog('/r', '121586961078')).toBe('a\nb\n');
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'gh',
+        ['run', 'view', '--job', '121586961078', '--log-failed'],
+        {cwd: '/r', timeoutMs: 60_000},
+      );
+    });
+
+    it('Should return null when gh has no log for the job', async () => {
+      run.mockResolvedValue({
+        code: 1,
+        stdout: '',
+        stderr: 'log not found: 121586961078\n',
+      });
+
+      expect(await service.failedLog('/r', '121586961078')).toBeNull();
+    });
+
+    it('Should return null on empty output', async () => {
+      run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
+
+      expect(await service.failedLog('/r', '1')).toBeNull();
+    });
+
+    it('Should reject with the trimmed stderr on any other failure', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: 'HTTP 401\n'});
+
+      await expect(service.failedLog('/r', '1')).rejects.toThrow(/^HTTP 401$/);
+    });
+
+    it('Should reject with a default message when stderr is empty', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ' '});
+
+      await expect(service.failedLog('/r', '1')).rejects.toThrow(
+        'gh run view failed',
+      );
+    });
+
+    it('Should reject with the 60 s timeout message when gh was killed', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.failedLog('/r', '1')).rejects.toThrow(
+        GH_MERGE_TIMEOUT_MESSAGE,
+      );
+    });
+
+    it('Should propagate other spawn errors unchanged', async () => {
+      const error = new Error('x');
+      run.mockRejectedValue(error);
+
+      await expect(service.failedLog('/r', '1')).rejects.toBe(error);
+    });
+  });
+
+  describe('rerun', () => {
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it('Should rerun the failed jobs of the run with a 30 s timeout', async () => {
+      run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
+
+      await expect(service.rerun('/r', '40097015929')).resolves.toBeUndefined();
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'gh',
+        ['run', 'rerun', '40097015929', '--failed'],
+        {cwd: '/r', timeoutMs: 30_000},
+      );
+    });
+
+    it('Should reject with the trimmed stderr on a non-zero exit', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: 'nope\n'});
+
+      await expect(service.rerun('/r', '1')).rejects.toThrow(/^nope$/);
+    });
+
+    it('Should reject with a default message when stderr is empty', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: ''});
+
+      await expect(service.rerun('/r', '1')).rejects.toThrow(
+        'gh run rerun failed',
+      );
+    });
+
+    it('Should reject with the 30 s timeout message when gh was killed', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.rerun('/r', '1')).rejects.toThrow(
+        GH_RERUN_TIMEOUT_MESSAGE,
+      );
+      expect(GH_RERUN_TIMEOUT_MESSAGE).toBe('gh não respondeu em 30 s');
+    });
+
+    it('Should propagate other spawn errors unchanged', async () => {
+      const error = new Error('x');
+      run.mockRejectedValue(error);
+
+      await expect(service.rerun('/r', '1')).rejects.toBe(error);
+    });
+  });
+
+  describe('reviewComments', () => {
+    const view = {
+      reviews: [
+        {
+          id: 'PRR_1',
+          author: {login: 'rev'},
+          body: 'review body',
+          submittedAt: '2026-10-27T10:00:00Z',
+          url: 'https://github.com/o/r/pull/42#pullrequestreview-1',
+        },
+      ],
+      comments: [
+        {
+          id: 'IC_1',
+          author: {login: 'talker'},
+          body: 'conversation',
+          createdAt: '2026-10-27T09:00:00Z',
+          url: 'https://github.com/o/r/pull/42#issuecomment-1',
+        },
+      ],
+    };
+    const lines = [
+      {
+        id: 555,
+        user: {login: 'liner'},
+        body: 'line comment',
+        path: 'src/a.ts',
+        line: 7,
+        original_line: 3,
+        html_url: 'https://github.com/o/r/pull/42#discussion_r555',
+        created_at: '2026-10-27T11:00:00Z',
+      },
+    ];
+
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    const reply = (first: string, second: string) => {
+      run
+        .mockResolvedValueOnce({code: 0, stdout: first, stderr: ''})
+        .mockResolvedValueOnce({code: 0, stdout: second, stderr: ''});
+    };
+
+    it('Should call gh pr view and gh api in the repo with a 15 s timeout', async () => {
+      reply('{}', '[]');
+
+      await service.reviewComments('/r', 42);
+
+      expect(run).toHaveBeenNthCalledWith(
+        1,
+        'gh',
+        ['pr', 'view', '42', '--json', 'reviews,comments'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+      expect(run).toHaveBeenNthCalledWith(
+        2,
+        'gh',
+        ['api', 'repos/{owner}/{repo}/pulls/42/comments?per_page=100'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+    });
+
+    it('Should merge both sources sorted by createdAt', async () => {
+      reply(JSON.stringify(view), JSON.stringify(lines));
+
+      expect(await service.reviewComments('/r', 42)).toEqual([
+        {
+          id: 'IC_1',
+          author: 'talker',
+          body: 'conversation',
+          path: null,
+          line: null,
+          url: 'https://github.com/o/r/pull/42#issuecomment-1',
+          createdAt: Date.parse('2026-10-27T09:00:00Z'),
+        },
+        {
+          id: 'PRR_1',
+          author: 'rev',
+          body: 'review body',
+          path: null,
+          line: null,
+          url: 'https://github.com/o/r/pull/42#pullrequestreview-1',
+          createdAt: Date.parse('2026-10-27T10:00:00Z'),
+        },
+        {
+          id: '555',
+          author: 'liner',
+          body: 'line comment',
+          path: 'src/a.ts',
+          line: 7,
+          url: 'https://github.com/o/r/pull/42#discussion_r555',
+          createdAt: Date.parse('2026-10-27T11:00:00Z'),
+        },
+      ]);
+    });
+
+    it.each([
+      ['{', '[]'],
+      ['{}', '{'],
+      ['[]', '[]'],
+      ['{}', '{}'],
+      ['null', '[]'],
+      ['{}', 'null'],
+    ])('Should reject unexpected JSON (%s, %s)', async (first, second) => {
+      reply(first, second);
+
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(
+        'Resposta inesperada do GitHub',
+      );
+    });
+
+    it('Should reject with the trimmed stderr when a call fails', async () => {
+      run.mockResolvedValueOnce({code: 1, stdout: '', stderr: 'boom\n'});
+
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(/^boom$/);
+      expect(run).toHaveBeenCalledOnce();
+    });
+
+    it('Should reject with the trimmed stderr when the api call fails', async () => {
+      run
+        .mockResolvedValueOnce({code: 0, stdout: '{}', stderr: ''})
+        .mockResolvedValueOnce({code: 1, stdout: '', stderr: 'api boom\n'});
+
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(
+        /^api boom$/,
+      );
+    });
+
+    it('Should reject with a default message when stderr is empty', async () => {
+      run.mockResolvedValueOnce({code: 1, stdout: '', stderr: ''});
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(
+        'gh pr view failed',
+      );
+
+      run
+        .mockResolvedValueOnce({code: 0, stdout: '{}', stderr: ''})
+        .mockResolvedValueOnce({code: 1, stdout: '', stderr: ''});
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(
+        'gh api failed',
+      );
+    });
+
+    it('Should reject with the 15 s timeout message when gh was killed', async () => {
+      run.mockRejectedValueOnce(Object.assign(new Error('x'), {killed: true}));
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(
+        GH_TIMEOUT_MESSAGE,
+      );
+
+      run
+        .mockResolvedValueOnce({code: 0, stdout: '{}', stderr: ''})
+        .mockRejectedValueOnce(Object.assign(new Error('x'), {killed: true}));
+      await expect(service.reviewComments('/r', 42)).rejects.toThrow(
+        GH_TIMEOUT_MESSAGE,
+      );
+    });
+
+    it('Should propagate other spawn errors unchanged', async () => {
+      const error = new Error('x');
+      run.mockRejectedValueOnce(error);
+
+      await expect(service.reviewComments('/r', 42)).rejects.toBe(error);
     });
   });
 });
