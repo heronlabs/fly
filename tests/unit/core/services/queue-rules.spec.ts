@@ -235,18 +235,6 @@ describe('worktreeStatus', () => {
   });
 });
 
-describe('worktreeStatus with an unrecognised activity', () => {
-  it('Should add no candidate for it', () => {
-    expect(
-      worktreeStatus({
-        activities: ['' as Activity],
-        pullRequest: null,
-        task: null,
-      }),
-    ).toBe('idle');
-  });
-});
-
 describe('worktreeStatus with a task record', () => {
   const task = (phase: TaskPhase): TaskRecord => ({
     id: 't1',

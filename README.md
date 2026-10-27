@@ -15,8 +15,9 @@
 Desktop app for driving agent-based development across many repositories at
 once. Open it on a workspace folder, see every repo and every worktree, click a
 worktree to get its [Claude Code](https://claude.ai/code) session, start a new
-task and have [supera](https://github.com/heronlabs/supera) ship it, and watch
-a queue of what is waiting for you versus what an agent is still working on.
+task that gets its own worktree and session, open its PR with "Abrir PR", let
+fly follow CI and reviews, merge with "Fazer merge" (which also cleans up), and
+watch a queue of what is waiting for you versus what an agent is still working on.
 Built with Electron, NestJS in the main process, React in the renderer, tmux
 and xterm.js. macOS first.
 
@@ -63,9 +64,9 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 | Tool | Why |
 |------|-----|
 | `git` | Repo and worktree discovery; `git diff` for the diff panel, `git status` for the explorer, `git grep` for the search |
-| `gh` | Pull request status and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
+| `gh` | Pull request status, `gh pr create`, failed-job logs and `gh run rerun`, review comments, and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
-| `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
+| `claude` | Claude Code CLI, run inside each session |
 | `code` | VSCode on `PATH`, used by "Abrir no VSCode" |
 
 fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or

@@ -142,7 +142,8 @@ export class QueueService {
         const shared =
           externalCwds.filter(cwd => cwd === session.cwd).length > 1;
         const activity = shared
-          ? 'unknown'
+          ? // Stryker disable next-line StringLiteral: worktreeStatus reads any activity other than waiting, running or scheduled as unknown, so an empty string yields the same status
+            'unknown'
           : await this.readExternal(session, flyIds, now);
         return {worktreeId, session, activity};
       }),
@@ -188,10 +189,12 @@ export class QueueService {
       if (found === null) return null;
       // Stryker disable next-line ConditionalExpression,StringLiteral,BlockStatement: classifyActivity('ambiguous') also yields 'unknown' (no phase, wakeupAt undefined), so the guard only makes the intent explicit.
       if (found === 'ambiguous') {
+        // Stryker disable next-line StringLiteral: worktreeStatus reads any activity other than waiting, running or scheduled as unknown, so an empty string yields the same status
         return 'unknown';
       }
       return classifyActivity(found, now);
     } catch {
+      // Stryker disable next-line StringLiteral: worktreeStatus reads any activity other than waiting, running or scheduled as unknown, so an empty string yields the same status
       return 'unknown';
     }
   }
@@ -202,7 +205,6 @@ export class QueueService {
     reads: SessionRead[],
     records: TaskRecord[],
   ): Promise<WorktreeQueue> {
-    // Stryker disable next-line ArrayDeclaration: worktreeStatus ignores an activity it does not recognise, so a junk element reads like none
     const activities = reads.flatMap(r => r.activity ?? []);
     const pullRequest = this.pullRequestOf(workspace, worktree);
     // A record left by another branch at this path is stale: not this task's.

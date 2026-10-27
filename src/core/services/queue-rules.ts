@@ -89,7 +89,7 @@ export const worktreeStatus = (input: {
       // pullRequestStatus returns for an open PR (failed, ready, waiting, ci) ranks
       // at or above ci in PRECEDENCE, so a ci candidate would never change the result.
       if (!prOpen) candidates.add('engineer');
-    } else if (activity === 'unknown') candidates.add('unknown');
+    } else candidates.add('unknown');
   }
   return PRECEDENCE.find(status => candidates.has(status)) ?? 'idle';
 };
