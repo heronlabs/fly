@@ -35,6 +35,7 @@ export const claudeCommand = (input: {
 }): string => {
   const model = input.model ? ` --model ${input.model}` : '';
   const base = `claude --dangerously-skip-permissions --session-id ${input.sessionId}${model}`;
-  if (input.promptFile) return `${base} "$(cat "$${PROMPT_FILE_ENV}")"; exit`;
+  if (input.promptFile)
+    return `${base} -- "$(cat "$${PROMPT_FILE_ENV}")"; exit`;
   return input.withPrompt ? `${base} "$${PROMPT_ENV}"; exit` : `${base}; exit`;
 };

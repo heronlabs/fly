@@ -41,12 +41,12 @@ describe('claudeCommand', () => {
     expect(
       claudeCommand({sessionId: 'u', promptFile: true, model: 'opus'}),
     ).toBe(
-      'claude --dangerously-skip-permissions --session-id u --model opus "$(cat "$FLY_PROMPT_FILE")"; exit',
+      'claude --dangerously-skip-permissions --session-id u --model opus -- "$(cat "$FLY_PROMPT_FILE")"; exit',
     ));
 
   it('Should leave out --model without a model', () => {
     expect(claudeCommand({sessionId: 'u', promptFile: true})).toBe(
-      'claude --dangerously-skip-permissions --session-id u "$(cat "$FLY_PROMPT_FILE")"; exit',
+      'claude --dangerously-skip-permissions --session-id u -- "$(cat "$FLY_PROMPT_FILE")"; exit',
     );
     expect(claudeCommand({sessionId: 'u', model: null})).toBe(
       'claude --dangerously-skip-permissions --session-id u; exit',

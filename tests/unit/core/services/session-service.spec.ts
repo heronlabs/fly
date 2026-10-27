@@ -229,7 +229,7 @@ describe('SessionService', () => {
       name: 'talon-src-abc123',
       cwd: '/r/talon/src',
       command:
-        'claude --dangerously-skip-permissions --session-id u1 --model haiku "$(cat "$FLY_PROMPT_FILE")"; exit',
+        'claude --dangerously-skip-permissions --session-id u1 --model haiku -- "$(cat "$FLY_PROMPT_FILE")"; exit',
       env: {FLY_PROMPT_FILE: '/u/tasks/t/prompt.md'},
       options: {
         '@fly_session_id': 'u1',
