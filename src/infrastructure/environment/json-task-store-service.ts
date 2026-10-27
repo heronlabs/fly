@@ -16,6 +16,7 @@ const isRecord = (value: unknown): value is TaskRecord => {
 export class JsonTaskStoreService extends TaskStore {
   private readonly path: string;
   private records: TaskRecord[] | null = null;
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly fileStore: FileStore,
@@ -25,36 +26,53 @@ export class JsonTaskStoreService extends TaskStore {
     this.path = join(dir, TASKS_FILE);
   }
 
-  async list(): Promise<TaskRecord[]> {
-    return [...(await this.load())];
+  list(): Promise<TaskRecord[]> {
+    return this.serial(async () => [...(await this.load())]);
   }
 
-  async get(worktreePath: string): Promise<TaskRecord | null> {
-    const records = await this.load();
-    return records.find(r => r.worktreePath === worktreePath) ?? null;
+  get(worktreePath: string): Promise<TaskRecord | null> {
+    return this.serial(async () => {
+      const records = await this.load();
+      return records.find(r => r.worktreePath === worktreePath) ?? null;
+    });
   }
 
-  async save(record: TaskRecord): Promise<void> {
-    const records = await this.load();
-    const index = records.findIndex(
-      r => r.worktreePath === record.worktreePath,
+  save(record: TaskRecord): Promise<void> {
+    return this.serial(async () => {
+      const records = await this.load();
+      const index = records.findIndex(
+        r => r.worktreePath === record.worktreePath,
+      );
+      if (index === -1) {
+        records.push(record);
+      } else {
+        records[index] = record;
+      }
+      await this.persist(records);
+    });
+  }
+
+  remove(worktreePath: string): Promise<void> {
+    return this.serial(async () => {
+      const records = await this.load();
+      const index = records.findIndex(r => r.worktreePath === worktreePath);
+      if (index === -1) {
+        return;
+      }
+      records.splice(index, 1);
+      await this.persist(records);
+    });
+  }
+
+  // One operation at a time, in call order: the first load happens once and
+  // writes never overlap. A failed operation does not block the next one.
+  private serial<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(operation);
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
     );
-    if (index === -1) {
-      records.push(record);
-    } else {
-      records[index] = record;
-    }
-    await this.persist(records);
-  }
-
-  async remove(worktreePath: string): Promise<void> {
-    const records = await this.load();
-    const index = records.findIndex(r => r.worktreePath === worktreePath);
-    if (index === -1) {
-      return;
-    }
-    records.splice(index, 1);
-    await this.persist(records);
+    return result;
   }
 
   private async load(): Promise<TaskRecord[]> {

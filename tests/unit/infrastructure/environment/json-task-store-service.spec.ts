@@ -185,4 +185,73 @@ describe('JsonTaskStoreService', () => {
 
     expect(await store.list()).toHaveLength(1);
   });
+
+  it('Should keep every record when the first calls run concurrently', async () => {
+    withFile('[]');
+    const a = record('/r/.worktrees/a');
+    const b = record('/r/.worktrees/b', 'b');
+
+    await Promise.all([store.save(a), store.save(b)]);
+
+    expect(readText).toHaveBeenCalledTimes(1);
+    expect(written()).toEqual([a, b]);
+    expect(await store.list()).toEqual([a, b]);
+  });
+
+  it('Should write in call order even when an earlier write finishes later', async () => {
+    const releases: Array<() => void> = [];
+    writeText.mockImplementation(
+      () => new Promise<void>(resolve => releases.push(resolve)),
+    );
+    const a = record('/r/.worktrees/a');
+    const b = record('/r/.worktrees/b', 'b');
+
+    const first = store.save(a);
+    const second = store.save(b);
+    // Let the chain reach the first write, then free whatever is pending.
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+      releases.splice(0).forEach(release => release());
+    }
+    await Promise.all([first, second]);
+
+    expect(writeText.mock.calls.map(call => JSON.parse(call[1]))).toEqual([
+      [a],
+      [a, b],
+    ]);
+    expect(releases).toHaveLength(0);
+  });
+
+  it('Should not start a write before the previous one finished', async () => {
+    let active = 0;
+    let overlap = false;
+    writeText.mockImplementation(async () => {
+      active++;
+      overlap ||= active > 1;
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+    });
+
+    await Promise.all([
+      store.save(record('/r/.worktrees/a')),
+      store.save(record('/r/.worktrees/b', 'b')),
+      store.remove('/r/.worktrees/a'),
+    ]);
+
+    expect(overlap).toBe(false);
+    expect(written()).toEqual([record('/r/.worktrees/b', 'b')]);
+  });
+
+  it('Should still run the next call after a write failed', async () => {
+    writeText.mockRejectedValueOnce(new Error('ENOSPC'));
+    const a = record('/r/.worktrees/a');
+    const b = record('/r/.worktrees/b', 'b');
+
+    const failed = store.save(a);
+    const next = store.save(b);
+
+    await expect(failed).rejects.toThrow('ENOSPC');
+    await expect(next).resolves.toBeUndefined();
+    expect(written()).toEqual([a, b]);
+  });
 });
