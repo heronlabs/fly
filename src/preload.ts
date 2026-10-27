@@ -79,6 +79,7 @@ const api: FlyApi = {
   },
   pullRequests: {
     merge: worktreeId => ipcRenderer.invoke(channels.prMerge, worktreeId),
+    open: worktreeId => ipcRenderer.invoke(channels.prOpen, worktreeId),
   },
   tasks: {
     create: input => ipcRenderer.invoke(channels.taskCreate, input),

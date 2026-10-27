@@ -101,6 +101,8 @@ export type FlyState = {
   applyDiff(result: WorktreeDiff): void;
   clearDiff(): void;
   mergePullRequest(worktreeId: string): Promise<void>;
+  // Rejects with the refusal so the PR tab can show it.
+  openPullRequest(worktreeId: string): Promise<void>;
   setDiffPanel(mode: DiffPanelMode): Promise<void>;
   openFile(worktreeId: string, path: string): Promise<void>;
   closeFile(worktreeId: string, path: string): void;
@@ -480,6 +482,10 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     } finally {
       set({merging: false});
     }
+  },
+
+  openPullRequest(worktreeId) {
+    return window.fly.pullRequests.open(worktreeId);
   },
 
   async setDiffPanel(mode) {

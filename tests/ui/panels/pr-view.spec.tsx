@@ -45,6 +45,7 @@ const renderView = (
     merging?: boolean;
     onMerge?: () => void;
     onOpenExternal?: (url: string) => void;
+    onOpenPr?: () => Promise<void>;
   } = {},
 ) =>
   render(
@@ -54,10 +55,21 @@ const renderView = (
       merging={options.merging ?? false}
       onMerge={options.onMerge ?? (() => {})}
       onOpenExternal={options.onOpenExternal ?? (() => {})}
+      onOpenPr={options.onOpenPr ?? (async () => {})}
     />,
   );
 
 describe('PrView', () => {
+  it('Should render the task section above the PR section', () => {
+    const queue = {...queueOf(pr()), canOpenPr: true};
+    renderView(queue);
+    const button = screen.getByRole('button', {name: 'Abrir PR'});
+    const title = screen.getByText('#12 Add diff panel');
+    expect(
+      button.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('Should say there is no open PR', () => {
     renderView(null);
     expect(screen.getByText('Sem PR aberto')).toBeVisible();
@@ -214,6 +226,7 @@ describe('PrView', () => {
         merging={false}
         onMerge={() => {}}
         onOpenExternal={() => {}}
+        onOpenPr={async () => {}}
       />
     );
     const {rerender} = render(view(queueOf(pr())));
@@ -234,6 +247,7 @@ describe('PrView', () => {
         merging={false}
         onMerge={onMerge}
         onOpenExternal={() => {}}
+        onOpenPr={async () => {}}
       />
     );
     const {rerender} = render(view('ready'));
