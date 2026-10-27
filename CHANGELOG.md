@@ -1,3 +1,9 @@
+## v0.6.0 (2026-10-27)
+
+### Features
+
+* feat: open PRs through the session with the Abrir PR button (#27) (a1922edbc87d0f96a7364d6db22b0b0ada9b67ba)
+
 ## v0.5.0 (2026-10-27)
 
 ### Features
