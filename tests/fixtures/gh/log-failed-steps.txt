@@ -1,0 +1,34 @@
+test	Run pnpm test:unit	﻿2026-10-20T12:01:00.0000000Z ##[group]Run pnpm test:unit
+test	Run pnpm test:unit	2026-10-20T12:01:01.0000001Z ^[[36;1mpnpm test:unit^[[0m
+test	Run pnpm test:unit	2026-10-20T12:01:02.0000002Z shell: /usr/bin/bash -e {0}
+test	Run pnpm test:unit	2026-10-20T12:01:03.0000003Z env:
+test	Run pnpm test:unit	2026-10-20T12:01:04.0000004Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+test	Run pnpm test:unit	2026-10-20T12:01:05.0000005Z ##[endgroup]
+test	Run pnpm test:unit	2026-10-20T12:01:06.0000006Z
+test	Run pnpm test:unit	2026-10-20T12:01:07.0000007Z > @heronlabs/fly@0.6.0 test:unit /home/runner/work/fly/fly
+test	Run pnpm test:unit	2026-10-20T12:01:08.0000008Z > vitest run --coverage
+test	Run pnpm test:unit	2026-10-20T12:01:09.0000009Z
+test	Run pnpm test:unit	2026-10-20T12:01:10.0000010Z  RUN  v4.1.12 /home/runner/work/fly/fly
+test	Run pnpm test:unit	2026-10-20T12:01:11.0000011Z       Coverage enabled with v8
+test	Run pnpm test:unit	2026-10-20T12:01:12.0000012Z
+test	Run pnpm test:unit	2026-10-20T12:01:13.0000013Z  ✓ tests/unit/core/services/task-rules.spec.ts (41 tests) 12ms
+test	Run pnpm test:unit	2026-10-20T12:01:14.0000014Z  ✓ tests/unit/core/services/queue-service.spec.ts (58 tests) 40ms
+test	Run pnpm test:unit	2026-10-20T12:01:15.0000015Z  ❯ tests/unit/core/services/lifecycle-service.spec.ts (66 tests | 1 failed) 31ms
+test	Run pnpm test:unit	2026-10-20T12:01:16.0000016Z    × LifecycleService > tick > Should push after a fix 9ms
+test	Run pnpm test:unit	2026-10-20T12:01:17.0000017Z      → expected "push" to be called 1 times, but got 0 times
+test	Run pnpm test:unit	2026-10-20T12:01:18.0000018Z
+test	Run pnpm test:unit	2026-10-20T12:01:19.0000019Z ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+test	Run pnpm test:unit	2026-10-20T12:01:20.0000020Z
+test	Run pnpm test:unit	2026-10-20T12:01:21.0000021Z  FAIL  tests/unit/core/services/lifecycle-service.spec.ts > LifecycleService > tick > Should push after a fix
+test	Run pnpm test:unit	2026-10-20T12:01:22.0000022Z AssertionError: expected "push" to be called 1 times, but got 0 times
+test	Run pnpm test:unit	2026-10-20T12:01:23.0000023Z Expected:	1	Received:	0
+test	Run pnpm test:unit	2026-10-20T12:01:24.0000024Z  ❯ tests/unit/core/services/lifecycle-service.spec.ts:912:20
+test	Run pnpm test:unit	2026-10-20T12:01:25.0000025Z
+test	Run pnpm test:unit	2026-10-20T12:01:26.0000026Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+test	Run pnpm test:unit	2026-10-20T12:01:27.0000027Z
+test	Run pnpm test:unit	2026-10-20T12:01:28.0000028Z  Test Files  1 failed | 120 passed (121)
+test	Run pnpm test:unit	2026-10-20T12:01:29.0000029Z       Tests  1 failed | 1650 passed (1651)
+test	Run pnpm test:unit	2026-10-20T12:01:30.0000030Z    Start at  12:01:16
+test	Run pnpm test:unit	2026-10-20T12:01:31.0000031Z    Duration  14.13s
+test	Run pnpm test:unit	2026-10-20T12:01:32.0000032Z  ELIFECYCLE  Command failed with exit code 1.
+test	Run pnpm test:unit	2026-10-20T12:01:33.0000033Z ##[error]Process completed with exit code 1.

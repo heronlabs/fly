@@ -20,7 +20,12 @@ const fly: FlyApi = {
     poll: vi.fn(),
     search: vi.fn(),
   },
-  pullRequests: {merge: vi.fn(), open: vi.fn()},
+  pullRequests: {
+    merge: vi.fn(),
+    open: vi.fn(),
+    rerun: vi.fn(),
+    resume: vi.fn(),
+  },
   sessions: {
     list: vi.fn(),
     start: vi.fn(),

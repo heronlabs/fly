@@ -82,6 +82,11 @@ export class QueueHandler {
     this.refreshing = true;
     try {
       await this.queue.refreshPullRequests();
+      try {
+        await this.lifecycle.poll();
+      } catch (error) {
+        this.logger.error(`Falha ao acompanhar a CI: ${errorMessage(error)}`);
+      }
       await this.tick();
     } catch (error) {
       this.logger.error(`Falha ao consultar PRs: ${errorMessage(error)}`);

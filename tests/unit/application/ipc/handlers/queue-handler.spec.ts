@@ -26,6 +26,7 @@ const snapshot = vi.fn();
 const refreshPullRequests = vi.fn();
 const mergePullRequest = vi.fn();
 const lifecycleTick = vi.fn();
+const poll = vi.fn();
 
 const invoke = (channel: string, ...args: unknown[]) =>
   listeners.get(channel)!({}, ...args);
@@ -41,6 +42,7 @@ beforeEach(() => {
   refreshPullRequests.mockResolvedValue(undefined);
   mergePullRequest.mockReset();
   lifecycleTick.mockReset().mockResolvedValue(undefined);
+  poll.mockReset().mockResolvedValue(undefined);
   handler = new QueueHandler(
     host,
     {send} as Broadcaster,
@@ -49,7 +51,7 @@ beforeEach(() => {
       refreshPullRequests,
       mergePullRequest,
     } as unknown as QueueService,
-    {tick: lifecycleTick} as unknown as LifecycleService,
+    {tick: lifecycleTick, poll} as unknown as LifecycleService,
   );
   handler.register();
 });
@@ -150,6 +152,36 @@ describe('QueueHandler', () => {
     await vi.advanceTimersByTimeAsync(PR_POLL_MS);
     expect(refreshPullRequests).toHaveBeenCalledTimes(2);
     expect(send).toHaveBeenLastCalledWith(channels.queueChanged, snap(3));
+  });
+
+  it('Should poll the CI and reviews between the PR refresh and the tick', async () => {
+    const order: string[] = [];
+    refreshPullRequests.mockImplementation(
+      async () => void order.push('refresh'),
+    );
+    poll.mockImplementation(async () => void order.push('poll'));
+    lifecycleTick.mockImplementation(async () => void order.push('tick'));
+
+    await vi.advanceTimersByTimeAsync(PR_POLL_MS);
+
+    expect(poll).toHaveBeenCalledExactlyOnceWith();
+    expect(order.slice(-3)).toEqual(['refresh', 'poll', 'tick']);
+  });
+
+  it('Should log a poll rejection and still tick', async () => {
+    poll.mockRejectedValue(new Error('ENOSPC'));
+    await vi.advanceTimersByTimeAsync(PR_POLL_MS);
+    expect(logged).toHaveBeenCalledWith('Falha ao acompanhar a CI: ENOSPC');
+    expect(logged).not.toHaveBeenCalledWith(
+      expect.stringContaining('Falha ao consultar PRs'),
+    );
+    expect(send).toHaveBeenCalledWith(channels.queueChanged, snap(1));
+  });
+
+  it('Should not poll when the PR refresh fails', async () => {
+    refreshPullRequests.mockRejectedValue(new Error('gh caiu'));
+    await vi.advanceTimersByTimeAsync(PR_POLL_MS);
+    expect(poll).not.toHaveBeenCalled();
   });
 
   it('Should not overlap PR refreshes', async () => {

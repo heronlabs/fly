@@ -1,9 +1,10 @@
 import {join} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 
 import {Injectable} from '@nestjs/common';
 
 import {PR_TEMPLATE} from '../domain/pr-template';
-import {TaskRecord, TaskStop} from '../domain/task';
+import {TaskAction, TaskRecord} from '../domain/task';
 import {TranscriptSummary} from '../domain/transcript';
 import {Repo, Worktree} from '../domain/workspace';
 import {IdGenerator} from '../interfaces/id-generator';
@@ -17,7 +18,15 @@ import {TaskStore} from '../interfaces/task-store';
 import {TranscriptSource} from '../interfaces/transcript-source';
 import {VcsGateway} from '../interfaces/vcs-gateway';
 import {resolveDefaultBranch} from './default-branch';
-import {createPullRequest, PR_FILE} from './lifecycle-steps';
+import {pollRecord} from './lifecycle-poll';
+import {
+  createPullRequest,
+  PR_FILE,
+  sentRecord,
+  SESSION_GONE,
+  settleTurn,
+  stopped,
+} from './lifecycle-steps';
 import {QueueService} from './queue-service';
 import {errorMessage, MappedSessions, SessionService} from './session-service';
 import {
@@ -33,6 +42,24 @@ const BUSY = 'A sessão está ocupada; aguarde o turno terminar';
 
 const PROMPT_FILE = 'prompt.md';
 const REQUEST_FILE = 'pr-request.md';
+
+// A worktree that is gone, elsewhere, or on another branch is not the record's.
+const worktreeOf = (
+  worktrees: Worktree[],
+  record: TaskRecord,
+): Worktree | undefined =>
+  worktrees.find(
+    w => w.path === record.worktreePath && w.branch === record.branch,
+  );
+
+// One record's failure never holds up another's; the first one rejects at
+// the end.
+const settled = async (work: Promise<void>[]): Promise<void> => {
+  const failed = (await Promise.allSettled(work)).find(
+    (r): r is PromiseRejectedResult => r.status === 'rejected',
+  );
+  if (failed) throw failed.reason;
+};
 
 // The record fields an open request sets, whatever they were before: a new
 // PR starts its CI loop and its review forwarding from scratch.
@@ -56,7 +83,8 @@ export class LifecycleService {
     private readonly ids: IdGenerator,
   ) {}
 
-  // Worktree paths with an open request between its checks and its save.
+  // Worktree paths with an open request between its checks and its save, or
+  // a queued action being typed.
   private readonly requesting = new Set<string>();
   private ticking = false;
 
@@ -125,10 +153,27 @@ export class LifecycleService {
     });
   }
 
-  // Settles every pending open request whose turn has ended. One record's
-  // failure never holds up another's; the first one rejects at the end. A
-  // tick that starts while another runs returns at once, so a request is
-  // never pushed or created twice.
+  // P10, after each PR refresh: moves every task of the workspace along its
+  // open PR's CI and review comments (see pollRecord).
+  async poll(now = Date.now()): Promise<void> {
+    const workspace = this.sessions.currentWorkspace();
+    if (!workspace) return;
+    const gateways = {prs: this.prs, taskFiles: this.taskFiles};
+    const records = await this.tasks.list();
+    await settled(
+      records.map(async record => {
+        const worktree = worktreeOf(workspace.worktrees, record);
+        if (!worktree) return;
+        const pr = this.queue.pullRequestFor(worktree.id);
+        const next = await pollRecord(gateways, record, pr, now);
+        if (next) await this.replace(record, next);
+      }),
+    );
+  }
+
+  // Types every queued fix or review into its idle session and settles every
+  // pending action whose turn has ended. A tick that starts while another
+  // runs returns at once, so nothing is typed, pushed or created twice.
   async tick(now = Date.now()): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
@@ -142,48 +187,51 @@ export class LifecycleService {
   private async settleAll(now: number): Promise<void> {
     const workspace = this.sessions.currentWorkspace();
     if (!workspace) return;
-    const opening = (await this.tasks.list()).flatMap(record =>
-      record.pending?.kind === 'open'
-        ? [{record, sentAt: record.pending.sentAt ?? 0}]
-        : [],
-    );
-    if (opening.length === 0) return;
+    const records = await this.tasks.list();
+    if (!records.some(r => r.pending || r.outbox)) return;
     const {tmux, items} = await this.sessions.mapped();
     // Without a tmux listing, a live session would look gone.
     if (tmux !== 'ok') return;
-    const results = await Promise.allSettled(
-      opening.map(({record, sentAt}) =>
-        this.settleOpen(record, sentAt, workspace.worktrees, items, now),
+    await settled(
+      records.map(record =>
+        this.settle(record, workspace.worktrees, items, now),
       ),
     );
-    const failed = results.find(
-      (r): r is PromiseRejectedResult => r.status === 'rejected',
-    );
-    if (failed) throw failed.reason;
   }
 
-  private async settleOpen(
+  private async settle(
     record: TaskRecord,
-    sentAt: number,
     worktrees: Worktree[],
     items: MappedSessions['items'],
     now: number,
   ): Promise<void> {
-    // A worktree that is gone, elsewhere, or on another branch is not ours.
-    const worktree = worktrees.find(
-      w => w.path === record.worktreePath && w.branch === record.branch,
-    );
+    const worktree = worktreeOf(worktrees, record);
     if (!worktree) return;
     const target = this.target(worktree, items);
-    if (!target) {
-      return this.stop(record, {
-        kind: 'session',
-        message: 'A sessão do worktree foi encerrada',
-      });
+    const {pending, outbox} = record;
+    if (pending) {
+      if (!target) return this.replace(record, stopped(record, SESSION_GONE));
+      const summary = await this.summaryOf(worktree, target);
+      // P6: the turn that follows the instruction has ended.
+      if ((summary?.lastTurnEndAt ?? 0) <= (pending.sentAt ?? 0)) return;
+      if (pending.kind === 'open') {
+        return this.settleOpen(record, worktree.path, now);
+      }
+      const next = await settleTurn(this.vcs, record, pending, worktree.path);
+      return this.replace(record, next);
     }
-    const summary = await this.summaryOf(worktree, target);
-    // P6: the turn that follows the instruction has ended.
-    if ((summary?.lastTurnEndAt ?? 0) <= sentAt) return;
+    // Ruling: a queued action waits for a live session, which the user may
+    // start on the worktree.
+    if (target && outbox?.text) {
+      await this.send(record, outbox, outbox.text, worktree, target, now);
+    }
+  }
+
+  private async settleOpen(
+    record: TaskRecord,
+    path: string,
+    now: number,
+  ): Promise<void> {
     // From here the request is settled: any failure is a stop with its
     // message, never a request left pending.
     try {
@@ -195,9 +243,9 @@ export class LifecycleService {
           taskFiles: this.taskFiles,
         },
         record,
-        worktree.path,
+        path,
       );
-      await this.tasks.save({
+      await this.replace(record, {
         ...record,
         prNumber: number,
         phase: 'ci',
@@ -205,12 +253,79 @@ export class LifecycleService {
         reviewSeenAt: now,
       });
     } catch (error) {
-      await this.stop(record, {kind: 'open', message: errorMessage(error)});
+      const stop = {kind: 'open' as const, message: errorMessage(error)};
+      await this.replace(record, stopped(record, stop));
     }
   }
 
-  private stop(record: TaskRecord, stop: TaskStop): Promise<void> {
-    return this.tasks.save({...record, phase: 'stopped', stop, pending: null});
+  // P6 for a queued fix or review: typed only into an idle session with no
+  // draft, holding the worktree like "Abrir PR" does.
+  private async send(
+    record: TaskRecord,
+    outbox: TaskAction,
+    text: string,
+    worktree: Worktree,
+    target: MultiplexerSession,
+    now: number,
+  ): Promise<void> {
+    if (this.requesting.has(worktree.path)) return;
+    this.requesting.add(worktree.path);
+    try {
+      const summary = await this.summaryOf(worktree, target);
+      if (!isSessionIdle(summary, target, now)) return;
+      if (this.terminals.hasDraft(target.name)) return;
+      const headSha = await this.vcs.headSha(worktree.path);
+      // A record changed meanwhile (Retomar, Limpar) is not typed for.
+      if (!(await this.unchanged(record))) return;
+      await this.launcher.sendText(target.name, text);
+      await this.replace(record, sentRecord(record, outbox, headSha, now));
+    } finally {
+      this.requesting.delete(worktree.path);
+    }
+  }
+
+  // "Rodar de novo": reruns the failed jobs of each run an infrastructure
+  // stop names, then watches the CI again.
+  async rerun(worktreeId: string): Promise<void> {
+    const record = await this.recordOf(this.locate(worktreeId).worktree);
+    const stop = record?.stop;
+    const runIds = (stop?.kind === 'infra' && stop.runIds) || [];
+    if (!record || runIds.length === 0) {
+      throw new Error('Nada para rodar de novo');
+    }
+    await Promise.all(runIds.map(id => this.prs.rerun(record.repoPath, id)));
+    await this.tasks.save({...record, phase: 'ci', stop: null});
+  }
+
+  // "Retomar": drops the stop and the action whose turn fly waits for,
+  // resets the CI counter, and watches the open PR again, else goes back to
+  // work. A queued action stays: its comments are already counted as seen.
+  async resume(worktreeId: string): Promise<void> {
+    const {worktree} = this.locate(worktreeId);
+    if (this.requesting.has(worktree.path)) throw new Error(BUSY);
+    const record = await this.recordOf(worktree);
+    if (!record) return;
+    const open = this.queue.pullRequestFor(worktreeId)?.state === 'open';
+    await this.tasks.save({
+      ...record,
+      phase: open ? 'ci' : 'working',
+      stop: null,
+      pending: null,
+      ciAttempts: 0,
+      fixedSha: null,
+    });
+  }
+
+  // Ruling: poll and tick save only over the record they read, so a record
+  // removed (Limpar) or changed (Retomar) meanwhile is never brought back or
+  // undone; the next poll or tick looks again.
+  private async replace(read: TaskRecord, next: TaskRecord): Promise<void> {
+    if (isDeepStrictEqual(next, read)) return;
+    if (await this.unchanged(read)) await this.tasks.save(next);
+  }
+
+  private async unchanged(read: TaskRecord): Promise<boolean> {
+    return isDeepStrictEqual(await this.tasks.get(read.worktreePath), read);
   }
 
   // Only a branch worktree outside the main checkout can carry a PR.

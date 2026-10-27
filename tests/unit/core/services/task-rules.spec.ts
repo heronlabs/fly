@@ -1,16 +1,30 @@
-import {QueueStatus} from '../../../../src/core/domain/queue';
-import {TaskPhase, TaskRecord} from '../../../../src/core/domain/task';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+
+import {QueueStatus, ReviewComment} from '../../../../src/core/domain/queue';
+import {
+  EXCERPT_MAX_CHARS,
+  TaskPhase,
+  TaskRecord,
+} from '../../../../src/core/domain/task';
 import {TranscriptSummary} from '../../../../src/core/domain/transcript';
 import {MultiplexerSession} from '../../../../src/core/interfaces/session-launcher';
 import {
+  fixInstruction,
   isConventionalTitle,
   isSessionIdle,
+  logExcerpt,
   newestFlySession,
   openInstruction,
   parsePrText,
   prRequest,
+  reviewFile,
+  reviewInstruction,
   taskStatus,
 } from '../../../../src/core/services/task-rules';
+
+const FIXTURES = join(__dirname, '../../../fixtures/gh');
+const fixture = (name: string) => readFileSync(join(FIXTURES, name), 'utf8');
 
 const TEMPLATE = '## Description\n\n<!--\n  hint\n-->\n\n## Motivation\n';
 
@@ -247,4 +261,169 @@ describe('isSessionIdle', () => {
       );
     },
   );
+});
+
+describe('logExcerpt', () => {
+  // A gh --log-failed line: job, step, then the stamped text.
+  const line = (text: string, step = 'Run pnpm test:unit') =>
+    `test\t${step}\t2026-10-20T12:01:00.0000000Z ${text}`;
+  const log = (texts: string[]) => texts.map(t => line(t)).join('\n') + '\n';
+  const numbered = (from: number, to: number) =>
+    Array.from({length: to - from + 1}, (_, i) => `l${from + i}`);
+
+  it('Should keep only the text of a failed step, clean of stamps, BOM and colour codes', () => {
+    const excerpt = logExcerpt(fixture('log-failed-steps.txt'));
+    const lines = excerpt.split('\n');
+
+    expect(lines).toHaveLength(34);
+    expect(lines[0]).toBe('##[group]Run pnpm test:unit');
+    expect(lines[1]).toBe('pnpm test:unit');
+    expect(lines[6]).toBe('');
+    expect(lines).toContain('Expected:\t1\tReceived:\t0');
+    expect(lines.at(-1)).toBe('##[error]Process completed with exit code 1.');
+    expect(excerpt).not.toMatch(
+      /2026-10-20T|\uFEFF|\^\[\[|Run pnpm test:unit\t/,
+    );
+  });
+
+  it('Should keep the 60 lines before the error of a whole job log', () => {
+    const excerpt = logExcerpt(fixture('log-failed-unknown-step.txt'));
+    const lines = excerpt.split('\n');
+
+    expect(lines).toHaveLength(61);
+    expect(lines[0]).toMatch(/^line 640: Mutant 640 /);
+    expect(lines.at(-2)).toMatch(/^line 699: /);
+    expect(lines.at(-1)).toBe('##[error]Process completed with exit code 1.');
+    expect(excerpt).not.toContain('line 639:');
+    expect(excerpt).not.toContain('line 701:');
+    expect(excerpt.length).toBeLessThanOrEqual(EXCERPT_MAX_CHARS);
+  });
+
+  it('Should keep the last 200 lines without any error', () => {
+    expect(logExcerpt(log(numbered(1, 300)))).toBe(
+      numbered(101, 300).join('\n'),
+    );
+  });
+
+  it('Should merge the windows of two errors 10 lines apart', () => {
+    const texts = numbered(1, 100);
+    texts[69] = '##[error]a';
+    texts[79] = '##[error]b';
+    expect(logExcerpt(log(texts))).toBe(texts.slice(9, 80).join('\n'));
+  });
+
+  it.each<[string, number, string]>([
+    ['adjacent windows into one', 61, 'l1'],
+    ['windows a line apart with a mark', 62, '…'],
+  ])('Should join %s', (_name, gap, between) => {
+    const texts = numbered(1, 200);
+    texts[69] = '##[error]a';
+    texts[69 + gap] = '##[error]b';
+    const lines = logExcerpt(log(texts)).split('\n');
+    expect(lines).toHaveLength(gap === 61 ? 122 : 123);
+    expect(lines[61]).toBe(gap === 61 ? texts[70] : between);
+  });
+
+  it('Should keep the tail 20 000 characters of a longer window', () => {
+    const texts = [
+      ...Array.from({length: 60}, (_, i) => `${i}`.padEnd(840, 'x')),
+      '##[error]y',
+    ];
+    const whole = texts.join('\n');
+    expect(whole.length).toBeGreaterThan(50_000);
+
+    const excerpt = logExcerpt(log(texts));
+
+    expect(excerpt).toHaveLength(EXCERPT_MAX_CHARS);
+    expect(excerpt).toBe(whole.slice(-EXCERPT_MAX_CHARS));
+  });
+
+  it.each([
+    ['a stamp with no text', 'test\tstep\t2026-10-20T12:01:00.0000000Z', ''],
+    ['an empty text', 'test\tstep\t2026-10-20T12:01:00.0000000Z ', ''],
+    ['a tab-less line, kept whole', 'plain line', 'plain line'],
+    ['a line with one tab, kept whole', 'one\ttab', 'one\ttab'],
+    ['real colour codes', line('\u001b[31mred\u001b[0m text'), 'red text'],
+    [
+      'text after the first space',
+      line(' indented  twice'),
+      ' indented  twice',
+    ],
+  ])('Should read %s', (_name, raw, text) => {
+    expect(logExcerpt(`${raw}\n${line('##[error]x')}`)).toBe(
+      `${text}\n##[error]x`,
+    );
+  });
+
+  it('Should take an error marker only at the start of the text', () => {
+    expect(logExcerpt(log([...numbered(1, 70), 'see ##[error]']))).toBe(
+      [...numbered(1, 70), 'see ##[error]'].join('\n'),
+    );
+    expect(logExcerpt(log([...numbered(1, 70), '##[error]x', 'after']))).toBe(
+      [...numbered(11, 70), '##[error]x'].join('\n'),
+    );
+  });
+});
+
+describe('fixInstruction', () => {
+  it('Should name the attempt and the log files in the Fix instruction', () => {
+    expect(
+      fixInstruction(42, 2, ['/d/ci-1-abc1234.log', '/d/ci-2-abc1234.log']),
+    ).toBe(
+      'fly: a CI do PR #42 falhou (tentativa 2 de 3). Logs: /d/ci-1-abc1234.log, /d/ci-2-abc1234.log. Corrija, rode as verificações locais e commite (Conventional Commits, sem push).',
+    );
+  });
+});
+
+describe('reviewInstruction', () => {
+  it('Should name the comments file in the Review instruction', () => {
+    expect(reviewInstruction(42, '/d/review-42-7.md')).toBe(
+      'fly: há comentários de review novos no PR #42 em /d/review-42-7.md. Avalie cada um, corrija o que fizer sentido e commite (Conventional Commits, sem push).',
+    );
+  });
+});
+
+describe('reviewFile', () => {
+  const comment = (over: Partial<ReviewComment>): ReviewComment => ({
+    id: '1',
+    author: 'ana',
+    body: 'Renomeie.',
+    path: null,
+    line: null,
+    url: 'https://github.com/o/r/pull/42#c1',
+    createdAt: 1,
+    ...over,
+  });
+
+  it('Should write one block per comment with where it was left', () => {
+    expect(
+      reviewFile([
+        comment({path: 'src/a.ts', line: 3}),
+        comment({author: 'bia', path: 'src/b.ts', body: 'Arquivo todo.\nSim.'}),
+        comment({author: 'caio', url: 'u3'}),
+      ]),
+    ).toBe(
+      [
+        '### ana — src/a.ts:3',
+        '',
+        'Renomeie.',
+        '',
+        'https://github.com/o/r/pull/42#c1',
+        '',
+        '### bia — src/b.ts',
+        '',
+        'Arquivo todo.',
+        'Sim.',
+        '',
+        'https://github.com/o/r/pull/42#c1',
+        '',
+        '### caio — PR',
+        '',
+        'Renomeie.',
+        '',
+        'u3',
+        '',
+      ].join('\n'),
+    );
+  });
 });
