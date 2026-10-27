@@ -37,11 +37,17 @@ describe('NewTaskDialog', () => {
     expect(screen.getByLabelText('Repositório')).toHaveValue('repo-b');
   });
 
-  it('Should cap the description at 2000 characters', () => {
-    setup();
-    expect(screen.getByLabelText('Descrição')).toHaveAttribute(
-      'maxlength',
-      '2000',
+  it('Should submit a description over 2000 characters whole', async () => {
+    const {props} = setup();
+    const long = 'a'.repeat(2001);
+    fireEvent.change(screen.getByLabelText('Descrição'), {
+      target: {value: long},
+    });
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', {name: 'Iniciar'}));
+    expect(props.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({description: long}),
     );
   });
 

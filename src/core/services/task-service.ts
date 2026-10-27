@@ -110,7 +110,11 @@ export class TaskService {
       throw new Error(`Já existe uma pasta em ${path}`);
     }
     for (const source of input.attachments) {
-      if ((await this.files.stat(source)).size > MAX_ATTACHMENT_BYTES) {
+      const info = await this.files.stat(source);
+      if (!info.isFile) {
+        throw new Error(`Não é um arquivo: ${posix.basename(source)}`);
+      }
+      if (info.size > MAX_ATTACHMENT_BYTES) {
         throw new Error(`Arquivo maior que 20 MB: ${posix.basename(source)}`);
       }
     }
@@ -145,7 +149,9 @@ export class TaskService {
       {
         promptFile,
         model,
-        task: Array.from(description).slice(0, TASK_LABEL_LENGTH).join(''),
+        task: Array.from(normalizePrompt(description))
+          .slice(0, TASK_LABEL_LENGTH)
+          .join(''),
       },
     );
     await this.tasks.save({

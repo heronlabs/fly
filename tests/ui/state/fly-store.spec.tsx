@@ -427,29 +427,65 @@ describe('errorMessage', () => {
       expect(useFlyStore.getState().error).toBe('no');
     });
 
-    it('Should select the main worktree on createTask', async () => {
+    const created = {
+      repoId: 'b/y',
+      description: 'fazer',
+      branch: 'x',
+      model: null,
+      attachments: [],
+    };
+    const withTask = (): Workspace => {
+      const base = workspace(['a/x', 'b/y']);
+      return {
+        ...base,
+        worktrees: [
+          ...base.worktrees,
+          {
+            id: 'b/y#x',
+            repoId: 'b/y',
+            path: '/r/b/y/.worktrees/x',
+            branch: 'x',
+            head: 'abcdef123',
+            isMain: false,
+          },
+        ],
+      };
+    };
+
+    it('Should select the new worktree on createTask', async () => {
       useFlyStore.setState({workspace: workspace(['a/x', 'b/y'])});
       vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
+      vi.mocked(window.fly.workspace.refresh).mockResolvedValue(withTask());
+      vi.mocked(window.fly.sessions.list).mockResolvedValue(
+        snapshot([{name: 'task-1', worktreeId: 'b/y#x'}]),
+      );
+      const ok = await useFlyStore.getState().createTask(created);
+      expect(ok).toBe(true);
+      expect(window.fly.tasks.create).toHaveBeenCalledWith(created);
+      expect(window.fly.workspace.refresh).toHaveBeenCalled();
+      expect(useFlyStore.getState().selectedWorktreeId).toBe('b/y#x');
+      expect(useFlyStore.getState().activeSessionName).toBe('task-1');
+    });
+
+    it('Should select the main worktree for a ship session', async () => {
+      useFlyStore.setState({workspace: workspace(['a/x', 'b/y'])});
+      vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
+      vi.mocked(window.fly.workspace.refresh).mockResolvedValue(withTask());
       vi.mocked(window.fly.sessions.list).mockResolvedValue(
         snapshot([{name: 'task-1', worktreeId: 'b/y#main'}]),
       );
-      const ok = await useFlyStore.getState().createTask({
-        repoId: 'b/y',
-        description: 'fazer',
-        branch: 'x',
-        model: null,
-        attachments: [],
-      });
-      expect(ok).toBe(true);
-      expect(window.fly.tasks.create).toHaveBeenCalledWith({
-        repoId: 'b/y',
-        description: 'fazer',
-        branch: 'x',
-        model: null,
-        attachments: [],
-      });
+      await useFlyStore.getState().createTask(created);
       expect(useFlyStore.getState().selectedWorktreeId).toBe('b/y#main');
-      expect(useFlyStore.getState().activeSessionName).toBe('task-1');
+    });
+
+    it('Should fall back to the main worktree when the session is not listed', async () => {
+      useFlyStore.setState({workspace: workspace(['a/x', 'b/y'])});
+      vi.mocked(window.fly.tasks.create).mockResolvedValue('task-1');
+      vi.mocked(window.fly.workspace.refresh).mockResolvedValue(
+        workspace(['a/x', 'b/y']),
+      );
+      await useFlyStore.getState().createTask(created);
+      expect(useFlyStore.getState().selectedWorktreeId).toBe('b/y#main');
     });
 
     it('Should keep the selection when the repo has no main worktree', async () => {

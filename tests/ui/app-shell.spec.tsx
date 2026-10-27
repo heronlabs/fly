@@ -957,6 +957,7 @@ describe('AppShell', () => {
     vi.mocked(window.fly.tasks.create)
       .mockRejectedValueOnce(new Error('falhou'))
       .mockResolvedValueOnce('repo-a-abc123');
+    vi.mocked(window.fly.workspace.refresh).mockResolvedValue(workspace);
     await renderShell();
     await user.click(screen.getByRole('button', {name: /Nova tarefa/}));
     await user.type(screen.getByLabelText('Descrição'), 'x');

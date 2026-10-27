@@ -143,7 +143,7 @@ describe('TaskService', () => {
     track('write', write, '/u/tasks/u1/prompt.md');
     track('launch', launch, 'sess-1');
     track('save', save, undefined);
-    stat.mockResolvedValue({size: 10});
+    stat.mockResolvedValue({size: 10, isFile: true});
     (sessions as unknown as {launch: typeof launch}).launch = launch;
     service = new TaskService(
       sessions,
@@ -305,7 +305,7 @@ describe('TaskService', () => {
       expect(launch).toHaveBeenCalledWith('talon/.worktrees/feat-x', path, {
         promptFile: '/u/tasks/u1/prompt.md',
         model: 'opus',
-        task: 'Faz X\ncom exemplo',
+        task: 'Faz X com exemplo',
       });
       expect(save).toHaveBeenCalledWith({
         id: 'u1',
@@ -364,7 +364,7 @@ describe('TaskService', () => {
     });
 
     it('Should accept exactly the maximum prompt and attachment size', async () => {
-      stat.mockResolvedValue({size: 20 * 1024 * 1024});
+      stat.mockResolvedValue({size: 20 * 1024 * 1024, isFile: true});
       await service.create(
         input({description: 'a'.repeat(100_000), attachments: ['/d/a']}),
       );
@@ -403,8 +403,19 @@ describe('TaskService', () => {
         () =>
           stat.mockImplementation(async (p: string) => ({
             size: p === '/d/big.bin' ? 20 * 1024 * 1024 + 1 : 1,
+            isFile: true,
           })),
         'Arquivo maior que 20 MB: big.bin',
+      ],
+      [
+        'an attachment that is not a file',
+        {attachments: ['/d/ok.md', '/d/Pasta.app']},
+        () =>
+          stat.mockImplementation(async (p: string) => ({
+            size: 1,
+            isFile: p !== '/d/Pasta.app',
+          })),
+        'Não é um arquivo: Pasta.app',
       ],
       [
         'a blank description',

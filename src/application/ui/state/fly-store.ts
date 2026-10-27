@@ -425,14 +425,18 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     set({error: null});
     try {
       const name = await window.fly.tasks.create(input);
+      set({activeSessionName: name});
+      await get().refresh();
+      await get().loadSessions();
       const main = get().workspace?.worktrees.find(
         worktree => worktree.repoId === input.repoId && worktree.isMain,
       );
+      const own = get().sessions.sessions.find(
+        session => session.name === name,
+      )?.worktreeId;
       set(state => ({
-        activeSessionName: name,
-        selectedWorktreeId: main?.id ?? state.selectedWorktreeId,
+        selectedWorktreeId: own ?? main?.id ?? state.selectedWorktreeId,
       }));
-      await get().loadSessions();
       return true;
     } catch (error) {
       set({error: errorMessage(error)});
