@@ -168,14 +168,21 @@ describe('QueueHandler', () => {
     expect(order.slice(-3)).toEqual(['refresh', 'poll', 'tick']);
   });
 
-  it('Should log a poll rejection and still tick', async () => {
-    poll.mockRejectedValue(new Error('ENOSPC'));
+  it('Should log a poll rejection and still tick after it', async () => {
+    const order: string[] = [];
+    poll.mockImplementation(async () => {
+      order.push('poll');
+      throw new Error('ENOSPC');
+    });
+    lifecycleTick.mockImplementation(async () => void order.push('tick'));
+
     await vi.advanceTimersByTimeAsync(PR_POLL_MS);
+
     expect(logged).toHaveBeenCalledWith('Falha ao acompanhar a CI: ENOSPC');
     expect(logged).not.toHaveBeenCalledWith(
       expect.stringContaining('Falha ao consultar PRs'),
     );
-    expect(send).toHaveBeenCalledWith(channels.queueChanged, snap(1));
+    expect(order.slice(-2)).toEqual(['poll', 'tick']);
   });
 
   it('Should not poll when the PR refresh fails', async () => {

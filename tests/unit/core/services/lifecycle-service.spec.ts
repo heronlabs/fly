@@ -1,3 +1,5 @@
+import {isDeepStrictEqual} from 'node:util';
+
 import {PR_TEMPLATE} from '../../../../src/core/domain/pr-template';
 import {
   CheckRun,
@@ -187,7 +189,8 @@ describe('LifecycleService', () => {
   const get = vi.fn();
   const list = vi.fn();
   const save = vi.fn();
-  const tasks = {get, list, save} as unknown as TaskStore;
+  const saveIfUnchanged = vi.fn();
+  const tasks = {get, list, save, saveIfUnchanged} as unknown as TaskStore;
   const dir = vi.fn();
   const write = vi.fn();
   const read = vi.fn();
@@ -212,6 +215,17 @@ describe('LifecycleService', () => {
     save.mockImplementation(
       async (r: TaskRecord) =>
         void store.set(r.worktreePath, structuredClone(r)),
+    );
+    // The store's compare-and-save writes through save, so tests read one
+    // kind of write.
+    saveIfUnchanged.mockImplementation(
+      async (before: TaskRecord, after: TaskRecord) => {
+        if (!isDeepStrictEqual(store.get(before.worktreePath), before)) {
+          return false;
+        }
+        await save(after);
+        return true;
+      },
     );
   };
   const saved = () => save.mock.calls.map(([r]) => r as TaskRecord);
@@ -343,6 +357,22 @@ describe('LifecycleService', () => {
       await service.openPullRequest(WT, 10_000);
 
       expect(sendText).toHaveBeenCalledWith('fly-feat', OPEN);
+      expect(save.mock.calls[0]?.[0]).toMatchObject({
+        pending: {sentAt: 10_000},
+      });
+    });
+
+    it('Should not take a turn that ended after the request was timed for its own', async () => {
+      forSession.mockResolvedValue(summary({lastTurnEndAt: 1200}));
+      await service.openPullRequest(WT, 1000);
+      const sent = save.mock.calls[0]?.[0] as TaskRecord;
+      expect(sent.pending?.sentAt).toBe(1200);
+
+      holds(sent);
+      save.mockClear();
+      await service.tick(1500);
+      expect(status).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
     });
 
     it('Should propagate a transcript that cannot be read', async () => {
@@ -423,6 +453,7 @@ describe('LifecycleService', () => {
       expect(sendText).toHaveBeenCalledWith('fly-feat', OPEN);
       expect(save).toHaveBeenCalledExactlyOnceWith({
         ...merged,
+        prNumber: null,
         phase: 'opening',
         stop: null,
         pending: {kind: 'open', sentAt: 1000, headSha: 'abc'},
@@ -1262,6 +1293,7 @@ describe('LifecycleService', () => {
       it.each<TaskStop>([
         {kind: 'open', message: 'antes'},
         {kind: 'session', message: 'A sessão do worktree foi encerrada'},
+        {kind: 'review', message: 'Ficaram mudanças sem commit: a.ts'},
       ])('Should keep a $kind stop', async stop => {
         holds(stopOf(stop));
         prIs({checks: 'passing'});
@@ -1437,6 +1469,116 @@ describe('LifecycleService', () => {
         await service.poll();
         expect(saved()[0]?.reviewSeenAt).toBe(2000);
       });
+    });
+
+    describe('mergeability not known yet', () => {
+      it.each<TaskStop>([
+        {kind: 'conflict', message: 'Conflito com main'},
+        {kind: 'behind', message: 'Branch atrás de main'},
+      ])('Should keep a $kind stop', async stop => {
+        holds(stopOf(stop));
+        prIs({mergeable: 'unknown', checks: 'failing', checkRuns: [run()]});
+        await service.poll(5000);
+        expect(save).not.toHaveBeenCalled();
+        expect(failedLog).not.toHaveBeenCalled();
+      });
+
+      it('Should queue nothing and set no stop', async () => {
+        prIs({
+          mergeable: 'unknown',
+          behind: true,
+          checks: 'failing',
+          checkRuns: [run()],
+        });
+        reviewComments.mockResolvedValue([comment({})]);
+        await service.poll(5000);
+        expect(failedLog).not.toHaveBeenCalled();
+        expect(reviewComments).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+      });
+
+      it('Should still adopt the PR', async () => {
+        holds(record({reviewSeenAt: null}));
+        prIs({mergeable: 'unknown'});
+        await service.poll(5000);
+        expect(saved()).toEqual([
+          record({prNumber: 42, phase: 'ci', reviewSeenAt: 5000}),
+        ]);
+      });
+    });
+
+    it('Should wait for every check of the head before fixing', async () => {
+      failedLog.mockResolvedValue(RAW);
+      reviewComments.mockResolvedValue([comment({})]);
+      failing(run(), run({name: 'e2e', state: 'pending', jobId: '71'}));
+
+      await service.poll(5000);
+      expect(failedLog).not.toHaveBeenCalled();
+      expect(reviewComments).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+
+      failing(run(), run({name: 'e2e', jobId: '71'}));
+      await service.poll(5000);
+      expect(failedLog.mock.calls).toEqual([
+        ['/r/talon', '70'],
+        ['/r/talon', '71'],
+      ]);
+      expect(saved()).toHaveLength(1);
+      expect(saved()[0]?.outbox?.text).toContain(
+        `Logs: ${DIR}/ci-70-abc1234.log, ${DIR}/ci-71-abc1234.log.`,
+      );
+    });
+
+    describe('a newer PR on the branch', () => {
+      it.each<[string, Partial<TaskRecord>]>([
+        ['watching', {}],
+        [
+          'stopped',
+          {
+            phase: 'stopped',
+            stop: {kind: 'ci', message: 'CI falhou 3 vezes; parei de corrigir'},
+          },
+        ],
+        [
+          'with a queued action',
+          {outbox: {kind: 'fix', text: FIX, headSha: SHA}},
+        ],
+      ])('Should adopt it over the record %s', async (_name, over) => {
+        holds({
+          ...watching,
+          ciAttempts: 3,
+          fixedSha: 'old',
+          review: {count: 1, state: 'done'},
+          ...over,
+        });
+        prIs({number: 50});
+
+        await service.poll(5000);
+
+        expect(saved()).toEqual([
+          {...watching, prNumber: 50, reviewSeenAt: 5000},
+        ]);
+      });
+
+      it('Should wait for an action pending on the old one', async () => {
+        holds({
+          ...watching,
+          phase: 'fixing',
+          pending: {kind: 'fix', sentAt: 1, headSha: 'abc'},
+        });
+        prIs({number: 50});
+        await service.poll(5000);
+        expect(save).not.toHaveBeenCalled();
+      });
+    });
+
+    it('Should keep the stop of a record with no PR when the branch PR is closed', async () => {
+      holds(
+        record({phase: 'stopped', stop: {kind: 'open', message: 'falhou'}}),
+      );
+      prIs({state: 'closed'});
+      await service.poll(5000);
+      expect(save).not.toHaveBeenCalled();
     });
 
     it.each<[string, Partial<TaskRecord>]>([
@@ -1628,6 +1770,11 @@ describe('LifecycleService', () => {
 
     it('Should type the fix once into the idle session', async () => {
       track('headSha', headSha, 'local1');
+      track('forSession', forSession, summary());
+      hasDraft.mockImplementation(() => {
+        calls.push('hasDraft');
+        return false;
+      });
       track('sendText', sendText, undefined);
 
       await service.tick(1500);
@@ -1646,7 +1793,65 @@ describe('LifecycleService', () => {
           fixedSha: SHA,
         },
       ]);
-      expect(calls).toEqual(['headSha', 'sendText']);
+      // The second tick reads the transcript to wait for the turn.
+      expect(calls).toEqual([
+        'headSha',
+        'forSession',
+        'hasDraft',
+        'sendText',
+        'forSession',
+      ]);
+    });
+
+    it.each<[string, () => void]>([
+      [
+        'the head',
+        () =>
+          headSha.mockImplementation(async () => {
+            hasDraft.mockReturnValue(true);
+            return 'local1';
+          }),
+      ],
+      [
+        'the record',
+        () =>
+          get.mockImplementation(async (path: string) => {
+            hasDraft.mockReturnValue(true);
+            return structuredClone(store.get(path) ?? null);
+          }),
+      ],
+      [
+        'the transcript',
+        () =>
+          forSession.mockImplementation(async () => {
+            hasDraft.mockReturnValue(true);
+            return summary();
+          }),
+      ],
+    ])(
+      'Should not type over a draft started while %s was read',
+      async (_name, arrange) => {
+        arrange();
+        await service.tick(1500);
+        expect(sendText).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Should time the fix after a turn that ended late, so it is not taken for its own', async () => {
+      forSession.mockResolvedValue(summary({lastTurnEndAt: 2000}));
+      await service.tick(1500);
+      expect(saved()[0]?.pending?.sentAt).toBe(2000);
+
+      await service.tick(2500);
+      expect(status).not.toHaveBeenCalled();
+      expect(saved()).toHaveLength(1);
+    });
+
+    it('Should time the fix now for a promptless session with no transcript', async () => {
+      forSession.mockResolvedValue(null);
+      await service.tick(20_000);
+      expect(saved()[0]?.pending?.sentAt).toBe(20_000);
     });
 
     it('Should type the review into the idle session', async () => {
@@ -1843,7 +2048,7 @@ describe('LifecycleService', () => {
 
       it.each<[string, TaskRecord, TaskStop['kind']]>([
         ['fix', fixSent, 'ci'],
-        ['review', reviewSent, 'session'],
+        ['review', reviewSent, 'review'],
       ])(
         'Should stop a %s that left changes uncommitted',
         async (_kind, task, kind) => {
@@ -1946,6 +2151,22 @@ describe('LifecycleService', () => {
       expect(save).not.toHaveBeenCalled();
     });
 
+    it.each<[string, () => void]>([
+      ['removed', () => store.delete(PATH)],
+      [
+        'changed',
+        () => store.set(PATH, {...infra, phase: 'working', stop: null}),
+      ],
+    ])(
+      'Should not save over a record %s while the runs restarted',
+      async (_name, change) => {
+        rerun.mockImplementation(async () => change());
+        await service.rerun(WT);
+        expect(rerun).toHaveBeenCalledTimes(2);
+        expect(save).not.toHaveBeenCalled();
+      },
+    );
+
     it('Should keep the stop when gh cannot rerun', async () => {
       rerun.mockRejectedValue(new Error('gh não respondeu em 30 s'));
       await expect(service.rerun(WT)).rejects.toThrow(
@@ -1978,6 +2199,7 @@ describe('LifecycleService', () => {
       pending: null,
       ciAttempts: 0,
       fixedSha: null,
+      review: {count: 1, state: 'done' as const},
     };
 
     beforeEach(() => holds(stuck));
@@ -1997,6 +2219,15 @@ describe('LifecycleService', () => {
       await service.resume(WT);
       expect(saved()).toEqual([{...resumed, phase: 'working'}]);
     });
+
+    it.each<[TaskRecord['review']]>([[null], [{count: 2, state: 'queued'}]])(
+      'Should keep the review %j as it is',
+      async review => {
+        holds({...stuck, review});
+        await service.resume(WT);
+        expect(saved()[0]?.review).toEqual(review);
+      },
+    );
 
     it.each<[string, TaskRecord | null]>([
       ['no record', null],

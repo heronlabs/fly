@@ -244,7 +244,7 @@ export class QueueService {
     };
   }
 
-  // The open PR of the branch, else its newest merged one.
+  // The open PR of the branch, else its newest merged or closed one.
   private pullRequestOf(
     workspace: Workspace,
     worktree: Worktree,
@@ -256,10 +256,9 @@ export class QueueService {
     const listed = [...this.pullRequests]
       .filter(([path]) => paths.has(path))
       .flatMap(([, prs]) => prs);
-    const own = listed.filter(pr => pr.branch === worktree.branch);
-    const merged = own
-      .filter(pr => pr.state === 'merged')
+    const own = listed
+      .filter(pr => pr.branch === worktree.branch)
       .sort((a, b) => b.number - a.number);
-    return own.find(pr => pr.state === 'open') ?? merged[0] ?? null;
+    return own.find(pr => pr.state === 'open') ?? own[0] ?? null;
   }
 }

@@ -109,9 +109,9 @@ export const sentRecord = (
   record: TaskRecord,
   outbox: TaskAction,
   headSha: string,
-  now: number,
+  sentAt: number,
 ): TaskRecord => {
-  const pending = {kind: outbox.kind, sentAt: now, headSha};
+  const pending = {kind: outbox.kind, sentAt, headSha};
   return outbox.kind === 'fix'
     ? {
         ...record,
@@ -133,7 +133,7 @@ export const sentRecord = (
 // P10 on the turn done of a fix or a review: its commits are pushed and the
 // CI is watched again. A fix with no commit, a dirty tree or a failed push
 // stops; a review with no commit is done, the model may have judged that the
-// comments need no change. A review's stop is not a CI one, so green checks
+// comments need no change. A review's stop is its own kind, so green checks
 // never clear it.
 export const settleTurn = async (
   vcs: VcsGateway,
@@ -160,7 +160,7 @@ export const settleTurn = async (
     };
   } catch (error) {
     return stopped(record, {
-      kind: fix ? 'ci' : 'session',
+      kind: fix ? 'ci' : 'review',
       message: errorMessage(error),
     });
   }

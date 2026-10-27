@@ -52,6 +52,11 @@ const worktreeOf = (
     w => w.path === record.worktreePath && w.branch === record.branch,
   );
 
+// P6: a turn that ended after `now` was taken must not pass for the turn the
+// instruction starts.
+const sentAtFor = (summary: TranscriptSummary | null, now: number): number =>
+  Math.max(now, summary?.lastTurnEndAt ?? 0);
+
 // One record's failure never holds up another's; the first one rejects at
 // the end.
 const settled = async (work: Promise<void>[]): Promise<void> => {
@@ -65,7 +70,14 @@ const settled = async (work: Promise<void>[]): Promise<void> => {
 // PR starts its CI loop and its review forwarding from scratch.
 type Unopened = Omit<
   TaskRecord,
-  'phase' | 'stop' | 'pending' | 'ciAttempts' | 'fixedSha' | 'review' | 'outbox'
+  | 'prNumber'
+  | 'phase'
+  | 'stop'
+  | 'pending'
+  | 'ciAttempts'
+  | 'fixedSha'
+  | 'review'
+  | 'outbox'
 >;
 
 @Injectable()
@@ -143,9 +155,10 @@ export class LifecycleService {
     await this.launcher.sendText(target.name, openInstruction(requestFile));
     await this.tasks.save({
       ...record,
+      prNumber: null,
       phase: 'opening',
       stop: null,
-      pending: {kind: 'open', sentAt: now, headSha},
+      pending: {kind: 'open', sentAt: sentAtFor(summary, now), headSha},
       ciAttempts: 0,
       fixedSha: null,
       review: null,
@@ -271,14 +284,16 @@ export class LifecycleService {
     if (this.requesting.has(worktree.path)) return;
     this.requesting.add(worktree.path);
     try {
-      const summary = await this.summaryOf(worktree, target);
-      if (!isSessionIdle(summary, target, now)) return;
-      if (this.terminals.hasDraft(target.name)) return;
       const headSha = await this.vcs.headSha(worktree.path);
       // A record changed meanwhile (Retomar, Limpar) is not typed for.
       if (!(await this.unchanged(record))) return;
+      const summary = await this.summaryOf(worktree, target);
+      if (!isSessionIdle(summary, target, now)) return;
+      // Right before typing, so a key typed meanwhile still counts.
+      if (this.terminals.hasDraft(target.name)) return;
       await this.launcher.sendText(target.name, text);
-      await this.replace(record, sentRecord(record, outbox, headSha, now));
+      const sentAt = sentAtFor(summary, now);
+      await this.replace(record, sentRecord(record, outbox, headSha, sentAt));
     } finally {
       this.requesting.delete(worktree.path);
     }
@@ -294,12 +309,18 @@ export class LifecycleService {
       throw new Error('Nada para rodar de novo');
     }
     await Promise.all(runIds.map(id => this.prs.rerun(record.repoPath, id)));
-    await this.tasks.save({...record, phase: 'ci', stop: null});
+    // The reruns take a while: a record removed or changed meanwhile stays so.
+    await this.tasks.saveIfUnchanged(record, {
+      ...record,
+      phase: 'ci',
+      stop: null,
+    });
   }
 
-  // "Retomar": drops the stop and the action whose turn fly waits for,
-  // resets the CI counter, and watches the open PR again, else goes back to
-  // work. A queued action stays: its comments are already counted as seen.
+  // "Retomar": drops the stop and the action whose turn fly waits for (a
+  // review sent counts as done), resets the CI counter, and watches the open
+  // PR again, else goes back to work. A queued action stays: its comments are
+  // already counted as seen.
   async resume(worktreeId: string): Promise<void> {
     const {worktree} = this.locate(worktreeId);
     if (this.requesting.has(worktree.path)) throw new Error(BUSY);
@@ -313,6 +334,10 @@ export class LifecycleService {
       pending: null,
       ciAttempts: 0,
       fixedSha: null,
+      review:
+        record.review?.state === 'sent'
+          ? {...record.review, state: 'done'}
+          : record.review,
     });
   }
 
@@ -321,7 +346,7 @@ export class LifecycleService {
   // undone; the next poll or tick looks again.
   private async replace(read: TaskRecord, next: TaskRecord): Promise<void> {
     if (isDeepStrictEqual(next, read)) return;
-    if (await this.unchanged(read)) await this.tasks.save(next);
+    await this.tasks.saveIfUnchanged(read, next);
   }
 
   private async unchanged(read: TaskRecord): Promise<boolean> {
@@ -386,7 +411,6 @@ export class LifecycleService {
       base: await resolveDefaultBranch(this.vcs, this.prs, repo.path),
       model: null,
       promptFile: null,
-      prNumber: null,
       reviewSeenAt: null,
       createdAt: now,
     };

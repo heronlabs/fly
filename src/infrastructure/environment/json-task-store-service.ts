@@ -1,4 +1,5 @@
 import {join} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 
 import {Inject, Injectable} from '@nestjs/common';
 
@@ -71,6 +72,21 @@ export class JsonTaskStoreService extends TaskStore {
         records[index] = copy;
       }
       await this.persist(records);
+    });
+  }
+
+  // In the serial chain, so no save lands between the check and the write.
+  saveIfUnchanged(before: TaskRecord, after: TaskRecord): Promise<boolean> {
+    return this.serial(async () => {
+      const records = await this.load();
+      const index = records.findIndex(
+        r => r.worktreePath === before.worktreePath,
+      );
+      // An absent record (index -1) reads as undefined: never equal.
+      if (!isDeepStrictEqual(records[index], before)) return false;
+      records[index] = structuredClone(after);
+      await this.persist(records);
+      return true;
     });
   }
 

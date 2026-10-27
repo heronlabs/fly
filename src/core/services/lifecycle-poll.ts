@@ -15,12 +15,37 @@ export type PollGateways = {prs: PrGateway; taskFiles: TaskFiles};
 
 type HeadedPullRequest = PullRequest & {headSha: string};
 
-// Ruling: a PR the session opened by itself, or one fly created but failed to
-// record, becomes the task's. Only a stopped record carries a stop.
-const adoptable = (record: TaskRecord): boolean => {
+// Ruling: an open PR that is not the record's becomes it, with no action
+// pending: one the session opened by itself, one fly created but failed to
+// record, or a newer PR on the branch. Only a stopped record carries a stop.
+const adoptable = (record: TaskRecord, pr: PullRequest): boolean => {
+  if (pr.number === record.prNumber || record.pending !== null) return false;
   const kind = record.stop?.kind;
-  return record.phase === 'working' || kind === 'open' || kind === 'session';
+  return (
+    record.prNumber !== null ||
+    record.phase === 'working' ||
+    kind === 'open' ||
+    kind === 'session'
+  );
 };
+
+// An adopted PR starts its CI loop and its review forwarding from scratch.
+const adopt = (
+  record: TaskRecord,
+  pr: PullRequest,
+  now: number,
+): TaskRecord => ({
+  ...record,
+  prNumber: pr.number,
+  phase: 'ci',
+  reviewSeenAt: now,
+  ciAttempts: 0,
+  fixedSha: null,
+  review: null,
+  outbox: null,
+  stop: null,
+  pending: null,
+});
 
 const blocker = (pr: PullRequest, base: string): TaskStop | null => {
   if (pr.mergeable === 'conflicting') {
@@ -41,11 +66,13 @@ const stopAfter = (
     case 'ci':
     case 'infra':
       return pr.checks === 'passing' ? blocker(pr, base) : stop;
-    case 'open':
-    case 'session':
-      return stop;
-    default:
+    case undefined:
+    case 'conflict':
+    case 'behind':
       return blocker(pr, base);
+    default:
+      // open, session, review: only the user clears them.
+      return stop;
   }
 };
 
@@ -145,6 +172,9 @@ const watch = async (
   pr: PullRequest,
   now: number,
 ): Promise<TaskRecord | null> => {
+  // GitHub recomputes mergeability after the base moves: until it knows, a
+  // conflict or behind stop holds and nothing new is set.
+  if (pr.mergeable === 'unknown') return record;
   const stop = stopAfter(record, pr);
   let next = stop
     ? stopped(record, stop)
@@ -157,6 +187,9 @@ const watch = async (
     headSha !== null &&
     headSha !== next.fixedSha
   ) {
+    // Step 5 waits for every check of the head, so one fix carries all of
+    // its failed jobs.
+    if (pr.checkRuns.some(c => c.state === 'pending')) return next;
     return fixOrStop(gateways, next, {...pr, headSha});
   }
   return forwardReview(gateways, next, pr, now);
@@ -170,18 +203,10 @@ export const pollRecord = async (
   pr: PullRequest | null,
   now: number,
 ): Promise<TaskRecord | null> => {
-  if (record.prNumber === null) {
-    if (pr?.state !== 'open' || !adoptable(record)) return record;
-    // watch moves the adopted record to 'ci', or stops it.
-    const adopted: TaskRecord = {
-      ...record,
-      prNumber: pr.number,
-      reviewSeenAt: now,
-      stop: null,
-      pending: null,
-    };
-    return watch(gateways, adopted, pr, now);
+  if (pr?.state === 'open' && adoptable(record, pr)) {
+    return watch(gateways, adopt(record, pr, now), pr, now);
   }
+  if (record.prNumber === null) return record;
   // Ruling: a PR closed unmerged brings "Abrir PR" back; a merged one waits
   // for the cleanup.
   if (pr?.state === 'closed' && record.pending === null) {

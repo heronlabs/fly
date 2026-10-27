@@ -541,18 +541,24 @@ describe('QueueService', () => {
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
     });
 
-    it('Should prefer the open PR, then the newest merged, ignoring closed', async () => {
+    it('Should prefer the open PR, then the newest merged or closed one', async () => {
       pullRequestsAre({
         '/r/talon': [
           pr({branch: 'feat', number: 3, state: 'merged'}),
           pr({branch: 'feat', number: 4}),
+          // Newer, against another base, then closed: the open one wins.
+          pr({branch: 'feat', number: 6, state: 'closed'}),
           pr({branch: 'fix', number: 2, state: 'merged'}),
           pr({branch: 'fix', number: 5, state: 'merged'}),
           pr({branch: 'fix', number: 3, state: 'merged'}),
           pr({branch: 'fix', number: 9, state: 'closed'}),
           pr({branch: 'main', number: 11}),
         ],
-        '/r/nest': [pr({branch: 'x', number: 7, state: 'closed'})],
+        '/r/nest': [
+          pr({branch: 'x', number: 9, state: 'closed'}),
+          pr({branch: 'x', number: 12, state: 'merged'}),
+          pr({branch: 'x', number: 7, state: 'closed'}),
+        ],
       });
       await service.refreshPullRequests();
       sessionsAre([fly('talon', 's1')]);
@@ -566,12 +572,13 @@ describe('QueueService', () => {
         task: null,
         canOpenPr: false,
       });
-      expect(queueOf(snap, 'talon/.worktrees/fix')?.pullRequest?.number).toBe(
-        5,
+      // Closed #9 is newer than merged #5; merged #12 than closed #9.
+      expect(queueOf(snap, 'talon/.worktrees/fix')?.pullRequest).toEqual(
+        pr({branch: 'fix', number: 9, state: 'closed'}),
       );
-      expect(statusOf(snap, 'talon/.worktrees/fix')).toBe('merged');
-      expect(queueOf(snap, 'nest/.worktrees/x')?.pullRequest).toBeNull();
-      expect(statusOf(snap, 'nest/.worktrees/x')).toBe('idle');
+      expect(statusOf(snap, 'talon/.worktrees/fix')).toBe('idle');
+      expect(queueOf(snap, 'nest/.worktrees/x')?.pullRequest?.number).toBe(12);
+      expect(statusOf(snap, 'nest/.worktrees/x')).toBe('merged');
       expect(queueOf(snap, 'talon')?.pullRequest).toBeNull();
       expect(statusOf(snap, 'talon')).toBe('engineer');
     });
@@ -762,6 +769,7 @@ describe('QueueService', () => {
           pr({branch: 'feat', state: 'merged'}),
           pr({branch: 'fix', number: 2}),
         ],
+        '/r/nest': [pr({branch: 'x', number: 7, state: 'closed'})],
       });
       await service.refreshPullRequests();
       sessionsAre([

@@ -21,7 +21,7 @@ export type TaskPhase =
   'working' | 'opening' | 'ci' | 'fixing' | 'reviewing' | 'stopped';
 
 export type TaskStop = {
-  kind: 'open' | 'ci' | 'infra' | 'conflict' | 'behind' | 'session';
+  kind: 'open' | 'ci' | 'infra' | 'conflict' | 'behind' | 'session' | 'review';
   message: string;
   runIds?: string[];
 };
