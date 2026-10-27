@@ -10,6 +10,7 @@ Electron desktop app (main process runs NestJS, renderer is React) for driving a
 |---------|---------|
 | `pnpm dev` | Run the app with hot reload (electron-vite) |
 | `pnpm build` | Build main (app `index.js` and CLI `cli.js`), preload and renderer into `out/` |
+| `pnpm dist` | Build the arm64 dmg into `dist/` (run `pnpm build` first) |
 | `pnpm cli:install` | Build, then link `bin/fly` into `~/.local/bin` (or `$FLY_BIN_DIR`) |
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm test:unit` | vitest with 100% coverage thresholds |
@@ -28,7 +29,7 @@ Tests that touch tmux always use a private socket `-L fly-test-<hex>` and kill t
 
 Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token (the DI test points `CLAUDE_CONFIG_DIR` at a temp dir). Never the real `~/.claude`.
 
-A test that starts a session through `SessionService` (which types `claude …` into the pane) first sets the private server's `default-shell` to a fake shell that only records typed lines, so no pane ever runs `claude`. CLI tests inject the user-data dir; never the real `~/Library/Application Support/fly`.
+A test that starts a session through `SessionService` (which types `claude …` into the pane) first sets the private server's `default-shell` to a fake shell that only records typed lines, so no pane ever runs `claude`. CLI tests inject the user-data dir; never the real `~/Library/Application Support/fly` or `~/Library/Application Support/fly-dev`.
 
 `gh` is always mocked in tests, through `CommandRunner` or `PrGateway`. Never the real `gh`.
 

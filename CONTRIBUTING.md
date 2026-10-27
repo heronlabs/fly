@@ -19,6 +19,7 @@ You need:
 |---------|---------|
 | `pnpm dev` | Run the app with hot reload (electron-vite) |
 | `pnpm build` | Build main (app `index.js` and CLI `cli.js`), preload and renderer into `out/` |
+| `pnpm dist` | Build the arm64 dmg into `dist/` (run `pnpm build` first) |
 | `pnpm cli:install` | Build, then link `bin/fly` into `~/.local/bin` (or `$FLY_BIN_DIR`) |
 | `pnpm lint:check` | gts lint + json/yml lint |
 | `pnpm lint:fix` | Apply the fixes gts and eslint can make |
@@ -51,7 +52,7 @@ Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`. Mu
 Tests never touch your real sessions, transcripts, repositories or GitHub account:
 
 - **tmux.** Tests that touch tmux use a private socket `-L fly-test-<hex>` and kill that server afterwards, never the default tmux server, where your real sessions live. A test that starts a session through `SessionService` gives that server a fake `default-shell` that only records typed lines, so no pane runs `claude`.
-- **App config.** CLI tests inject the user-data dir, never the real `~/Library/Application Support/fly`.
+- **App config.** CLI tests inject the user-data dir, never the real `~/Library/Application Support/fly` or `~/Library/Application Support/fly-dev`.
 - **Transcripts.** Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token, and the DI test points `CLAUDE_CONFIG_DIR` at a temp dir, never the real `~/.claude`.
 - **`gh`.** Always mocked, through `CommandRunner` or `PrGateway`, never the real `gh`.
 - **`git`.** Mocked through `CommandRunner` in unit tests; runs against an `mkdtemp` repo in integration tests, never your repositories.
@@ -63,7 +64,7 @@ Every pull request must pass:
 | Job | Runs |
 |-----|------|
 | Install & Build | `pnpm typecheck`, `pnpm build` |
-| Audit & Supply Chain | `pnpm dep:cruise`, `pnpm audit --prod --audit-level=high` |
+| Audit & Supply Chain | `pnpm dep:cruise`, `pnpm audit --audit-level=high` |
 | Lint | `pnpm lint:check` |
 | Unit Tests | `pnpm test:unit` at 100% coverage, `pnpm test:di` |
 | Mutation Tests | `pnpm test:mutation` at a 100% mutation score, written to the job summary |

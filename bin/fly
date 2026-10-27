@@ -1,9 +1,9 @@
 #!/bin/sh
-# fly CLI: runs out/main/cli.js on this checkout's own Electron in Node mode,
-# the way VSCode's `code` does, so no separate Node is needed.
+# fly CLI: runs cli.js on fly's own Electron (the checkout's, or the installed
+# bundle's) in Node mode, the way VSCode's `code` does, so no separate Node is needed.
 set -eu
 
-# Follow the symlink chain (e.g. ~/.local/bin/fly) back to the checkout.
+# Follow the symlink chain (e.g. ~/.local/bin/fly) back to the checkout or the bundle (fly.app/Contents/Resources/bin/fly).
 self=$0
 while [ -L "$self" ]; do
   link=$(readlink "$self")
@@ -14,17 +14,29 @@ while [ -L "$self" ]; do
 done
 ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
 
-ELECTRON=""
-if [ -f "$ROOT/node_modules/electron/path.txt" ]; then
-  ELECTRON="$ROOT/node_modules/electron/dist/$(cat "$ROOT/node_modules/electron/path.txt")"
-fi
-if [ ! -x "$ELECTRON" ]; then
-  echo "fly: Electron não encontrado em $ROOT/node_modules: rode pnpm install em $ROOT" >&2
-  exit 1
-fi
-if [ ! -f "$ROOT/out/main/cli.js" ]; then
-  echo "fly: build não encontrado em $ROOT/out: rode pnpm build em $ROOT" >&2
-  exit 1
+# Two layouts share this script. Installed bundle: ROOT is fly.app/Contents/Resources,
+# which holds app.asar; Electron is Contents/MacOS/fly. Checkout: ROOT is the repo.
+if [ -f "$ROOT/app.asar" ]; then
+  ELECTRON="$ROOT/../MacOS/fly"
+  CLI="$ROOT/app.asar/out/main/cli.js"
+  if [ ! -x "$ELECTRON" ]; then
+    echo "fly: executável não encontrado em $(cd "$ROOT/../MacOS" 2>/dev/null && pwd -P || echo "$ROOT/../MacOS"): reinstale o fly" >&2
+    exit 1
+  fi
+else
+  ELECTRON=""
+  CLI="$ROOT/out/main/cli.js"
+  if [ -f "$ROOT/node_modules/electron/path.txt" ]; then
+    ELECTRON="$ROOT/node_modules/electron/dist/$(cat "$ROOT/node_modules/electron/path.txt")"
+  fi
+  if [ ! -x "$ELECTRON" ]; then
+    echo "fly: Electron não encontrado em $ROOT/node_modules: rode pnpm install em $ROOT" >&2
+    exit 1
+  fi
+  if [ ! -f "$CLI" ]; then
+    echo "fly: build não encontrado em $ROOT/out: rode pnpm build em $ROOT" >&2
+    exit 1
+  fi
 fi
 
-ELECTRON_RUN_AS_NODE=1 exec "$ELECTRON" "$ROOT/out/main/cli.js" "$@"
+ELECTRON_RUN_AS_NODE=1 exec "$ELECTRON" "$CLI" "$@"

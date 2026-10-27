@@ -18,6 +18,7 @@ import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
 import {launchFolder} from './application/ipc/launch-args';
+import {userDataFolder} from './core/domain/app-data';
 import {
   LoginShellEnvService,
   mergePath,
@@ -80,6 +81,13 @@ function createWindow(onReset: () => void): void {
 let context: Awaited<
   ReturnType<typeof NestFactory.createApplicationContext>
 > | null = null;
+
+// Dev and installed builds keep separate data; set before the lock, which
+// lives in userData.
+app.setPath(
+  'userData',
+  join(app.getPath('appData'), userDataFolder(app.isPackaged)),
+);
 
 // A second `fly <pasta>` hands its argv to this instance and quits.
 const primary = app.requestSingleInstanceLock();

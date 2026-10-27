@@ -39,4 +39,32 @@ jobs:
           semantic: ${{ inputs.semantic }}
           bumpNpm: true
 
-  # TODO(fly M6): macos-latest job running pnpm dist and uploading the dmg to the release
+  dmg:
+    needs: release
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm dist
+
+      - run: gh release upload "$TAG" dist/*.dmg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}

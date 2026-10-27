@@ -129,7 +129,7 @@
       "to": {
         "dependencyTypes": ["npm-dev"],
         "dependencyTypesNot": ["type-only"],
-        "pathNot": ["node_modules/@types/"]
+        "pathNot": ["node_modules/@types/", "node_modules/electron/"]
       }
     },
     {
