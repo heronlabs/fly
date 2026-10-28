@@ -1,3 +1,9 @@
+## v0.8.0 (2026-10-28)
+
+### Features
+
+* feat: first-run setup wizard with the fly command and dmg cleanup (#29) (fbac1bb07274c121e552ddfe0f25ed6ed608ec9f)
+
 ## v0.7.0 (2026-10-28)
 
 ### Features
