@@ -168,6 +168,75 @@ describe('JsonTaskStoreService', () => {
     ]);
   });
 
+  describe('saveIfUnchanged', () => {
+    const a = record('/r/.worktrees/a');
+    const b = record('/r/.worktrees/b', 'b');
+    const after = {...a, phase: 'ci' as const, prNumber: 42};
+
+    it('Should replace a record still equal to the one read', async () => {
+      await store.save(b);
+      await store.save(a);
+
+      expect(await store.saveIfUnchanged(a, after)).toBe(true);
+
+      expect(await store.list()).toEqual([b, after]);
+      expect(written()).toEqual([b, after]);
+    });
+
+    it.each<[string, TaskRecord]>([
+      ['changed', {...a, phase: 'stopped'}],
+      ['of another task', {...a, id: 'z'}],
+    ])('Should write nothing over a record %s', async (_name, stored) => {
+      await store.save(stored);
+      writeText.mockClear();
+
+      expect(await store.saveIfUnchanged(a, after)).toBe(false);
+
+      expect(await store.get(a.worktreePath)).toEqual(stored);
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('Should not bring back a removed record', async () => {
+      await store.save(a);
+      await store.remove(a.worktreePath);
+      writeText.mockClear();
+
+      expect(await store.saveIfUnchanged(a, after)).toBe(false);
+
+      expect(await store.list()).toEqual([]);
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('Should check after a save queued before it', async () => {
+      await store.save(a);
+      const resumed = {
+        ...a,
+        ciAttempts: 0,
+        review: null,
+        phase: 'working' as const,
+        stop: null,
+        fixedSha: null,
+        createdAt: 2,
+      };
+
+      const results = await Promise.all([
+        store.save(resumed),
+        store.saveIfUnchanged(a, after),
+      ]);
+
+      expect(results).toEqual([undefined, false]);
+      expect(await store.get(a.worktreePath)).toEqual(resumed);
+    });
+
+    it('Should keep a copy of the record it saves', async () => {
+      await store.save(a);
+      const mine: TaskRecord = structuredClone(after);
+      await store.saveIfUnchanged(a, mine);
+      mine.phase = 'stopped';
+      expect(await store.get(a.worktreePath)).toEqual(after);
+    });
+  });
+
   it('Should drop a removed record and keep the others', async () => {
     await store.save(record('/r/.worktrees/a'));
     await store.save(record('/r/.worktrees/b', 'b'));

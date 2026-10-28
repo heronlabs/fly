@@ -18,6 +18,7 @@ import {TerminalSpawner} from '../../core/interfaces/terminal-spawner';
 import {TranscriptSource} from '../../core/interfaces/transcript-source';
 import {VcsGateway} from '../../core/interfaces/vcs-gateway';
 import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
+import {CleanupService} from '../../core/services/cleanup-service';
 import {DiffService} from '../../core/services/diff-service';
 import {FileService} from '../../core/services/file-service';
 import {LaunchService} from '../../core/services/launch-service';
@@ -138,6 +139,7 @@ import {
     SessionService,
     TaskService,
     QueueService,
+    CleanupService,
     LifecycleService,
     DiffService,
     FileService,

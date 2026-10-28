@@ -7,7 +7,8 @@ import type {
   QueueStatus,
   WorktreeQueue,
 } from '../../../src/core/domain/queue';
-import type {ReceiptResult} from '../../../src/core/domain/transcript';
+
+const RUN = {kind: 'run', conclusion: null, runId: null, jobId: null} as const;
 
 const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   number: 12,
@@ -20,20 +21,18 @@ const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   checks: 'failing',
   title: 'Add diff panel',
   checkRuns: [
-    {name: 'lint', state: 'passing', url: 'https://ci/lint'},
-    {name: 'test', state: 'failing', url: null},
+    {...RUN, name: 'lint', state: 'passing', url: 'https://ci/lint'},
+    {...RUN, name: 'test', state: 'failing', url: null},
   ],
+  headSha: null,
+  behind: false,
   ...overrides,
 });
 
-const queueOf = (
-  pullRequest: PullRequest | null,
-  receipt: ReceiptResult | null = null,
-): WorktreeQueue => ({
+const queueOf = (pullRequest: PullRequest | null): WorktreeQueue => ({
   worktreeId: 'w1',
   status: 'ready',
   pullRequest,
-  receipt,
   task: null,
   canOpenPr: false,
 });
@@ -46,6 +45,9 @@ const renderView = (
     onMerge?: () => void;
     onOpenExternal?: (url: string) => void;
     onOpenPr?: () => Promise<void>;
+    onRerun?: () => Promise<void>;
+    onResume?: () => Promise<void>;
+    onClean?: (confirmed: boolean) => Promise<void>;
   } = {},
 ) =>
   render(
@@ -56,6 +58,9 @@ const renderView = (
       onMerge={options.onMerge ?? (() => {})}
       onOpenExternal={options.onOpenExternal ?? (() => {})}
       onOpenPr={options.onOpenPr ?? (async () => {})}
+      onRerun={options.onRerun ?? (async () => {})}
+      onResume={options.onResume ?? (async () => {})}
+      onClean={options.onClean ?? (async () => {})}
     />,
   );
 
@@ -106,7 +111,9 @@ describe('PrView', () => {
     ['passing', 'ok'],
     ['failing', 'falhou'],
   ] as const)('Should word the %s check as %s', (state, word) => {
-    renderView(queueOf(pr({checkRuns: [{name: 'x', state, url: null}]})));
+    renderView(
+      queueOf(pr({checkRuns: [{...RUN, name: 'x', state, url: null}]})),
+    );
     expect(screen.getByText(word)).toBeVisible();
   });
 
@@ -183,41 +190,6 @@ describe('PrView', () => {
     expect(screen.queryByRole('button', {name: 'Fazer merge'})).toBeNull();
   });
 
-  it('Should render a valid receipt', () => {
-    renderView(
-      queueOf(null, {
-        kind: 'valid',
-        receipt: {
-          summary: 'Fez a coisa',
-          filesChanged: ['a.ts', 'b.ts'],
-          verification: {lint: 'pass', test: 'skipped', build: 'fail'},
-        },
-      }),
-    );
-    expect(screen.getByText('Receipt do engineer')).toBeVisible();
-    expect(screen.getByText('Fez a coisa')).toBeVisible();
-    expect(screen.getByText('Arquivos')).toBeVisible();
-    expect(screen.getAllByRole('listitem').map(i => i.textContent)).toEqual([
-      'a.ts',
-      'b.ts',
-    ]);
-    expect(screen.getByText('Verificação')).toBeVisible();
-    expect(screen.getByText('lint: pass')).toBeVisible();
-    expect(screen.getByText('test: skipped')).toBeVisible();
-    expect(screen.getByText('build: fail')).toBeVisible();
-    expect(screen.queryByText('Receipt inválido')).toBeNull();
-  });
-
-  it('Should render an invalid receipt with its problems', () => {
-    renderView(
-      queueOf(pr(), {kind: 'invalid', problems: ['sem resumo', 'json ruim']}),
-    );
-    expect(screen.getByText('Receipt inválido')).toBeVisible();
-    expect(screen.getByText('sem resumo')).toBeVisible();
-    expect(screen.getByText('json ruim')).toBeVisible();
-    expect(screen.queryByText('Receipt do engineer')).toBeNull();
-  });
-
   it('Should not carry a rejection or an in-flight open to another worktree', async () => {
     let release!: () => void;
     const onOpenPr = vi
@@ -237,6 +209,9 @@ describe('PrView', () => {
         onMerge={() => {}}
         onOpenExternal={() => {}}
         onOpenPr={onOpenPr}
+        onRerun={async () => {}}
+        onResume={async () => {}}
+        onClean={async () => {}}
       />
     );
     const {rerender} = render(view('A'));
@@ -260,6 +235,9 @@ describe('PrView', () => {
         onMerge={() => {}}
         onOpenExternal={() => {}}
         onOpenPr={async () => {}}
+        onRerun={async () => {}}
+        onResume={async () => {}}
+        onClean={async () => {}}
       />
     );
     const {rerender} = render(view(queueOf(pr())));
@@ -281,6 +259,9 @@ describe('PrView', () => {
         onMerge={onMerge}
         onOpenExternal={() => {}}
         onOpenPr={async () => {}}
+        onRerun={async () => {}}
+        onResume={async () => {}}
+        onClean={async () => {}}
       />
     );
     const {rerender} = render(view('ready'));
@@ -290,5 +271,30 @@ describe('PrView', () => {
     expect(confirm).toBeDisabled();
     await userEvent.click(confirm);
     expect(onMerge).not.toHaveBeenCalled();
+  });
+  it('Should thread rerun, resume and clean from the task section', async () => {
+    const onRerun = vi.fn().mockResolvedValue(undefined);
+    const onResume = vi.fn().mockResolvedValue(undefined);
+    const onClean = vi.fn().mockResolvedValue(undefined);
+    const stopped: WorktreeQueue = {
+      ...queueOf(pr({state: 'merged'})),
+      task: {
+        phase: 'stopped',
+        ciAttempts: 0,
+        review: null,
+        stop: {
+          kind: 'infra',
+          message: 'Falha de infraestrutura na CI: a',
+          runIds: ['7'],
+        },
+      },
+    };
+    renderView(stopped, {onRerun, onResume, onClean});
+    await userEvent.click(screen.getByRole('button', {name: 'Rodar de novo'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Retomar'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Limpar'}));
+    expect(onRerun).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(onClean).toHaveBeenCalledExactlyOnceWith(false);
   });
 });

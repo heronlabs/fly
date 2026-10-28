@@ -2,7 +2,6 @@ import {
   claudeCommand,
   cleanPrompt,
   normalizePrompt,
-  PROMPT_ENV,
   sessionName,
   sessionPrefix,
 } from '../../../../src/core/services/session-naming';
@@ -52,20 +51,11 @@ describe('claudeCommand', () => {
       'claude --dangerously-skip-permissions --session-id u; exit',
     );
   });
-
-  it('Should read the prompt from the pane environment, never inline it', () => {
-    expect(PROMPT_ENV).toBe('FLY_PROMPT');
-    expect(claudeCommand({sessionId: 'u1', withPrompt: true})).toBe(
-      'claude --dangerously-skip-permissions --session-id u1 "$FLY_PROMPT"; exit',
-    );
-  });
 });
 
 describe('normalizePrompt', () => {
   it('Should collapse whitespace and trim', () =>
-    expect(normalizePrompt("  /supera:ship fix it's\n  bug ")).toBe(
-      "/supera:ship fix it's bug",
-    ));
+    expect(normalizePrompt("  fix it's\n  bug ")).toBe("fix it's bug"));
 
   it('Should turn control characters into spaces', () =>
     expect(normalizePrompt('a\x03b\x1bc\x7fd\u0085e')).toBe('a b c d e'));

@@ -27,8 +27,6 @@ const summary = (
   backgroundAgents: 0,
   backgroundShells: [],
   launchCwd: null,
-  worktreePath: null,
-  receipt: null,
   ...overrides,
 });
 
@@ -43,6 +41,8 @@ const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   checks: 'passing',
   title: 'Add x',
   checkRuns: [],
+  headSha: null,
+  behind: false,
   ...overrides,
 });
 
@@ -172,15 +172,14 @@ describe('worktreeStatus', () => {
       {
         activities: Activity[];
         pullRequest: PullRequest | null;
-        hasPlan: boolean;
       },
       ReturnType<typeof worktreeStatus>,
     ]
   >([
-    ['nothing', {activities: [], pullRequest: null, hasPlan: false}, 'idle'],
+    ['nothing', {activities: [], pullRequest: null}, 'idle'],
     [
       'merged PR alone',
-      {activities: [], pullRequest: pr({state: 'merged'}), hasPlan: false},
+      {activities: [], pullRequest: pr({state: 'merged'})},
       'merged',
     ],
     [
@@ -188,7 +187,6 @@ describe('worktreeStatus', () => {
       {
         activities: ['waiting'],
         pullRequest: pr({state: 'merged'}),
-        hasPlan: false,
       },
       'waiting',
     ],
@@ -197,13 +195,12 @@ describe('worktreeStatus', () => {
       {
         activities: ['scheduled'],
         pullRequest: pr({checks: 'pending'}),
-        hasPlan: false,
       },
       'ci',
     ],
     [
       'scheduled without a PR',
-      {activities: ['scheduled'], pullRequest: null, hasPlan: false},
+      {activities: ['scheduled'], pullRequest: null},
       'engineer',
     ],
     [
@@ -211,28 +208,18 @@ describe('worktreeStatus', () => {
       {
         activities: ['running'],
         pullRequest: pr({checks: 'failing'}),
-        hasPlan: false,
       },
       'failed',
     ],
     [
       'running with a ready PR',
-      {activities: ['running'], pullRequest: open, hasPlan: false},
+      {activities: ['running'], pullRequest: open},
       'ready',
     ],
-    [
-      'unknown with a plan',
-      {activities: ['unknown'], pullRequest: null, hasPlan: true},
-      'engineer',
-    ],
-    [
-      'unknown without a plan',
-      {activities: ['unknown'], pullRequest: null, hasPlan: false},
-      'unknown',
-    ],
+    ['unknown', {activities: ['unknown'], pullRequest: null}, 'unknown'],
     [
       'waiting and running',
-      {activities: ['waiting', 'running'], pullRequest: null, hasPlan: false},
+      {activities: ['waiting', 'running'], pullRequest: null},
       'waiting',
     ],
     [
@@ -240,7 +227,6 @@ describe('worktreeStatus', () => {
       {
         activities: ['unknown', 'scheduled'],
         pullRequest: pr({checks: 'pending'}),
-        hasPlan: false,
       },
       'ci',
     ],
@@ -286,7 +272,6 @@ describe('worktreeStatus with a task record', () => {
         worktreeStatus({
           activities,
           pullRequest,
-          hasPlan: false,
           task: task(phase),
         }),
       ).toBe(expected);

@@ -20,8 +20,6 @@ const EMPTY: TranscriptSummary = {
   backgroundAgents: 0,
   backgroundShells: [],
   launchCwd: null,
-  worktreePath: null,
-  receipt: null,
 };
 
 const fixture = (id: string): string[] =>
@@ -458,35 +456,16 @@ describe('TranscriptParser', () => {
     expect(summary).toMatchObject({openTools: 0, asking: false});
   });
 
-  it('Should bind the worktree from the first .worktrees cwd and never move it (W1)', () => {
-    const parser = parserWith('w1');
-    expect(parser.summary()).toMatchObject({
-      launchCwd: '/Users/u/w/repo',
-      worktreePath: '/Users/u/w/repo/.worktrees/feat-add-retry',
-    });
-
-    expect(
-      pushAll(parser, prompt('x', {cwd: '/Users/u/w/repo/.worktrees/other'})),
-    ).toMatchObject({
-      launchCwd: '/Users/u/w/repo',
-      worktreePath: '/Users/u/w/repo/.worktrees/feat-add-retry',
-    });
-  });
-
-  it('Should bind only the first segment under .worktrees and skip an empty one', () => {
+  it('Should not bind a session that enters .worktrees', () => {
     const summary = pushAll(
       new TranscriptParser(),
       '{"type":"mode","cwd":"/r"}',
-      '{"type":"mode","cwd":"/r/.worktrees/"}',
-      '{"type":"mode","cwd":"/r/src"}',
-      '{"type":"mode","cwd":"/r/.worktrees/feat-x/sub"}',
+      '{"type":"mode","cwd":"/r/.worktrees/x"}',
+      '{"type":"mode","cwd":"/r/.worktrees/x/sub"}',
     );
 
-    expect(summary).toMatchObject({
-      phase: 'none',
-      launchCwd: '/r',
-      worktreePath: '/r/.worktrees/feat-x',
-    });
+    expect(summary.launchCwd).toBe('/r');
+    expect(summary).not.toHaveProperty('worktreePath');
   });
 
   it('Should take launchCwd from the first line carrying a string cwd', () => {
@@ -546,255 +525,6 @@ describe('TranscriptParser', () => {
     first.backgroundShells.push(99);
 
     expect(parser.summary().backgroundShells).toEqual([0]);
-  });
-});
-
-describe('TranscriptParser receipt', () => {
-  const AGENT_ID = 'a0b1c2d3e4f5a6b7c';
-  const ENGINEER = {subagent_type: 'supera:supera-engineer'};
-  const R1_RECEIPT = {
-    summary: 'Add retry',
-    filesChanged: ['src/a.ts', 'tests/a.test.ts'],
-    verification: {build: 'pass', lint: 'pass', unit: 'pass'},
-  };
-  const OTHER = {summary: 'other', filesChanged: [], verification: {}};
-
-  const fenced = (receipt: unknown) =>
-    'Done.\n\n```json\n' + JSON.stringify(receipt) + '\n```';
-
-  const notification = (toolUseId: string, result: string | null) =>
-    prompt(
-      `<task-notification>\n<tool-use-id>${toolUseId}</tool-use-id>\n<status>completed</status>\n` +
-        (result === null ? '' : `<result>${result}</result>\n`) +
-        '</task-notification>',
-    );
-
-  const handback = (senderTaskId: unknown) =>
-    prompt(fenced(OTHER), {
-      isMeta: true,
-      origin: {kind: 'peer', handback: true, senderTaskId},
-    });
-
-  /** R1's engineer call and its async result, without the notification. */
-  const launched = (): TranscriptParser => {
-    const parser = new TranscriptParser();
-    const [call, result] = fixture('r1');
-    pushAll(parser, call!, result!);
-    return parser;
-  };
-
-  it('Should read the receipt from the task notification (R1)', () => {
-    expect(parse('r1').receipt).toStrictEqual({
-      kind: 'valid',
-      receipt: R1_RECEIPT,
-    });
-  });
-
-  it('Should keep the first receipt when a hand-back follows (R1, R2)', () => {
-    expect(parse('r1', 'r2').receipt).toStrictEqual({
-      kind: 'valid',
-      receipt: R1_RECEIPT,
-    });
-  });
-
-  it('Should read the receipt from a meta peer hand-back without moving the state (R2)', () => {
-    const parser = launched();
-    const before = parser.summary();
-
-    const summary = pushAll(parser, ...fixture('r2'));
-
-    expect(summary).toEqual({
-      ...before,
-      receipt: {
-        kind: 'valid',
-        receipt: {
-          summary: 'Add retry',
-          filesChanged: [],
-          verification: {build: 'skipped'},
-          notes: 'already done',
-        },
-      },
-    });
-  });
-
-  it('Should read a hand-back whose content is text blocks', () => {
-    const summary = pushAll(
-      launched(),
-      prompt([{type: 'text', text: fenced(OTHER)}], {
-        origin: {handback: true, senderTaskId: AGENT_ID},
-      }),
-    );
-
-    expect(summary.receipt).toStrictEqual({kind: 'valid', receipt: OTHER});
-  });
-
-  it('Should reset the receipt on a new engineer call and ignore the old one', () => {
-    const parser = parserWith('r1');
-
-    expect(
-      pushAll(parser, toolUse('toolu_eng2', 'Task', ENGINEER)).receipt,
-    ).toBeNull();
-    expect(
-      pushAll(parser, ...fixture('r1').slice(2), handback(AGENT_ID)).receipt,
-    ).toBeNull();
-  });
-
-  it('Should ignore calls that are not an engineer Agent or Task', () => {
-    const summary = pushAll(
-      parserWith('r1'),
-      toolUse('toolu_x', 'Agent', {subagent_type: 'Explore'}),
-      toolUse('toolu_y', 'Agent', 'x'),
-      toolUse('toolu_z', 'Bash', ENGINEER),
-      toolResult('toolu_x', {status: 'completed'}, {}, fenced(OTHER)),
-      toolResult('toolu_z', {status: 'completed'}, {}, fenced(OTHER)),
-    );
-
-    expect(summary.receipt).toStrictEqual({
-      kind: 'valid',
-      receipt: R1_RECEIPT,
-    });
-  });
-
-  it('Should read a sync completed result carrying a fenced receipt', () => {
-    const summary = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_s', 'Task', ENGINEER),
-      toolResult('toolu_s', {status: 'completed'}, {}, [
-        {type: 'text', text: 'Done.'},
-        {type: 'image'},
-        'x',
-        {type: 'text', text: 5},
-        {type: 'text', text: fenced(OTHER)},
-      ]),
-    );
-
-    expect(summary).toMatchObject({
-      openTools: 0,
-      receipt: {kind: 'valid', receipt: OTHER},
-    });
-  });
-
-  it('Should join the text blocks of a completed result with newlines and skip the rest', () => {
-    const summary = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_s', 'Task', ENGINEER),
-      toolResult('toolu_s', {status: 'completed'}, {}, [
-        null,
-        {type: 'text', text: '```json'},
-        {type: 'text', text: 5},
-        {type: 'image', text: 'ignored'},
-        {type: 'text', text: JSON.stringify(OTHER)},
-        {type: 'text', text: '```'},
-      ]),
-    );
-
-    expect(summary.receipt).toStrictEqual({kind: 'valid', receipt: OTHER});
-  });
-
-  it('Should read a bare receipt from the text blocks of a completed result', () => {
-    const summary = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_s', 'Task', ENGINEER),
-      toolResult('toolu_s', {status: 'completed'}, {}, [
-        {type: 'image'},
-        {type: 'text', text: JSON.stringify(OTHER)},
-      ]),
-    );
-
-    expect(summary.receipt).toStrictEqual({kind: 'valid', receipt: OTHER});
-  });
-
-  it('Should ignore a result for another tool-use-id while the engineer awaits a receipt', () => {
-    const summary = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_s', 'Task', ENGINEER),
-      toolResult('toolu_other', {status: 'completed'}, {}, fenced(OTHER)),
-    );
-
-    expect(summary.receipt).toBeNull();
-  });
-
-  it('Should not throw on a result when no engineer was called', () => {
-    const parser = new TranscriptParser();
-
-    expect(() =>
-      pushAll(
-        parser,
-        toolResult('toolu_x', {status: 'completed'}, {}, fenced(OTHER)),
-      ),
-    ).not.toThrow();
-    expect(parser.summary().receipt).toBeNull();
-  });
-
-  it('Should find no receipt in a completed result whose content is not text', () => {
-    const summary = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_s', 'Agent', ENGINEER),
-      toolResult('toolu_s', {status: 'completed'}, {}, null),
-    );
-
-    expect(summary.receipt).toEqual({
-      kind: 'invalid',
-      problems: ['no JSON receipt'],
-    });
-  });
-
-  it('Should ignore a notification for another tool-use-id or without a result', () => {
-    const parser = launched();
-
-    expect(
-      pushAll(
-        parser,
-        notification('toolu_other', fenced(OTHER)),
-        notification('toolu_eng1', null),
-      ).receipt,
-    ).toBeNull();
-    expect(pushAll(parser, handback(AGENT_ID)).receipt).toStrictEqual({
-      kind: 'valid',
-      receipt: OTHER,
-    });
-  });
-
-  it('Should ignore a hand-back from another agent or without the hand-back flag', () => {
-    const summary = pushAll(
-      launched(),
-      handback('a-other'),
-      prompt(fenced(OTHER), {
-        origin: {handback: 'yes', senderTaskId: AGENT_ID},
-      }),
-      prompt(fenced(OTHER), {origin: 'peer'}),
-    );
-
-    expect(summary.receipt).toBeNull();
-  });
-
-  it('Should wait for a hand-back only once the agentId is known', () => {
-    const errored = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_e', 'Agent', ENGINEER),
-      toolResult('toolu_e', 'Error: x'),
-      handback(null),
-    );
-    expect(errored.receipt).toBeNull();
-
-    const idless = pushAll(
-      new TranscriptParser(),
-      toolUse('toolu_e', 'Agent', ENGINEER),
-      toolResult('toolu_e', {status: 'async_launched', agentId: 5}),
-      handback(null),
-      handback(5),
-    );
-    expect(idless.receipt).toBeNull();
-  });
-
-  it('Should ignore receipt channels before any engineer call', () => {
-    const summary = pushAll(
-      new TranscriptParser(),
-      handback(AGENT_ID),
-      ...fixture('r1').slice(2),
-    );
-
-    expect(summary.receipt).toBeNull();
   });
 });
 

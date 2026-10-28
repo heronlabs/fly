@@ -31,6 +31,7 @@ const DIFF_ARGS = [
 const GIT_TIMEOUT_MS = 15_000;
 const FETCH_TIMEOUT_MS = 60_000;
 const WORKTREE_ADD_TIMEOUT_MS = 30_000;
+const WORKTREE_REMOVE_TIMEOUT_MS = 30_000;
 const PUSH_TIMEOUT_MS = 60_000;
 
 @Injectable()
@@ -224,6 +225,58 @@ export class GitCliService extends VcsGateway {
     );
     if (result.code !== 0) {
       throw new Error(`git push falhou: ${result.stderr.trim()}`);
+    }
+  }
+
+  async removeWorktree(repoPath: string, path: string): Promise<void> {
+    const result = await this.run(
+      repoPath,
+      ['worktree', 'remove', path],
+      WORKTREE_REMOVE_TIMEOUT_MS,
+    );
+    if (result.code !== 0) throw new Error(result.stderr.trim());
+  }
+
+  async deleteBranch(repoPath: string, branch: string): Promise<void> {
+    const result = await this.run(repoPath, ['branch', '-D', branch]);
+    if (result.code !== 0) throw new Error(result.stderr.trim());
+  }
+
+  async isAncestor(
+    repoPath: string,
+    ancestor: string,
+    descendant: string,
+  ): Promise<boolean> {
+    const result = await this.run(repoPath, [
+      'merge-base',
+      '--is-ancestor',
+      ancestor,
+      descendant,
+    ]);
+    return result.code === 0;
+  }
+
+  // ls-remote answers in exit codes (2: no such branch), so the common case
+  // does not depend on git's localized text; the push's own "does not exist"
+  // covers a branch deleted between the two calls.
+  async deleteRemoteBranch(repoPath: string, branch: string): Promise<void> {
+    const listed = await this.run(
+      repoPath,
+      ['ls-remote', '--exit-code', '--heads', 'origin', `refs/heads/${branch}`],
+      PUSH_TIMEOUT_MS,
+    );
+    if (listed.code === 2) return;
+    if (listed.code !== 0) throw new Error(listed.stderr.trim());
+    const result = await this.run(
+      repoPath,
+      ['push', 'origin', '--delete', branch],
+      PUSH_TIMEOUT_MS,
+    );
+    if (
+      result.code !== 0 &&
+      !result.stderr.includes('remote ref does not exist')
+    ) {
+      throw new Error(result.stderr.trim());
     }
   }
 

@@ -661,7 +661,6 @@ describe('AppShell', () => {
           {
             worktreeId: 'w1',
             status: 'ci',
-            receipt: null,
             task: null,
             canOpenPr: false,
             pullRequest: {
@@ -675,6 +674,8 @@ describe('AppShell', () => {
               review: 'none',
               checks: 'pending',
               checkRuns: [],
+              headSha: null,
+              behind: false,
             },
           },
         ],
@@ -794,7 +795,6 @@ describe('AppShell', () => {
             worktreeId: 'w1',
             status: 'ready',
             pullRequest: null,
-            receipt: null,
             task: null,
             canOpenPr: false,
           },

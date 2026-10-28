@@ -32,7 +32,7 @@ export class QueueHandler {
   register(): void {
     this.host.handle(channels.queueList, () => this.list());
     this.host.handle(channels.prMerge, async (_event, worktreeId: string) => {
-      await this.queue.mergePullRequest(worktreeId);
+      await this.lifecycle.merge(worktreeId);
       await this.tick();
     });
     this.stop();
@@ -82,6 +82,11 @@ export class QueueHandler {
     this.refreshing = true;
     try {
       await this.queue.refreshPullRequests();
+      try {
+        await this.lifecycle.poll();
+      } catch (error) {
+        this.logger.error(`Falha ao acompanhar a CI: ${errorMessage(error)}`);
+      }
       await this.tick();
     } catch (error) {
       this.logger.error(`Falha ao consultar PRs: ${errorMessage(error)}`);

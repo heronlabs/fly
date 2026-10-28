@@ -1,8 +1,4 @@
-import type {
-  ReceiptResult,
-  TranscriptSummary,
-} from '../../core/domain/transcript';
-import {parseReceipt, RECEIPT_SUBAGENT} from '../supera/receipt-parser';
+import type {TranscriptSummary} from '../../core/domain/transcript';
 
 export type TaskNotification = {
   taskId: string | null;
@@ -15,18 +11,10 @@ type Json = Record<string, unknown>;
 type ToolResultBlock = Json & {tool_use_id: string};
 type Phase = TranscriptSummary['phase'];
 type Shell = {taskId: string; toolUseId: string; at: number};
-/** The latest supera-engineer Agent call and what its channels delivered. */
-type EngineerCall = {
-  id: string;
-  agentId: string | null;
-  receipt: ReceiptResult | null;
-};
 
 const NOTIFICATION_OPEN = '<task-notification>';
 const INTERRUPT_PREFIX = '[Request interrupted by user';
 const META_FLAGS = ['isMeta', 'isCompactSummary', 'isVisibleInTranscriptOnly'];
-const WORKTREES_DIR = '/.worktrees/';
-const AGENT_TOOLS = ['Agent', 'Task'];
 
 const isRecord = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -42,11 +30,6 @@ const isInterrupt = (block: Json): boolean =>
 const isMeta = (record: Json): boolean =>
   META_FLAGS.some(flag => record[flag] === true);
 
-const isEngineerCall = (name: string, input: unknown): boolean =>
-  AGENT_TOOLS.includes(name) &&
-  isRecord(input) &&
-  input.subagent_type === RECEIPT_SUBAGENT;
-
 const readTimestamp = (value: unknown): number | null => {
   if (typeof value !== 'string') return null;
   const ms = Date.parse(value);
@@ -55,21 +38,6 @@ const readTimestamp = (value: unknown): number | null => {
 
 const readContent = (record: Json): unknown =>
   isRecord(record.message) ? record.message.content : undefined;
-
-/** The string content, or the content's text blocks joined by newlines. */
-const readText = (content: unknown): string => {
-  if (typeof content === 'string') return content;
-  // Stryker disable next-line StringLiteral: any non-JSON fallback text parses to the same 'no JSON receipt' as ''
-  if (!Array.isArray(content)) return '';
-  return content
-    .filter(isRecord)
-    .flatMap(block =>
-      block.type === 'text' && typeof block.text === 'string'
-        ? [block.text]
-        : [],
-    )
-    .join('\n');
-};
 
 const readTag = (text: string, tag: string): string | null =>
   new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(text)?.[1] ?? null;
@@ -100,8 +68,6 @@ export class TranscriptParser {
   private lastTurnEndAt: number | null = null;
   private backgroundAgents = 0;
   private launchCwd: string | null = null;
-  private worktreePath: string | null = null;
-  private engineer: EngineerCall | null = null;
   private skippedLines = 0;
 
   get skipped(): number {
@@ -137,8 +103,6 @@ export class TranscriptParser {
       backgroundAgents: this.backgroundAgents,
       backgroundShells: this.shells.map(shell => shell.at),
       launchCwd: this.launchCwd,
-      worktreePath: this.worktreePath,
-      receipt: this.engineer?.receipt ?? null,
     };
   }
 
@@ -148,15 +112,9 @@ export class TranscriptParser {
   }
 
   private readCwd(cwd: unknown): void {
-    if (typeof cwd !== 'string') return;
-    if (this.launchCwd === null) {
+    if (typeof cwd === 'string' && this.launchCwd === null) {
       this.launchCwd = cwd;
-      return;
     }
-    const prefix = this.launchCwd + WORKTREES_DIR;
-    if (this.worktreePath !== null || !cwd.startsWith(prefix)) return;
-    const slug = cwd.slice(prefix.length).split('/')[0];
-    if (slug) this.worktreePath = prefix + slug;
   }
 
   private onAssistant(record: Json, at: number | null): void {
@@ -170,9 +128,6 @@ export class TranscriptParser {
         typeof block.name === 'string'
       ) {
         this.open.set(block.id, block.name);
-        if (isEngineerCall(block.name, block.input)) {
-          this.engineer = {id: block.id, agentId: null, receipt: null};
-        }
       }
     }
     this.event('mid-turn', at);
@@ -180,10 +135,8 @@ export class TranscriptParser {
 
   private onUser(record: Json, at: number | null): void {
     const content = readContent(record);
-    this.readHandback(record.origin, content);
     if (typeof content === 'string') {
       const notification = parseTaskNotification(content);
-      this.readNotification(notification);
       if (isMeta(record)) return;
       this.finishShells(notification);
       this.event('mid-turn', at);
@@ -214,7 +167,6 @@ export class TranscriptParser {
     this.open.delete(toolUseId);
     // A string toolUseResult is an error result: the tool still closes.
     if (!isRecord(toolUseResult)) return;
-    this.readEngineerResult(result, toolUseResult);
     if (tool === 'ScheduleWakeup') {
       if (toolUseResult.stopped === true) {
         this.wakeupAt = null;
@@ -233,43 +185,6 @@ export class TranscriptParser {
     if (taskId !== null) {
       this.shells.push({taskId, toolUseId, at: at ?? this.lastEventAt ?? 0});
     }
-  }
-
-  /** Receipt channel 1 (a sync result), else the agentId channel 3 needs. */
-  private readEngineerResult(
-    result: ToolResultBlock,
-    toolUseResult: Json,
-  ): void {
-    const call = this.engineer;
-    if (call === null || call.id !== result.tool_use_id) return;
-    if (toolUseResult.status === 'completed') {
-      this.deliver(call, readText(result.content));
-    } else if (typeof toolUseResult.agentId === 'string') {
-      call.agentId = toolUseResult.agentId;
-    }
-  }
-
-  /** Receipt channel 2: the task notification for the engineer call. */
-  private readNotification(notification: TaskNotification | null): void {
-    const call = this.engineer;
-    if (call === null || notification === null) return;
-    if (notification.toolUseId === call.id && notification.result !== null) {
-      this.deliver(call, notification.result);
-    }
-  }
-
-  /** Receipt channel 3: the engineer's peer hand-back, meta lines included. */
-  private readHandback(origin: unknown, content: unknown): void {
-    const call = this.engineer;
-    if (call === null || call.agentId === null || !isRecord(origin)) return;
-    if (origin.handback === true && origin.senderTaskId === call.agentId) {
-      this.deliver(call, readText(content));
-    }
-  }
-
-  /** The first channel to deliver for the call wins. */
-  private deliver(call: EngineerCall, text: string): void {
-    if (call.receipt === null) call.receipt = parseReceipt(text);
   }
 
   private finishShells(notification: TaskNotification | null): void {

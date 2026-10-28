@@ -154,16 +154,13 @@ describe('NewTaskDialog', () => {
     );
   });
 
-  it('Should disable Iniciar with an empty branch unless it is /supera:ship', async () => {
+  it('Should disable Iniciar with an empty branch', async () => {
     const user = userEvent.setup();
     setup();
     const start = screen.getByRole('button', {name: 'Iniciar'});
     await user.type(screen.getByLabelText('Descrição'), '###');
     expect(screen.getByLabelText('Branch')).toHaveValue('');
     expect(start).toBeDisabled();
-    await user.clear(screen.getByLabelText('Descrição'));
-    await user.type(screen.getByLabelText('Descrição'), '/supera:ship ###');
-    expect(start).toBeEnabled();
   });
 
   it('Should not submit with Cmd+Enter while the branch is empty', async () => {

@@ -39,7 +39,6 @@ const snapshot = vi.fn();
 const start = vi.fn();
 const kill = vi.fn();
 const create = vi.fn();
-const bind = vi.fn();
 const pick = vi.fn();
 
 const invoke = (channel: string, ...args: unknown[]) =>
@@ -52,13 +51,12 @@ beforeEach(() => {
   vi.useFakeTimers();
   listeners.clear();
   logged = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
-  bind.mockResolvedValue(undefined);
   snapshot.mockResolvedValue(snap(1));
   handler = new SessionHandler(
     host,
     {send} as Broadcaster,
     {snapshot, start, kill} as unknown as SessionService,
-    {bind, create} as unknown as TaskService,
+    {create} as unknown as TaskService,
     {pick} as FilePicker,
   );
   handler.register();
@@ -96,38 +94,10 @@ describe('SessionHandler', () => {
 
   it('Should not touch tmux until the first interval fires', async () => {
     await vi.advanceTimersByTimeAsync(SESSION_POLL_MS - 1);
-    expect(bind).not.toHaveBeenCalled();
     expect(snapshot).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(bind).toHaveBeenCalledTimes(1);
     expect(snapshot).toHaveBeenCalledTimes(1);
-  });
-
-  it('Should bind before the snapshot on list', async () => {
-    const order: string[] = [];
-    bind.mockImplementation(async () => void order.push('bind'));
-    snapshot.mockImplementation(async () => {
-      order.push('snapshot');
-      return snap(1);
-    });
-
-    expect(await invoke(channels.sessionList)).toEqual(snap(1));
-    expect(order).toEqual(['bind', 'snapshot']);
-  });
-
-  it('Should log a bind failure on list and still return the snapshot', async () => {
-    bind.mockRejectedValue(new Error('boom'));
-
-    expect(await invoke(channels.sessionList)).toEqual(snap(1));
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining('boom'));
-  });
-
-  it('Should stringify non-Error bind failures', async () => {
-    bind.mockRejectedValue('texto');
-    await invoke(channels.sessionList);
-
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining('texto'));
   });
 
   it('Should propagate a snapshot failure on list', async () => {
@@ -178,14 +148,6 @@ describe('SessionHandler', () => {
     await vi.advanceTimersByTimeAsync(SESSION_POLL_MS);
 
     expect(logged).toHaveBeenCalledWith(expect.stringContaining('texto'));
-  });
-
-  it('Should log a bind failure in the tick and still snapshot and broadcast', async () => {
-    bind.mockRejectedValue(new Error('boom'));
-    await vi.advanceTimersByTimeAsync(SESSION_POLL_MS);
-
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining('boom'));
-    expect(send).toHaveBeenCalledWith(channels.sessionChanged, snap(1));
   });
 
   it('Should recover on the tick after a failure', async () => {
@@ -255,7 +217,7 @@ describe('SessionHandler', () => {
       host,
       {send} as Broadcaster,
       {snapshot, start, kill} as unknown as SessionService,
-      {bind, create} as unknown as TaskService,
+      {create} as unknown as TaskService,
       {pick} as FilePicker,
     );
 

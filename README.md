@@ -15,8 +15,9 @@
 Desktop app for driving agent-based development across many repositories at
 once. Open it on a workspace folder, see every repo and every worktree, click a
 worktree to get its [Claude Code](https://claude.ai/code) session, start a new
-task and have [supera](https://github.com/heronlabs/supera) ship it, and watch
-a queue of what is waiting for you versus what an agent is still working on.
+task that gets its own worktree and session, open its PR with "Abrir PR", let
+fly follow CI and reviews, merge with "Fazer merge" (which also cleans up), and
+watch a queue of what is waiting for you versus what an agent is still working on.
 Built with Electron, NestJS in the main process, React in the renderer, tmux
 and xterm.js. macOS first.
 
@@ -44,17 +45,17 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 
 - **One window, every repo** — discovers the git repos under a folder, two levels deep, and every worktree of each. Session = worktree = task.
 - **Real terminals, persistent sessions** — each worktree hosts Claude Code inside tmux, so sessions survive app restarts and stay reachable remotely via Tailscale + Termius. The [`fly` CLI](#cli) starts, lists, resumes and stops the same sessions from any terminal, and opens the app on a folder.
-- **Nova tarefa** — pick a repo, type a description, fly fetches the repo's default branch, creates `.worktrees/<branch>` (branch suggested from the description, editable), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). A description starting with `/supera:ship ` still runs the old ship flow for now.
-- **Queue, not chat** — the state of each worktree is derived from the Claude Code transcript and `gh`, without changing supera. The TUI stays the chat.
+- **Nova tarefa** — pick a repo, type a description, fly fetches the repo's default branch, creates `.worktrees/<branch>` (branch suggested from the description, editable), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). "Abrir PR" then has that session commit and write the PR, and fly opens it.
+- **Queue, not chat** — the state of each worktree is derived from the Claude Code transcript and `gh`. The TUI stays the chat.
 - **100% tested** — v8 coverage and Stryker mutation testing, both at 100% thresholds.
 
 ## How It Works
 
 1. **Workspace.** fly opens a folder, lists its repos and worktrees, and watches them for changes.
 2. **Session.** "Iniciar sessão" creates a tmux session on the default server named after the worktree and runs `claude` in it, attached to an xterm.js terminal through node-pty. Closing fly detaches; opening it again reconciles the sessions that are still running. Dropping files on the terminal types their shell-escaped absolute paths, and ⌘V with only an image on the clipboard saves it as a PNG under the system temp folder and types that path; Claude Code turns an image path into an `[Image #N]` attachment.
-3. **Task.** "Nova tarefa" fetches the repo's default branch, creates `.worktrees/<branch>` (branch suggested from the description, editable), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). A description starting with `/supera:ship ` still runs the old ship flow for now: the session starts in the repo's main worktree and follows the transcript until ship creates the worktree and moves the session there.
+3. **Task.** "Nova tarefa" fetches the repo's default branch, creates `.worktrees/<branch>` (branch suggested from the description, editable), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). "Abrir PR" then has that session commit and write the PR, and fly opens it.
 4. **Queue.** A poller tails `~/.claude/projects/<cwd>/<session>.jsonl` and asks `gh` for the pull requests of each worktree, then applies the queue rules and broadcasts a snapshot to the renderer, which shows a badge per worktree and the counts in the footer.
-5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button and the engineer's receipt; the panel collapses from the top bar.
+5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button; above them, the task section offers "Abrir PR", shows the CI and review status of the task, and, when fly stops, "Rodar de novo" (reruns failed jobs after an infrastructure failure), "Retomar" and, once the PR is merged or closed, "Limpar"; the panel collapses from the top bar.
 6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded; "Recolher pastas" collapses every open folder. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; the middle button closes a tab, and a right click offers "Fechar todas" and "Fechar salvas" (a dirty tab always asks `Descartar` first). ⌘S saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note and "Abrir no VSCode".
 7. **Search.** The magnifier on a worktree row, or ⇧⌘F for the selected one, swaps the explorer for a Search view of that worktree: `git grep` over its tracked and untracked text files (`.gitignore` honoured) as you type, with case, whole-word and regex toggles. Hits are grouped by file with the line number and a highlighted preview, capped at 100 per file and 2000 in all; a click opens the file in a tab with the match selected. Each worktree keeps its last search.
 
@@ -63,9 +64,9 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 | Tool | Why |
 |------|-----|
 | `git` | Repo and worktree discovery; `git diff` for the diff panel, `git status` for the explorer, `git grep` for the search |
-| `gh` | Pull request status and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
+| `gh` | Pull request status, `gh pr create`, failed-job logs and `gh run rerun`, review comments, and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
-| `claude` | Claude Code CLI, run inside each session, with the supera plugin installed |
+| `claude` | Claude Code CLI, run inside each session |
 | `code` | VSCode on `PATH`, used by "Abrir no VSCode" |
 
 fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or
@@ -169,7 +170,7 @@ request:
 | Status | Badge | Meaning |
 |---|---|---|
 | `idle` | — | No session, or nothing in flight |
-| `engineer` | `eng` | An agent is working: supera-engineer is running or a turn is in progress |
+| `engineer` | `eng` | An agent is working: a turn is in progress |
 | `waiting` | `você` | Claude is waiting for you: a question was asked or the turn ended with nothing scheduled |
 | `ci` | `CI` | A pull request is open and its checks are running |
 | `failed` | `falhou` | A check failed on the pull request |
@@ -217,12 +218,11 @@ src/
     ├── claude/               # transcript reader and parser (~/.claude/projects)
     ├── git/ github/          # worktree discovery, diff and status (git), pull requests (gh)
     ├── tmux/ pty/ process/   # sessions, node-pty terminals, command runner
-    ├── supera/               # engineer receipt parser
     └── environment/ filesystem/
 ```
 
 - **`application/`** wires handlers, the CLI commands and the renderer; `ipc-module.ts` is the only place in it that imports `infrastructure`. `cli.ts`, the CLI's composition root, never reaches `electron`.
-- **`core/`** holds the rules: what a worktree's queue state is, how a session is named, how a task binds to the worktree ship creates. It never imports `application`.
+- **`core/`** holds the rules: what a worktree's queue state is, how a session is named, how a task is prepared and its PR lifecycle runs. It never imports `application`.
 - **`infrastructure/`** adapters implement `core/interfaces` and never import inward.
 - **`application/ui`** imports only itself and type-only `core/domain`; `preload.ts` imports only `core/domain`.
 

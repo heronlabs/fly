@@ -1,6 +1,10 @@
-import type {QueueStatus} from '../domain/queue';
+import type {QueueStatus, ReviewComment} from '../domain/queue';
 import {
   CONVENTIONAL_TITLE,
+  EXCERPT_CONTEXT_LINES,
+  EXCERPT_MAX_CHARS,
+  EXCERPT_TAIL_LINES,
+  MAX_CI_ATTEMPTS,
   MAX_TITLE_CHARS,
   TaskPhase,
   TaskRecord,
@@ -68,13 +72,73 @@ export const isSessionIdle = (
   const {options} = session;
   return (
     options['@fly_task'] === undefined &&
-    options['@fly_task_repo'] === undefined &&
     now - session.createdAt * 1000 >= MIN_SESSION_AGE_MS
   );
 };
 
 export const openInstruction = (requestFile: string): string =>
   `fly: commite o que estiver pendente (Conventional Commits, sem push) e siga as instruções em ${requestFile}`;
+
+export const fixInstruction = (
+  number: number,
+  attempt: number,
+  logFiles: string[],
+): string =>
+  `fly: a CI do PR #${number} falhou (tentativa ${attempt} de ${MAX_CI_ATTEMPTS}). Logs: ${logFiles.join(', ')}. Corrija, rode as verificações locais e commite (Conventional Commits, sem push).`;
+
+export const reviewInstruction = (number: number, file: string): string =>
+  `fly: há comentários de review novos no PR #${number} em ${file}. Avalie cada um, corrija o que fizer sentido e commite (Conventional Commits, sem push).`;
+
+// The BOM opening each step and every CSI escape sequence (colours, erase,
+// cursor), real or as gh prints them (^[[).
+// eslint-disable-next-line no-control-regex
+const LOG_NOISE = /\uFEFF|(?:\x1b|\^\[)\[[\d;?]*[@-~]/g;
+const ERROR_MARK = '##[error]';
+
+// The text of a `<job>\t<step>\t<timestamp> <text>` line, whose text may hold
+// tabs; any other line is kept whole.
+const logText = (line: string): string => {
+  const fields = line.replace(LOG_NOISE, '').split('\t');
+  if (fields.length < 3) return fields.join('\t');
+  const stamped = fields.slice(2).join('\t');
+  const space = stamped.indexOf(' ');
+  return space === -1 ? '' : stamped.slice(space + 1);
+};
+
+// What a CI fix reads of a failed job's log: the lines up to each error with
+// their context, windows that touch merged and the others marked apart, or the
+// tail when nothing is marked; at most EXCERPT_MAX_CHARS, keeping the end.
+export const logExcerpt = (raw: string): string => {
+  const lines = raw.trimEnd().split('\n').map(logText);
+  const windows = lines.reduce<[number, number][]>((found, text, i) => {
+    if (!text.startsWith(ERROR_MARK)) return found;
+    const start = Math.max(0, i - EXCERPT_CONTEXT_LINES);
+    const last = found.at(-1);
+    if (last && start <= last[1] + 1) last[1] = i;
+    else found.push([start, i]);
+    return found;
+  }, []);
+  const kept =
+    windows.length === 0
+      ? lines.slice(-EXCERPT_TAIL_LINES).join('\n')
+      : windows
+          .map(([start, end]) => lines.slice(start, end + 1).join('\n'))
+          .join('\n…\n');
+  return kept.slice(-EXCERPT_MAX_CHARS);
+};
+
+const placeOf = ({path, line}: ReviewComment): string => {
+  if (path === null) return 'PR';
+  return line === null ? path : `${path}:${line}`;
+};
+
+// P10: the review comments a session reads, one block per comment.
+export const reviewFile = (comments: ReviewComment[]): string =>
+  comments
+    .map(c =>
+      [`### ${c.author} — ${placeOf(c)}`, '', c.body, '', c.url].join('\n'),
+    )
+    .join('\n\n') + '\n';
 
 // pr.json as the session wrote it; null when missing, not JSON, or without a
 // string title and body.

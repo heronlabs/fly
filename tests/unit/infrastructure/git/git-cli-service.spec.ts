@@ -636,6 +636,133 @@ describe('GitCliService', () => {
       );
     });
 
+    it('Should remove a worktree without --force within 30 s', async () => {
+      run.mockResolvedValue(ok());
+
+      await service.removeWorktree('/r', '/r/.worktrees/x');
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['worktree', 'remove', '/r/.worktrees/x'],
+        {cwd: '/r', timeoutMs: 30_000},
+      );
+    });
+
+    it("Should reject removeWorktree with git's own message", async () => {
+      run.mockResolvedValue(fail(" fatal: 'x' contains modified files\n"));
+
+      await expect(service.removeWorktree('/r', '/x')).rejects.toThrow(
+        new Error("fatal: 'x' contains modified files"),
+      );
+    });
+
+    it('Should force-delete a local branch within 15 s', async () => {
+      run.mockResolvedValue(ok());
+
+      await service.deleteBranch('/r', 'feat-x');
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['branch', '-D', 'feat-x'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+    });
+
+    it("Should reject deleteBranch with git's message", async () => {
+      run.mockResolvedValue(fail('error: not found\n'));
+
+      await expect(service.deleteBranch('/r', 'x')).rejects.toThrow(
+        new Error('error: not found'),
+      );
+    });
+
+    it('Should look for the remote branch, then delete it, within 60 s each', async () => {
+      run.mockResolvedValue(ok());
+
+      await service.deleteRemoteBranch('/r', 'feat-x');
+
+      expect(run.mock.calls).toEqual([
+        [
+          'git',
+          [
+            'ls-remote',
+            '--exit-code',
+            '--heads',
+            'origin',
+            'refs/heads/feat-x',
+          ],
+          {cwd: '/r', timeoutMs: 60_000},
+        ],
+        [
+          'git',
+          ['push', 'origin', '--delete', 'feat-x'],
+          {cwd: '/r', timeoutMs: 60_000},
+        ],
+      ]);
+    });
+
+    it('Should resolve without pushing when ls-remote finds no branch (exit 2)', async () => {
+      run.mockResolvedValue(fail('', 2));
+
+      await expect(
+        service.deleteRemoteBranch('/r', 'x'),
+      ).resolves.toBeUndefined();
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it("Should reject with ls-remote's stderr on any other exit, without pushing", async () => {
+      run.mockResolvedValue(fail(' fatal: unable to access\n', 128));
+
+      await expect(service.deleteRemoteBranch('/r', 'x')).rejects.toThrow(
+        new Error('fatal: unable to access'),
+      );
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('Should count a branch deleted between the two calls as deleted', async () => {
+      run
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(
+          fail("error: unable to delete 'x': remote ref does not exist\n"),
+        );
+
+      await expect(
+        service.deleteRemoteBranch('/r', 'x'),
+      ).resolves.toBeUndefined();
+    });
+
+    it("Should reject deleteRemoteBranch with git's other push messages", async () => {
+      run
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(fail('fatal: Authentication failed\n'));
+
+      await expect(service.deleteRemoteBranch('/r', 'x')).rejects.toThrow(
+        new Error('fatal: Authentication failed'),
+      );
+    });
+
+    it('Should tell an ancestor from anything else with merge-base within 15 s', async () => {
+      run.mockResolvedValueOnce(ok());
+      expect(await service.isAncestor('/r', 'feat-x', 'abc')).toBe(true);
+      expect(run).toHaveBeenCalledExactlyOnceWith(
+        'git',
+        ['merge-base', '--is-ancestor', 'feat-x', 'abc'],
+        {cwd: '/r', timeoutMs: 15_000},
+      );
+      run.mockResolvedValueOnce(fail('', 1));
+      expect(await service.isAncestor('/r', 'a', 'b')).toBe(false);
+      run.mockResolvedValueOnce(fail('fatal: Not a valid commit name', 128));
+      expect(await service.isAncestor('/r', 'a', 'b')).toBe(false);
+    });
+
+    it('Should reject isAncestor on a timeout', async () => {
+      run.mockRejectedValue(Object.assign(new Error('x'), {killed: true}));
+
+      await expect(service.isAncestor('/r', 'a', 'b')).rejects.toThrow(
+        GIT_TIMEOUT_MESSAGE,
+      );
+    });
+
     it('Should fail ensureIgnored when the common dir cannot be read', async () => {
       run
         .mockResolvedValueOnce(fail('', 1))

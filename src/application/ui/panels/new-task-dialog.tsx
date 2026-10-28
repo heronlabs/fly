@@ -10,8 +10,6 @@ import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo} from '../../../core/domain/workspace';
 import {MODEL_OPTIONS, suggestBranch} from './branch-name';
 
-const SHIP_PREFIX = '/supera:ship ';
-
 type Props = {
   open: boolean;
   repos: Repo[];
@@ -55,10 +53,7 @@ const DialogBody = ({
   const [model, setModel] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const trimmed = description.trim();
-  const ready =
-    trimmed !== '' &&
-    (branch.trim() !== '' || trimmed.startsWith(SHIP_PREFIX)) &&
-    !submitting;
+  const ready = trimmed !== '' && branch.trim() !== '' && !submitting;
 
   const changeDescription = (value: string) => {
     setDescription(value);

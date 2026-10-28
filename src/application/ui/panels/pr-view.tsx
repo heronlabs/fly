@@ -6,8 +6,9 @@ import type {
   QueueStatus,
   WorktreeQueue,
 } from '../../../core/domain/queue';
-import type {ReceiptResult} from '../../../core/domain/transcript';
 import {TaskSection} from './task-section';
+
+type TaskHandlers = 'onOpenPr' | 'onRerun' | 'onResume' | 'onClean';
 
 type Props = {
   queue: WorktreeQueue | null;
@@ -16,6 +17,9 @@ type Props = {
   onMerge(): void;
   onOpenExternal(url: string): void;
   onOpenPr(): Promise<void>;
+  onRerun(): Promise<void>;
+  onResume(): Promise<void>;
+  onClean(confirmed: boolean): Promise<void>;
 };
 
 const buttonStyle: CSSProperties = {
@@ -56,47 +60,13 @@ const pillBackground = (pr: PullRequest): string =>
         ? 'var(--badgeWarn)'
         : 'var(--badgeOk)';
 
-const Receipt = ({receipt}: {receipt: ReceiptResult}) => {
-  if (receipt.kind === 'invalid') {
-    return (
-      <section>
-        <h3 style={{...heading, color: 'var(--err)'}}>Receipt inválido</h3>
-        <ul style={{margin: 0, paddingLeft: 18}}>
-          {receipt.problems.map((problem, index) => (
-            <li key={index}>{problem}</li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
-  const {summary, filesChanged, verification} = receipt.receipt;
-  return (
-    <section>
-      <h3 style={heading}>Receipt do engineer</h3>
-      <p style={{margin: 0}}>{summary}</p>
-      <h3 style={heading}>Arquivos</h3>
-      <ul style={{margin: 0, paddingLeft: 18, fontFamily: 'var(--fontMono)'}}>
-        {filesChanged.map(path => (
-          <li key={path}>{path}</li>
-        ))}
-      </ul>
-      <h3 style={heading}>Verificação</h3>
-      {Object.entries(verification).map(([gate, result]) => (
-        <div key={gate} style={{fontFamily: 'var(--fontMono)'}}>
-          {`${gate}: ${result}`}
-        </div>
-      ))}
-    </section>
-  );
-};
-
 const PullRequestSection = ({
   pr,
   status,
   merging,
   onMerge,
   onOpenExternal,
-}: Omit<Props, 'queue' | 'onOpenPr'> & {pr: PullRequest}) => {
+}: Omit<Props, 'queue' | TaskHandlers> & {pr: PullRequest}) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <section>
@@ -180,7 +150,14 @@ const PullRequestSection = ({
   );
 };
 
-export const PrView = ({queue, onOpenPr, ...props}: Props) => (
+export const PrView = ({
+  queue,
+  onOpenPr,
+  onRerun,
+  onResume,
+  onClean,
+  ...props
+}: Props) => (
   <div
     style={{
       height: '100%',
@@ -190,7 +167,14 @@ export const PrView = ({queue, onOpenPr, ...props}: Props) => (
       color: 'var(--text2)',
     }}
   >
-    <TaskSection key={queue?.worktreeId} queue={queue} onOpenPr={onOpenPr} />
+    <TaskSection
+      key={queue?.worktreeId}
+      queue={queue}
+      onOpenPr={onOpenPr}
+      onRerun={onRerun}
+      onResume={onResume}
+      onClean={onClean}
+    />
     {queue?.pullRequest ? (
       <PullRequestSection
         key={queue.pullRequest.url}
@@ -200,6 +184,5 @@ export const PrView = ({queue, onOpenPr, ...props}: Props) => (
     ) : (
       <div style={{color: 'var(--muted)'}}>Sem PR aberto</div>
     )}
-    {queue?.receipt && <Receipt receipt={queue.receipt} />}
   </div>
 );

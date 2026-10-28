@@ -1,4 +1,5 @@
 import type {CheckRun, ChecksState, PullRequest} from '../../core/domain/queue';
+import {isRecord, stringOrNull} from './json-fields';
 
 const INVALID = 'Resposta inválida do gh';
 
@@ -26,10 +27,6 @@ const CONTEXT_STATES: Record<string, Check> = {
   ERROR: 'failing',
 };
 
-// Object(value) === value is true only for objects: null and primitives fail.
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Object(value) === value && !Array.isArray(value);
-
 const classifyCheck = (entry: unknown): Check | null => {
   if (!isRecord(entry)) {
     return null;
@@ -48,8 +45,7 @@ const classifyCheck = (entry: unknown): Check | null => {
   return null;
 };
 
-const stringOrNull = (value: unknown): string | null =>
-  typeof value === 'string' ? value : null;
+const JOB_URL = /\/actions\/runs\/(\d+)\/job\/(\d+)$/;
 
 const mapCheckRun = (entry: unknown): CheckRun | null => {
   const state = classifyCheck(entry);
@@ -61,10 +57,16 @@ const mapCheckRun = (entry: unknown): CheckRun | null => {
   if (name === null) {
     return null;
   }
+  const url = stringOrNull(isRun ? entry.detailsUrl : entry.targetUrl);
+  const ids = isRun ? url?.match(JOB_URL) : null;
   return {
     name,
     state,
-    url: stringOrNull(isRun ? entry.detailsUrl : entry.targetUrl),
+    url,
+    kind: isRun ? 'run' : 'status',
+    conclusion: isRun ? stringOrNull(entry.conclusion) : null,
+    runId: ids?.[1] ?? null,
+    jobId: ids?.[2] ?? null,
   };
 };
 
@@ -101,7 +103,9 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
     typeof entry.number !== 'number' ||
     typeof entry.url !== 'string' ||
     typeof entry.headRefName !== 'string' ||
-    typeof entry.state !== 'string'
+    typeof entry.state !== 'string' ||
+    // A fork's PR may share a branch name with a local worktree.
+    entry.isCrossRepository === true
   ) {
     return null;
   }
@@ -120,6 +124,8 @@ const mapPullRequest = (entry: unknown): PullRequest | null => {
     checks: aggregateChecks(entry.statusCheckRollup),
     title: stringOrNull(entry.title) ?? '',
     checkRuns: mapCheckRuns(entry.statusCheckRollup),
+    headSha: stringOrNull(entry.headRefOid),
+    behind: entry.mergeStateStatus === 'BEHIND',
   };
 };
 

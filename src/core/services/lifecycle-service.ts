@@ -1,9 +1,10 @@
 import {join} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 
 import {Injectable} from '@nestjs/common';
 
 import {PR_TEMPLATE} from '../domain/pr-template';
-import {TaskRecord, TaskStop} from '../domain/task';
+import {TaskAction, TaskRecord} from '../domain/task';
 import {TranscriptSummary} from '../domain/transcript';
 import {Repo, Worktree} from '../domain/workspace';
 import {IdGenerator} from '../interfaces/id-generator';
@@ -16,15 +17,23 @@ import {TaskFiles} from '../interfaces/task-files';
 import {TaskStore} from '../interfaces/task-store';
 import {TranscriptSource} from '../interfaces/transcript-source';
 import {VcsGateway} from '../interfaces/vcs-gateway';
+import {CleanupService} from './cleanup-service';
 import {resolveDefaultBranch} from './default-branch';
+import {pollRecord} from './lifecycle-poll';
+import {
+  createPullRequest,
+  PR_FILE,
+  sentRecord,
+  SESSION_GONE,
+  settleTurn,
+  stopped,
+} from './lifecycle-steps';
 import {QueueService} from './queue-service';
 import {errorMessage, MappedSessions, SessionService} from './session-service';
 import {
-  isConventionalTitle,
   isSessionIdle,
   newestFlySession,
   openInstruction,
-  parsePrText,
   prRequest,
 } from './task-rules';
 import {TerminalService} from './terminal-service';
@@ -34,21 +43,43 @@ const BUSY = 'A sessão está ocupada; aguarde o turno terminar';
 
 const PROMPT_FILE = 'prompt.md';
 const REQUEST_FILE = 'pr-request.md';
-const PR_FILE = 'pr.json';
-const BODY_FILE = 'pr-body.md';
+
+// A worktree that is gone, elsewhere, or on another branch is not the record's.
+const worktreeOf = (
+  worktrees: Worktree[],
+  record: TaskRecord,
+): Worktree | undefined =>
+  worktrees.find(
+    w => w.path === record.worktreePath && w.branch === record.branch,
+  );
+
+// P6: a turn that ended after `now` was taken must not pass for the turn the
+// instruction starts.
+const sentAtFor = (summary: TranscriptSummary | null, now: number): number =>
+  Math.max(now, summary?.lastTurnEndAt ?? 0);
+
+// One record's failure never holds up another's; the first one rejects at
+// the end.
+const settled = async (work: Promise<void>[]): Promise<void> => {
+  const failed = (await Promise.allSettled(work)).find(
+    (r): r is PromiseRejectedResult => r.status === 'rejected',
+  );
+  if (failed) throw failed.reason;
+};
 
 // The record fields an open request sets, whatever they were before: a new
 // PR starts its CI loop and its review forwarding from scratch.
 type Unopened = Omit<
   TaskRecord,
-  'phase' | 'stop' | 'pending' | 'ciAttempts' | 'fixedSha' | 'review' | 'outbox'
+  | 'prNumber'
+  | 'phase'
+  | 'stop'
+  | 'pending'
+  | 'ciAttempts'
+  | 'fixedSha'
+  | 'review'
+  | 'outbox'
 >;
-
-// A gateway error already carrying the stop's prefix keeps it once.
-const prefixed = (prefix: string, error: unknown): string => {
-  const message = errorMessage(error);
-  return message.startsWith(prefix) ? message : prefix + message;
-};
 
 @Injectable()
 export class LifecycleService {
@@ -63,9 +94,11 @@ export class LifecycleService {
     private readonly tasks: TaskStore,
     private readonly taskFiles: TaskFiles,
     private readonly ids: IdGenerator,
+    private readonly cleanup: CleanupService,
   ) {}
 
-  // Worktree paths with an open request between its checks and its save.
+  // Worktree paths with an open request between its checks and its save, or
+  // a queued action being typed.
   private readonly requesting = new Set<string>();
   private ticking = false;
 
@@ -124,9 +157,10 @@ export class LifecycleService {
     await this.launcher.sendText(target.name, openInstruction(requestFile));
     await this.tasks.save({
       ...record,
+      prNumber: null,
       phase: 'opening',
       stop: null,
-      pending: {kind: 'open', sentAt: now, headSha},
+      pending: {kind: 'open', sentAt: sentAtFor(summary, now), headSha},
       ciAttempts: 0,
       fixedSha: null,
       review: null,
@@ -134,10 +168,27 @@ export class LifecycleService {
     });
   }
 
-  // Settles every pending open request whose turn has ended. One record's
-  // failure never holds up another's; the first one rejects at the end. A
-  // tick that starts while another runs returns at once, so a request is
-  // never pushed or created twice.
+  // P10, after each PR refresh: moves every task of the workspace along its
+  // open PR's CI and review comments (see pollRecord).
+  async poll(now = Date.now()): Promise<void> {
+    const workspace = this.sessions.currentWorkspace();
+    if (!workspace) return;
+    const gateways = {prs: this.prs, taskFiles: this.taskFiles};
+    const records = await this.tasks.list();
+    await settled(
+      records.map(async record => {
+        const worktree = worktreeOf(workspace.worktrees, record);
+        if (!worktree) return;
+        const pr = this.queue.pullRequestFor(worktree.id);
+        const next = await pollRecord(gateways, record, pr, now);
+        if (next) await this.replace(record, next);
+      }),
+    );
+  }
+
+  // Types every queued fix or review into its idle session and settles every
+  // pending action whose turn has ended. A tick that starts while another
+  // runs returns at once, so nothing is typed, pushed or created twice.
   async tick(now = Date.now()): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
@@ -151,53 +202,65 @@ export class LifecycleService {
   private async settleAll(now: number): Promise<void> {
     const workspace = this.sessions.currentWorkspace();
     if (!workspace) return;
-    const opening = (await this.tasks.list()).flatMap(record =>
-      record.pending?.kind === 'open'
-        ? [{record, sentAt: record.pending.sentAt ?? 0}]
-        : [],
-    );
-    if (opening.length === 0) return;
+    const records = await this.tasks.list();
+    if (!records.some(r => r.pending || r.outbox)) return;
     const {tmux, items} = await this.sessions.mapped();
     // Without a tmux listing, a live session would look gone.
     if (tmux !== 'ok') return;
-    const results = await Promise.allSettled(
-      opening.map(({record, sentAt}) =>
-        this.settleOpen(record, sentAt, workspace.worktrees, items, now),
+    await settled(
+      records.map(record =>
+        this.settle(record, workspace.worktrees, items, now),
       ),
     );
-    const failed = results.find(
-      (r): r is PromiseRejectedResult => r.status === 'rejected',
-    );
-    if (failed) throw failed.reason;
   }
 
-  private async settleOpen(
+  private async settle(
     record: TaskRecord,
-    sentAt: number,
     worktrees: Worktree[],
     items: MappedSessions['items'],
     now: number,
   ): Promise<void> {
-    // A worktree that is gone, elsewhere, or on another branch is not ours.
-    const worktree = worktrees.find(
-      w => w.path === record.worktreePath && w.branch === record.branch,
-    );
+    const worktree = worktreeOf(worktrees, record);
     if (!worktree) return;
     const target = this.target(worktree, items);
-    if (!target) {
-      return this.stop(record, {
-        kind: 'session',
-        message: 'A sessão do worktree foi encerrada',
-      });
+    const {pending, outbox} = record;
+    if (pending) {
+      if (!target) return this.replace(record, stopped(record, SESSION_GONE));
+      const summary = await this.summaryOf(worktree, target);
+      // P6: the turn that follows the instruction has ended.
+      if ((summary?.lastTurnEndAt ?? 0) <= (pending.sentAt ?? 0)) return;
+      if (pending.kind === 'open') {
+        return this.settleOpen(record, worktree.path, now);
+      }
+      const next = await settleTurn(this.vcs, record, pending, worktree.path);
+      return this.replace(record, next);
     }
-    const summary = await this.summaryOf(worktree, target);
-    // P6: the turn that follows the instruction has ended.
-    if ((summary?.lastTurnEndAt ?? 0) <= sentAt) return;
+    // Ruling: a queued action waits for a live session, which the user may
+    // start on the worktree.
+    if (target && outbox?.text) {
+      await this.send(record, outbox, outbox.text, worktree, target, now);
+    }
+  }
+
+  private async settleOpen(
+    record: TaskRecord,
+    path: string,
+    now: number,
+  ): Promise<void> {
     // From here the request is settled: any failure is a stop with its
     // message, never a request left pending.
     try {
-      const number = await this.createPullRequest(record, worktree.path);
-      await this.tasks.save({
+      const number = await createPullRequest(
+        {
+          vcs: this.vcs,
+          prs: this.prs,
+          queue: this.queue,
+          taskFiles: this.taskFiles,
+        },
+        record,
+        path,
+      );
+      await this.replace(record, {
         ...record,
         prNumber: number,
         phase: 'ci',
@@ -205,61 +268,124 @@ export class LifecycleService {
         reviewSeenAt: now,
       });
     } catch (error) {
-      await this.stop(record, {kind: 'open', message: errorMessage(error)});
+      const stop = {kind: 'open' as const, message: errorMessage(error)};
+      await this.replace(record, stopped(record, stop));
     }
   }
 
-  // P8 on turn done: the first failed check throws the stop's message.
-  private async createPullRequest(
+  // P6 for a queued fix or review: typed only into an idle session with no
+  // draft, holding the worktree like "Abrir PR" does.
+  private async send(
     record: TaskRecord,
-    path: string,
-  ): Promise<number> {
-    const dirty = Object.keys(await this.vcs.status(path));
-    if (dirty.length > 0) {
-      throw new Error(`Ficaram mudanças sem commit: ${dirty.join(', ')}`);
-    }
-    if ((await this.vcs.aheadCount(path, `origin/${record.base}`)) === 0) {
-      throw new Error(
-        `Nada para abrir: o branch não tem commits à frente de ${record.base}`,
-      );
-    }
-    const text = parsePrText(await this.taskFiles.read(record.id, PR_FILE));
-    if (!text) {
-      throw new Error('A sessão não escreveu o título e o corpo do PR');
-    }
-    if (!isConventionalTitle(text.title)) {
-      throw new Error(
-        `Título fora do padrão Conventional Commits: ${text.title}`,
-      );
-    }
+    outbox: TaskAction,
+    text: string,
+    worktree: Worktree,
+    target: MultiplexerSession,
+    now: number,
+  ): Promise<void> {
+    if (this.requesting.has(worktree.path)) return;
+    this.requesting.add(worktree.path);
     try {
-      await this.vcs.push(path, record.branch);
-    } catch (error) {
-      throw new Error(prefixed('git push falhou: ', error));
-    }
-    const bodyFile = await this.taskFiles.write(
-      record.id,
-      BODY_FILE,
-      text.body,
-    );
-    try {
-      const {number} = await this.prs.create({
-        cwd: path,
-        title: text.title,
-        bodyFile,
-        base: record.base,
-        head: record.branch,
-      });
-      // The list shows the PR at once, so the button does not come back.
-      await this.queue.refreshPullRequests().catch(() => undefined);
-      return number;
-    } catch (error) {
-      throw new Error(prefixed('gh pr create falhou: ', error));
+      const headSha = await this.vcs.headSha(worktree.path);
+      // A record changed meanwhile (Retomar, Limpar) is not typed for.
+      if (!(await this.unchanged(record))) return;
+      const summary = await this.summaryOf(worktree, target);
+      if (!isSessionIdle(summary, target, now)) return;
+      // Right before typing, so a key typed meanwhile still counts.
+      if (this.terminals.hasDraft(target.name)) return;
+      await this.launcher.sendText(target.name, text);
+      const sentAt = sentAtFor(summary, now);
+      await this.replace(record, sentRecord(record, outbox, headSha, sentAt));
+    } finally {
+      this.requesting.delete(worktree.path);
     }
   }
 
-  private stop(record: TaskRecord, stop: TaskStop): Promise<void> {
-    return this.tasks.save({...record, phase: 'stopped', stop, pending: null});
+  // P12: merges the PR, then removes its worktree, branches and record. A
+  // cleanup failure after the merge still rejects; "Limpar" runs it again.
+  async merge(worktreeId: string): Promise<void> {
+    await this.holding(worktreeId, async () => {
+      await this.queue.mergePullRequest(worktreeId);
+      await this.cleanup.clean(worktreeId, {confirmed: true});
+    });
+  }
+
+  // "Limpar": a merged PR's task, or a closed one's once confirmed.
+  async clean(worktreeId: string, confirmed: boolean): Promise<void> {
+    await this.holding(worktreeId, () =>
+      this.cleanup.clean(worktreeId, {confirmed}),
+    );
+  }
+
+  // A worktree with a request or an outbox being typed is not merged or
+  // removed under it; it stays held while `work` runs.
+  private async holding(
+    worktreeId: string,
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const {path} = this.locate(worktreeId).worktree;
+    if (this.requesting.has(path)) throw new Error(BUSY);
+    this.requesting.add(path);
+    try {
+      await work();
+    } finally {
+      this.requesting.delete(path);
+    }
+  }
+
+  // "Rodar de novo": reruns the failed jobs of each run an infrastructure
+  // stop names, then watches the CI again.
+  async rerun(worktreeId: string): Promise<void> {
+    const record = await this.recordOf(this.locate(worktreeId).worktree);
+    const stop = record?.stop;
+    const runIds = (stop?.kind === 'infra' && stop.runIds) || [];
+    if (!record || runIds.length === 0) {
+      throw new Error('Nada para rodar de novo');
+    }
+    await Promise.all(runIds.map(id => this.prs.rerun(record.repoPath, id)));
+    // The reruns take a while: a record removed or changed meanwhile stays so.
+    await this.tasks.saveIfUnchanged(record, {
+      ...record,
+      phase: 'ci',
+      stop: null,
+    });
+  }
+
+  // "Retomar": drops the stop and the action whose turn fly waits for (a
+  // review sent counts as done), resets the CI counter, and watches the open
+  // PR again, else goes back to work. A queued action stays: its comments are
+  // already counted as seen.
+  async resume(worktreeId: string): Promise<void> {
+    await this.holding(worktreeId, async () => {
+      const {worktree} = this.locate(worktreeId);
+      const record = await this.recordOf(worktree);
+      if (!record) return;
+      const open = this.queue.pullRequestFor(worktreeId)?.state === 'open';
+      await this.tasks.save({
+        ...record,
+        phase: open ? 'ci' : 'working',
+        stop: null,
+        pending: null,
+        ciAttempts: 0,
+        fixedSha: null,
+        review:
+          record.review?.state === 'sent'
+            ? {...record.review, state: 'done'}
+            : record.review,
+      });
+    });
+  }
+
+  // Ruling: poll and tick save only over the record they read, so a record
+  // removed (Limpar) or changed (Retomar) meanwhile is never brought back or
+  // undone; the next poll or tick looks again.
+  private async replace(read: TaskRecord, next: TaskRecord): Promise<void> {
+    if (isDeepStrictEqual(next, read)) return;
+    await this.tasks.saveIfUnchanged(read, next);
+  }
+
+  private async unchanged(read: TaskRecord): Promise<boolean> {
+    return isDeepStrictEqual(await this.tasks.get(read.worktreePath), read);
   }
 
   // Only a branch worktree outside the main checkout can carry a PR.
@@ -320,7 +446,6 @@ export class LifecycleService {
       base: await resolveDefaultBranch(this.vcs, this.prs, repo.path),
       model: null,
       promptFile: null,
-      prNumber: null,
       reviewSeenAt: null,
       createdAt: now,
     };

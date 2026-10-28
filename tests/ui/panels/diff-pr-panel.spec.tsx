@@ -4,7 +4,7 @@ import type {Mock} from 'vitest';
 import {DiffPrPanel} from '../../../src/application/ui/panels/diff-pr-panel';
 import {DIFF_POLL_MS} from '../../../src/application/ui/state/fly-store';
 import type {DiffScope, WorktreeDiff} from '../../../src/core/domain/diff';
-import type {WorktreeQueue} from '../../../src/core/domain/queue';
+import type {PullRequest, WorktreeQueue} from '../../../src/core/domain/queue';
 import type {Worktree} from '../../../src/core/domain/workspace';
 
 const worktree: Worktree = {
@@ -31,6 +31,9 @@ const setup = (
     onLoadDiff: vi.fn(),
     onMerge: vi.fn(),
     onOpenPr: vi.fn().mockResolvedValue(undefined),
+    onRerun: vi.fn().mockResolvedValue(undefined),
+    onResume: vi.fn().mockResolvedValue(undefined),
+    onClean: vi.fn().mockResolvedValue(undefined),
     onOpenInEditor: vi.fn(),
     onOpenExternal: vi.fn(),
     ...overrides,
@@ -117,7 +120,6 @@ describe('DiffPrPanel', () => {
         worktreeId: 'w1',
         status: 'idle',
         pullRequest: null,
-        receipt: null,
         task: null,
         canOpenPr: true,
       },
@@ -125,6 +127,40 @@ describe('DiffPrPanel', () => {
     click('PR');
     fireEvent.click(screen.getByRole('button', {name: 'Abrir PR'}));
     expect(props.onOpenPr).toHaveBeenCalledWith('w1');
+  });
+
+  it('Should pass the worktree id to rerun, resume and clean', async () => {
+    const {props} = setup({
+      queue: {
+        worktreeId: 'w1',
+        status: 'idle',
+        pullRequest: {
+          number: 42,
+          state: 'merged',
+          checkRuns: [],
+        } as unknown as PullRequest,
+        task: {
+          phase: 'stopped',
+          ciAttempts: 0,
+          review: null,
+          stop: {kind: 'infra', message: 'x', runIds: ['7']},
+        },
+        canOpenPr: false,
+      },
+    });
+    click('PR');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', {name: 'Rodar de novo'}));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', {name: 'Retomar'}));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', {name: 'Limpar'}));
+    });
+    expect(props.onRerun).toHaveBeenCalledWith('w1');
+    expect(props.onResume).toHaveBeenCalledWith('w1');
+    expect(props.onClean).toHaveBeenCalledWith('w1', false);
   });
 
   it('Should stop polling on the PR tab and show the pull request view', () => {
@@ -175,6 +211,9 @@ describe('DiffPrPanel', () => {
         onLoadDiff={vi.fn()}
         onMerge={vi.fn()}
         onOpenPr={vi.fn()}
+        onRerun={vi.fn()}
+        onResume={vi.fn()}
+        onClean={vi.fn()}
         onOpenInEditor={vi.fn()}
         onOpenExternal={vi.fn()}
       />,
@@ -191,6 +230,9 @@ describe('DiffPrPanel', () => {
         onLoadDiff={vi.fn()}
         onMerge={vi.fn()}
         onOpenPr={vi.fn()}
+        onRerun={vi.fn()}
+        onResume={vi.fn()}
+        onClean={vi.fn()}
         onOpenInEditor={vi.fn()}
         onOpenExternal={vi.fn()}
       />,
