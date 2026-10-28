@@ -68,7 +68,7 @@ describe('GhReleaseService', () => {
     run.mockResolvedValue({code: 0, stdout: '{nope', stderr: ''});
 
     await expect(service.latest()).rejects.toThrow(
-      'Resposta inesperada do GitHub',
+      /^Resposta inesperada do GitHub$/,
     );
   });
 
@@ -97,7 +97,7 @@ describe('GhReleaseService', () => {
     respond(body);
 
     await expect(service.latest()).rejects.toThrow(
-      'Resposta inesperada do GitHub',
+      /^Resposta inesperada do GitHub$/,
     );
   });
 });
