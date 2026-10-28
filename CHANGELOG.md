@@ -1,3 +1,9 @@
+## v0.7.0 (2026-10-28)
+
+### Features
+
+* feat: fix CI, forward reviews and clean up task worktrees (#28) (4b8faf2c3a608a414e10c051a2ec53382e2eeb8c)
+
 ## v0.6.0 (2026-10-27)
 
 ### Features
