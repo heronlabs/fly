@@ -1,9 +1,11 @@
 import {homedir} from 'node:os';
-import {join} from 'node:path';
+import {join, resolve} from 'node:path';
 
 import {Module} from '@nestjs/common';
 import {app, BrowserWindow, dialog, ipcMain, shell} from 'electron';
 
+import {AppInstaller} from '../../core/interfaces/app-installer';
+import {AppRuntime} from '../../core/interfaces/app-runtime';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {ConfigStore} from '../../core/interfaces/config-store';
 import {EditorLauncher} from '../../core/interfaces/editor-launcher';
@@ -15,6 +17,7 @@ import {SessionLauncher} from '../../core/interfaces/session-launcher';
 import {TaskFiles} from '../../core/interfaces/task-files';
 import {TaskStore} from '../../core/interfaces/task-store';
 import {TerminalSpawner} from '../../core/interfaces/terminal-spawner';
+import {Toolchain} from '../../core/interfaces/toolchain';
 import {TranscriptSource} from '../../core/interfaces/transcript-source';
 import {VcsGateway} from '../../core/interfaces/vcs-gateway';
 import {WorkspaceWatcher} from '../../core/interfaces/workspace-watcher';
@@ -26,6 +29,7 @@ import {LifecycleService} from '../../core/services/lifecycle-service';
 import {QueueService} from '../../core/services/queue-service';
 import {SessionService} from '../../core/services/session-service';
 import {SettingsService} from '../../core/services/settings-service';
+import {SetupService} from '../../core/services/setup-service';
 import {TaskService} from '../../core/services/task-service';
 import {TerminalService} from '../../core/services/terminal-service';
 import {WorkspaceService} from '../../core/services/workspace-service';
@@ -34,7 +38,12 @@ import {CLAUDE_PROJECTS_DIR} from '../../infrastructure/claude/tokens';
 import {CryptoIdGeneratorService} from '../../infrastructure/environment/crypto-id-generator-service';
 import {JsonConfigStoreService} from '../../infrastructure/environment/json-config-store-service';
 import {JsonTaskStoreService} from '../../infrastructure/environment/json-task-store-service';
-import {USER_DATA_DIR} from '../../infrastructure/environment/tokens';
+import {MacosInstallerService} from '../../infrastructure/environment/macos-installer-service';
+import {
+  TRASH_ITEM,
+  USER_DATA_DIR,
+} from '../../infrastructure/environment/tokens';
+import {ToolchainCliService} from '../../infrastructure/environment/toolchain-cli-service';
 import {VscodeEditorLauncherService} from '../../infrastructure/environment/vscode-editor-launcher-service';
 import {GitDirWatcherService} from '../../infrastructure/filesystem/git-dir-watcher-service';
 import {NodeFileStoreService} from '../../infrastructure/filesystem/node-file-store-service';
@@ -55,6 +64,7 @@ import {LifecycleHandler} from './handlers/lifecycle-handler';
 import {QueueHandler} from './handlers/queue-handler';
 import {SessionHandler} from './handlers/session-handler';
 import {SettingsHandler} from './handlers/settings-handler';
+import {SetupHandler} from './handlers/setup-handler';
 import {ShellHandler} from './handlers/shell-handler';
 import {TerminalHandler} from './handlers/terminal-handler';
 import {WorkspaceHandler} from './handlers/workspace-handler';
@@ -87,6 +97,18 @@ import {
     {provide: SessionLauncher, useClass: TmuxSessionService},
     {provide: TerminalSpawner, useClass: NodePtyTerminalService},
     {provide: TMUX_SOCKET, useValue: null},
+    {provide: Toolchain, useClass: ToolchainCliService},
+    {provide: AppInstaller, useClass: MacosInstallerService},
+    {
+      provide: AppRuntime,
+      useFactory: (): AppRuntime => ({
+        bundlePath: app.isPackaged
+          ? resolve(process.execPath, '../../..')
+          : null,
+        version: app.getVersion(),
+      }),
+    },
+    {provide: TRASH_ITEM, useValue: (path: string) => shell.trashItem(path)},
     {provide: IdGenerator, useClass: CryptoIdGeneratorService},
     {provide: TranscriptSource, useClass: ClaudeTranscriptService},
     {
@@ -145,6 +167,7 @@ import {
     FileService,
     TerminalService,
     LaunchService,
+    SetupService,
     WorkspaceHandler,
     SettingsHandler,
     ShellHandler,
@@ -156,6 +179,7 @@ import {
     TerminalHandler,
     AttachmentHandler,
     LaunchHandler,
+    SetupHandler,
   ],
 })
 export class IpcModule {}

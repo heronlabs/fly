@@ -4,8 +4,9 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 import {NestFactory} from '@nestjs/core';
-import {app, BrowserWindow, nativeImage} from 'electron';
+import {app, BrowserWindow, Menu, nativeImage} from 'electron';
 
+import {appMenuTemplate} from './application/ipc/app-menu';
 import {AttachmentHandler} from './application/ipc/handlers/attachment-handler';
 import {DiffHandler} from './application/ipc/handlers/diff-handler';
 import {FileHandler} from './application/ipc/handlers/file-handler';
@@ -14,6 +15,7 @@ import {LifecycleHandler} from './application/ipc/handlers/lifecycle-handler';
 import {QueueHandler} from './application/ipc/handlers/queue-handler';
 import {SessionHandler} from './application/ipc/handlers/session-handler';
 import {SettingsHandler} from './application/ipc/handlers/settings-handler';
+import {SetupHandler} from './application/ipc/handlers/setup-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
 import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
@@ -125,6 +127,13 @@ const booted = app
     const launch = context.get(LaunchHandler);
     launch.register();
     launch.request(folderOf(process.argv, process.cwd()));
+    const setupHandler = context.get(SetupHandler);
+    setupHandler.register();
+    if (app.isPackaged) {
+      Menu.setApplicationMenu(
+        Menu.buildFromTemplate(appMenuTemplate(() => setupHandler.request())),
+      );
+    }
     if (!app.isPackaged && process.platform === 'darwin') {
       app.dock?.setIcon(
         nativeImage.createFromPath(join(app.getAppPath(), 'build/icon.png')),

@@ -133,6 +133,23 @@ const api: FlyApi = {
       };
     },
   },
+  setup: {
+    info: () => ipcRenderer.invoke(channels.setupInfo),
+    doctor: () => ipcRenderer.invoke(channels.setupDoctor),
+    installTool: id => ipcRenderer.invoke(channels.setupInstallTool, id),
+    commandState: () => ipcRenderer.invoke(channels.setupCommandState),
+    installCommand: () => ipcRenderer.invoke(channels.setupInstallCommand),
+    installer: () => ipcRenderer.invoke(channels.setupInstaller),
+    trashInstaller: () => ipcRenderer.invoke(channels.setupTrashInstaller),
+    complete: () => ipcRenderer.invoke(channels.setupComplete),
+    onRequested: listener => {
+      const handler = () => listener();
+      ipcRenderer.on(channels.setupRequested, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.setupRequested, handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('fly', api);

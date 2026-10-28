@@ -45,6 +45,22 @@ const fly: FlyApi = {
   },
   attachments: {pathForFile: vi.fn(), saveImage: vi.fn()},
   launch: {take: vi.fn(async () => null), onRequested: vi.fn(() => () => {})},
+  setup: {
+    info: vi.fn(async () => ({
+      packaged: false,
+      inApplications: false,
+      bundlePath: null,
+      open: false,
+    })),
+    doctor: vi.fn(),
+    installTool: vi.fn(),
+    commandState: vi.fn(),
+    installCommand: vi.fn(),
+    installer: vi.fn(async () => null),
+    trashInstaller: vi.fn(),
+    complete: vi.fn(),
+    onRequested: vi.fn(() => () => {}),
+  },
 };
 
 Object.defineProperty(window, 'fly', {value: fly, configurable: true});

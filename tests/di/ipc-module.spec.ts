@@ -8,11 +8,15 @@ import {NestFactory} from '@nestjs/core';
 const userData = vi.hoisted(() => ({path: ''}));
 
 vi.mock('electron', () => ({
-  app: {getPath: () => userData.path},
+  app: {
+    getPath: () => userData.path,
+    isPackaged: false,
+    getVersion: () => '0.0.0',
+  },
   BrowserWindow: {getAllWindows: () => []},
   dialog: {showOpenDialog: vi.fn()},
   ipcMain: {handle: vi.fn(), on: vi.fn()},
-  shell: {openExternal: vi.fn()},
+  shell: {openExternal: vi.fn(), trashItem: vi.fn()},
 }));
 
 import {AttachmentHandler} from '../../src/application/ipc/handlers/attachment-handler';
@@ -23,6 +27,7 @@ import {LifecycleHandler} from '../../src/application/ipc/handlers/lifecycle-han
 import {QueueHandler} from '../../src/application/ipc/handlers/queue-handler';
 import {SessionHandler} from '../../src/application/ipc/handlers/session-handler';
 import {SettingsHandler} from '../../src/application/ipc/handlers/settings-handler';
+import {SetupHandler} from '../../src/application/ipc/handlers/setup-handler';
 import {ShellHandler} from '../../src/application/ipc/handlers/shell-handler';
 import {TerminalHandler} from '../../src/application/ipc/handlers/terminal-handler';
 import {WorkspaceHandler} from '../../src/application/ipc/handlers/workspace-handler';
@@ -81,6 +86,7 @@ describe('IpcModule (real Nest DI)', () => {
       expect(() => context.get(TerminalHandler).register()).not.toThrow();
       expect(() => context.get(AttachmentHandler).register()).not.toThrow();
       expect(() => context.get(LaunchHandler).register()).not.toThrow();
+      expect(() => context.get(SetupHandler).register()).not.toThrow();
     } finally {
       await context.close();
     }
