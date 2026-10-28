@@ -45,6 +45,7 @@ const fly: FlyApi = {
   },
   attachments: {pathForFile: vi.fn(), saveImage: vi.fn()},
   launch: {take: vi.fn(async () => null), onRequested: vi.fn(() => () => {})},
+  updates: {get: vi.fn(async () => null), onChanged: vi.fn(() => () => {})},
   setup: {
     info: vi.fn(async () => ({
       packaged: false,

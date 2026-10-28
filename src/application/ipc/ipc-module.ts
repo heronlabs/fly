@@ -13,6 +13,7 @@ import {FileStore} from '../../core/interfaces/file-store';
 import {IdGenerator} from '../../core/interfaces/id-generator';
 import {ImageStore} from '../../core/interfaces/image-store';
 import {PrGateway} from '../../core/interfaces/pr-gateway';
+import {ReleaseSource} from '../../core/interfaces/release-source';
 import {SessionLauncher} from '../../core/interfaces/session-launcher';
 import {TaskFiles} from '../../core/interfaces/task-files';
 import {TaskStore} from '../../core/interfaces/task-store';
@@ -32,6 +33,7 @@ import {SettingsService} from '../../core/services/settings-service';
 import {SetupService} from '../../core/services/setup-service';
 import {TaskService} from '../../core/services/task-service';
 import {TerminalService} from '../../core/services/terminal-service';
+import {UpdateService} from '../../core/services/update-service';
 import {WorkspaceService} from '../../core/services/workspace-service';
 import {ClaudeTranscriptService} from '../../infrastructure/claude/claude-transcript-service';
 import {CLAUDE_PROJECTS_DIR} from '../../infrastructure/claude/tokens';
@@ -52,6 +54,7 @@ import {TempImageStoreService} from '../../infrastructure/filesystem/temp-image-
 import {TEMP_DIR} from '../../infrastructure/filesystem/tokens';
 import {GitCliService} from '../../infrastructure/git/git-cli-service';
 import {GhCliService} from '../../infrastructure/github/gh-cli-service';
+import {GhReleaseService} from '../../infrastructure/github/gh-release-service';
 import {ExecCommandRunnerService} from '../../infrastructure/process/exec-command-runner-service';
 import {NodePtyTerminalService} from '../../infrastructure/pty/node-pty-terminal-service';
 import {TmuxSessionService} from '../../infrastructure/tmux/tmux-session-service';
@@ -67,6 +70,7 @@ import {SettingsHandler} from './handlers/settings-handler';
 import {SetupHandler} from './handlers/setup-handler';
 import {ShellHandler} from './handlers/shell-handler';
 import {TerminalHandler} from './handlers/terminal-handler';
+import {UpdateHandler} from './handlers/update-handler';
 import {WorkspaceHandler} from './handlers/workspace-handler';
 import type {
   Broadcaster,
@@ -91,6 +95,7 @@ import {
     {provide: ImageStore, useClass: TempImageStoreService},
     {provide: VcsGateway, useClass: GitCliService},
     {provide: PrGateway, useClass: GhCliService},
+    {provide: ReleaseSource, useClass: GhReleaseService},
     {provide: ConfigStore, useClass: JsonConfigStoreService},
     {provide: EditorLauncher, useClass: VscodeEditorLauncherService},
     {provide: WorkspaceWatcher, useClass: GitDirWatcherService},
@@ -168,6 +173,7 @@ import {
     TerminalService,
     LaunchService,
     SetupService,
+    UpdateService,
     WorkspaceHandler,
     SettingsHandler,
     ShellHandler,
@@ -180,6 +186,7 @@ import {
     AttachmentHandler,
     LaunchHandler,
     SetupHandler,
+    UpdateHandler,
   ],
 })
 export class IpcModule {}
