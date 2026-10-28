@@ -3,9 +3,11 @@ import {Injectable} from '@nestjs/common';
 import type {ToolId} from '../../core/domain/setup';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {Toolchain} from '../../core/interfaces/toolchain';
+import {LoginShellEnvService, mergePath} from './login-shell-env-service';
 
 const PROBE_TIMEOUT_MS = 10_000;
 const BREW_INSTALL_TIMEOUT_MS = 600_000;
+const STDERR_TAIL_LINES = 20;
 const VERSION_PATTERN = /\d+(?:\.\d+)+[a-z]?/;
 const VERSION_ARGS: Record<ToolId, string[]> = {
   git: ['--version'],
@@ -16,8 +18,20 @@ const VERSION_ARGS: Record<ToolId, string[]> = {
 
 @Injectable()
 export class ToolchainCliService extends Toolchain {
+  private readonly loginShell: LoginShellEnvService;
+
   constructor(private readonly runner: CommandRunner) {
     super();
+    this.loginShell = new LoginShellEnvService(runner);
+  }
+
+  async refreshPath(): Promise<void> {
+    const env = await this.loginShell.resolve(
+      process.env['SHELL'] ?? '/bin/zsh',
+    );
+    if (env.PATH !== undefined) {
+      process.env['PATH'] = mergePath(process.env['PATH'], env.PATH);
+    }
   }
 
   async version(tool: ToolId): Promise<string | null> {
@@ -36,7 +50,7 @@ export class ToolchainCliService extends Toolchain {
   }
 
   ghLoggedIn(): Promise<boolean> {
-    return this.succeeds('gh', ['auth', 'status']);
+    return this.succeeds('gh', ['auth', 'status', '--hostname', 'github.com']);
   }
 
   hasBrew(): Promise<boolean> {
@@ -56,7 +70,10 @@ export class ToolchainCliService extends Toolchain {
       );
     }
     if (result.code !== 0) {
-      throw new Error(prefix + result.stderr.trim());
+      throw new Error(
+        prefix +
+          result.stderr.trim().split('\n').slice(-STDERR_TAIL_LINES).join('\n'),
+      );
     }
   }
 

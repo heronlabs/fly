@@ -5,9 +5,54 @@ import {ToolchainCliService} from '../../../../src/infrastructure/environment/to
 describe('ToolchainCliService', () => {
   const run = vi.fn();
   const service = new ToolchainCliService({run} as unknown as CommandRunner);
+  const originalPath = process.env['PATH'];
+  const originalShell = process.env['SHELL'];
 
   beforeEach(() => {
     run.mockReset();
+  });
+
+  afterEach(() => {
+    process.env['PATH'] = originalPath;
+    if (originalShell === undefined) delete process.env['SHELL'];
+    else process.env['SHELL'] = originalShell;
+  });
+
+  describe('refreshPath', () => {
+    const loginOutput = (path: string) => ({
+      code: 0,
+      stdout: `__FLY_ENV__${path}\nen_US.UTF-8__FLY_ENV__`,
+      stderr: '',
+    });
+
+    it('Should put the login shell PATH ahead of the current one', async () => {
+      process.env['PATH'] = '/usr/bin:/bin';
+      process.env['SHELL'] = '/bin/fish';
+      run.mockResolvedValue(loginOutput('/opt/homebrew/bin:/usr/bin'));
+
+      await service.refreshPath();
+
+      expect(process.env['PATH']).toBe('/opt/homebrew/bin:/usr/bin:/bin');
+      expect(run.mock.calls[0]?.[0]).toBe('/bin/fish');
+    });
+
+    it('Should fall back to zsh when SHELL is unset', async () => {
+      delete process.env['SHELL'];
+      run.mockResolvedValue(loginOutput('/opt/bin'));
+
+      await service.refreshPath();
+
+      expect(run.mock.calls[0]?.[0]).toBe('/bin/zsh');
+    });
+
+    it('Should leave PATH exactly as it was when the login shell fails', async () => {
+      process.env['PATH'] = '/usr/bin::/bin:/usr/bin';
+      run.mockRejectedValue(new Error('timeout'));
+
+      await expect(service.refreshPath()).resolves.toBeUndefined();
+
+      expect(process.env['PATH']).toBe('/usr/bin::/bin:/usr/bin');
+    });
   });
 
   it.each<[ToolId, string[], string, string]>([
@@ -59,9 +104,11 @@ describe('ToolchainCliService', () => {
     run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
 
     expect(await service.ghLoggedIn()).toBe(true);
-    expect(run).toHaveBeenCalledWith('gh', ['auth', 'status'], {
-      timeoutMs: 10_000,
-    });
+    expect(run).toHaveBeenCalledWith(
+      'gh',
+      ['auth', 'status', '--hostname', 'github.com'],
+      {timeoutMs: 10_000},
+    );
   });
 
   it('Should report gh logged out when auth status exits non-zero', async () => {
@@ -115,6 +162,28 @@ describe('ToolchainCliService', () => {
 
     await expect(service.brewInstall('tmux')).rejects.toThrow(
       new Error('brew install tmux falhou: Error: No formulae found'),
+    );
+  });
+
+  it('Should keep only the last 20 lines of a long stderr', async () => {
+    const lines = Array.from({length: 30}, (_, i) => `line ${i + 1}`);
+    run.mockResolvedValue({
+      code: 1,
+      stdout: '',
+      stderr: lines.join('\n') + '\n',
+    });
+
+    await expect(service.brewInstall('tmux')).rejects.toThrow(
+      new Error(`brew install tmux falhou: ${lines.slice(10).join('\n')}`),
+    );
+  });
+
+  it('Should keep a stderr of exactly 20 lines whole', async () => {
+    const lines = Array.from({length: 20}, (_, i) => `line ${i + 1}`);
+    run.mockResolvedValue({code: 1, stdout: '', stderr: lines.join('\n')});
+
+    await expect(service.brewInstall('tmux')).rejects.toThrow(
+      new Error(`brew install tmux falhou: ${lines.join('\n')}`),
     );
   });
 

@@ -74,12 +74,38 @@ describe('MacosInstallerService', () => {
 
       expect(run).toHaveBeenCalledTimes(1);
       expect(run).toHaveBeenCalledWith(
-        'osascript',
+        '/usr/bin/osascript',
         [
           '-e',
-          'do shell script "mkdir -p /usr/local/bin && ln -sf " & quoted form of "/Applications/fly.app/x/fly" & " /usr/local/bin/fly" with administrator privileges',
+          'do shell script "mkdir -p /usr/local/bin && ln -sfh " & quoted form of "/Applications/fly.app/x/fly" & " /usr/local/bin/fly" with administrator privileges',
         ],
         {timeoutMs: 120_000},
+      );
+    });
+
+    it.each([
+      '/Applications/My App/fly',
+      "/Applications/it's/fly",
+      '/Applications/two\nlines/fly',
+    ])(
+      'Should pass the launcher %j verbatim inside the script',
+      async launcher => {
+        run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
+
+        await service.installCommand(launcher);
+
+        expect(run.mock.calls[0]?.[1]).toEqual([
+          '-e',
+          `do shell script "mkdir -p /usr/local/bin && ln -sfh " & quoted form of "${launcher}" & " /usr/local/bin/fly" with administrator privileges`,
+        ]);
+      },
+    );
+
+    it('Should not read -128 outside parentheses as a cancellation', async () => {
+      run.mockResolvedValue({code: 1, stdout: '', stderr: 'error -1280 x'});
+
+      await expect(service.installCommand('/A/fly')).rejects.toThrow(
+        new Error('Falha ao instalar o comando: error -1280 x'),
       );
     });
 
@@ -123,7 +149,10 @@ describe('MacosInstallerService', () => {
   });
 
   describe('findInstaller', () => {
-    const probe = ['-c', 'hdiutil info -plist | plutil -convert json -o - -'];
+    const probe = [
+      '-c',
+      '/usr/bin/hdiutil info -plist | /usr/bin/plutil -convert json -o - -',
+    ];
 
     it('Should find the image whose volume holds fly.app', async () => {
       run.mockResolvedValue({
@@ -150,6 +179,26 @@ describe('MacosInstallerService', () => {
 
       expect(await service.findInstaller()).toEqual(IMAGE);
       expect(exists).toHaveBeenCalledWith('/Volumes/Other/fly.app');
+    });
+
+    it('Should skip a fly image whose path is not the one asked for', async () => {
+      run.mockResolvedValue({
+        code: 0,
+        stdout: fixture('info-two-images.json'),
+        stderr: '',
+      });
+      exists.mockResolvedValue(true);
+
+      expect(
+        await service.findInstaller(
+          '/Users/user/Downloads/fly-0.7.0-arm64.dmg',
+        ),
+      ).toEqual(IMAGE);
+      expect(
+        await service.findInstaller(
+          '/Users/user/Downloads/fly-0.4.0-arm64.dmg',
+        ),
+      ).toBeNull();
     });
 
     it('Should be null when no volume holds fly.app', async () => {
@@ -193,13 +242,24 @@ describe('MacosInstallerService', () => {
       await service.trashInstaller(IMAGE);
 
       expect(run).toHaveBeenCalledWith(
-        'hdiutil',
+        '/usr/bin/hdiutil',
         ['detach', '/Volumes/fly 0.7.0-arm64'],
         {timeoutMs: 30_000},
       );
       expect(trash).toHaveBeenCalledWith(IMAGE.imagePath);
       expect(run.mock.invocationCallOrder[0]).toBeLessThan(
         trash.mock.invocationCallOrder[0] as number,
+      );
+    });
+
+    it('Should say so in pt-BR when the Trash move fails', async () => {
+      run.mockResolvedValue({code: 0, stdout: '', stderr: ''});
+      trash.mockRejectedValue(new Error('Failed to move to trash'));
+
+      await expect(service.trashInstaller(IMAGE)).rejects.toThrow(
+        new Error(
+          'Falha ao mover o instalador para a Lixeira: Failed to move to trash',
+        ),
       );
     });
 

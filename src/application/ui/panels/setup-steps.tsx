@@ -149,14 +149,19 @@ const ToolRow = ({
 export const DependenciesStep = ({onNext}: {onNext(): void}) => {
   const [report, setReport] = useState<DoctorReport | null>(null);
   const [installing, setInstalling] = useState<ToolId | null>(null);
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const check = async () => {
     setError(null);
+    setChecking(true);
     try {
       setReport(await window.fly.setup.doctor());
     } catch (failure) {
+      setReport(null);
       setError(errorMessage(failure));
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -196,6 +201,7 @@ export const DependenciesStep = ({onNext}: {onNext(): void}) => {
   return (
     <>
       <Title>Verificando o que o fly precisa</Title>
+      {checking && <p style={noteStyle}>Verificando…</p>}
       {report?.tools.map(tool => (
         <ToolRow
           key={tool.id}
@@ -237,12 +243,15 @@ export const CommandStep = ({onNext}: {onNext(result: StepResult): void}) => {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setError(null);
     window.fly.setup
       .commandState()
       .then(setState)
       .catch((failure: unknown) => setError(errorMessage(failure)));
-  }, []);
+  };
+
+  useEffect(load, []);
 
   const install = async () => {
     setError(null);
@@ -290,6 +299,11 @@ export const CommandStep = ({onNext}: {onNext(result: StepResult): void}) => {
             Pular
           </button>
         )}
+        {state === null && error !== null && (
+          <button type="button" onClick={load} style={primaryStyle}>
+            Tentar de novo
+          </button>
+        )}
         {state === 'installed' ? (
           <button
             type="button"
@@ -326,6 +340,7 @@ export const DoneStep = ({
   onFinish(): void;
 }) => {
   const [image, setImage] = useState<InstallerImage | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [trashing, setTrashing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -333,14 +348,15 @@ export const DoneStep = ({
     window.fly.setup
       .installer()
       .then(setImage)
-      .catch(() => setImage(null));
+      .catch(() => setImage(null))
+      .finally(() => setLoaded(true));
   }, []);
 
-  const trash = async () => {
+  const trash = async (target: InstallerImage) => {
     setError(null);
     setTrashing(true);
     try {
-      await window.fly.setup.trashInstaller();
+      await window.fly.setup.trashInstaller(target.imagePath);
       onFinish();
     } catch (failure) {
       setError(errorMessage(failure));
@@ -377,7 +393,7 @@ export const DoneStep = ({
       )}
       <Failure message={error} />
       <Buttons>
-        {image ? (
+        {!loaded ? null : image ? (
           <>
             <button
               type="button"
@@ -390,7 +406,7 @@ export const DoneStep = ({
             <button
               type="button"
               disabled={trashing}
-              onClick={() => void trash()}
+              onClick={() => void trash(image)}
               style={primaryStyle}
             >
               Mover para Lixeira

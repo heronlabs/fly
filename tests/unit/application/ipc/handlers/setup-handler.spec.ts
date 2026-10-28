@@ -57,7 +57,6 @@ describe('SetupHandler', () => {
     [channels.setupCommandState, 'commandState'],
     [channels.setupInstallCommand, 'installCommand'],
     [channels.setupInstaller, 'installer'],
-    [channels.setupTrashInstaller, 'trashInstaller'],
     [channels.setupComplete, 'complete'],
   ] as const)(
     'delegates %s to %s and returns its result',
@@ -69,6 +68,14 @@ describe('SetupHandler', () => {
       expect(setup[method]).toHaveBeenCalledWith();
     },
   );
+
+  it('trashes the installer image path it is given', async () => {
+    setup.trashInstaller.mockResolvedValue(undefined);
+
+    await invoke(channels.setupTrashInstaller, '/A/fly.dmg');
+
+    expect(setup.trashInstaller).toHaveBeenCalledExactlyOnceWith('/A/fly.dmg');
+  });
 
   it('installs the tool it is given', async () => {
     setup.installTool.mockResolvedValue({tools: [], brew: true});

@@ -283,12 +283,15 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     }
   },
 
-  // A failed probe leaves the wizard closed: the app must still start.
+  // A failed probe leaves the wizard closed (setup starts null): the app
+  // must still start. An open wizard is closed only by closeSetup, never by a
+  // reload that fails or says it should not be open.
   async loadSetup() {
     try {
-      set({setup: await window.fly.setup.info()});
+      const info = await window.fly.setup.info();
+      if (info.open || !get().setup?.open) set({setup: info});
     } catch {
-      set({setup: null});
+      // keeps whatever setup holds
     }
   },
 

@@ -5,4 +5,6 @@ export abstract class Toolchain {
   abstract ghLoggedIn(): Promise<boolean>;
   abstract hasBrew(): Promise<boolean>;
   abstract brewInstall(formula: string): Promise<void>;
+  // Re-reads the login shell's PATH so tools installed after launch are found.
+  abstract refreshPath(): Promise<void>;
 }

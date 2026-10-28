@@ -67,6 +67,39 @@ describe('DependenciesStep', () => {
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
+  it('shows Verificando… while the doctor runs, on mount and on re-check', async () => {
+    let finish: (report: DoctorReport) => void = () => {};
+    vi.mocked(window.fly.setup.doctor)
+      .mockResolvedValueOnce(allOk)
+      .mockImplementationOnce(
+        () => new Promise<DoctorReport>(resolve => (finish = resolve)),
+      );
+    render(<DependenciesStep onNext={vi.fn()} />);
+    expect(screen.getByText('Verificando…')).toBeVisible();
+    await screen.findByText('✓ 2.47');
+    expect(screen.queryByText('Verificando…')).toBeNull();
+    await userEvent.click(
+      screen.getByRole('button', {name: 'Verificar de novo'}),
+    );
+    expect(screen.getByText('Verificando…')).toBeVisible();
+    finish(allOk);
+    await waitFor(() => expect(screen.queryByText('Verificando…')).toBeNull());
+  });
+
+  it('clears the report when a re-check rejects so Continuar is disabled', async () => {
+    vi.mocked(window.fly.setup.doctor)
+      .mockResolvedValueOnce(allOk)
+      .mockRejectedValueOnce(new Error('boom'));
+    render(<DependenciesStep onNext={vi.fn()} />);
+    await screen.findByText('✓ 2.47');
+    await userEvent.click(
+      screen.getByRole('button', {name: 'Verificar de novo'}),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+    expect(screen.queryByText('✓ 2.47')).toBeNull();
+    expect(screen.getByRole('button', {name: 'Continuar'})).toBeDisabled();
+  });
+
   it('disables Continuar while a tool has a problem', async () => {
     vi.mocked(window.fly.setup.doctor).mockResolvedValue(missingTmux(true));
     render(<DependenciesStep onNext={vi.fn()} />);
@@ -263,11 +296,49 @@ describe('CommandStep', () => {
     vi.mocked(window.fly.setup.commandState).mockRejectedValue(
       new Error('Disponível só no app instalado'),
     );
-    render(<CommandStep onNext={vi.fn()} />);
+    const onNext = vi.fn();
+    render(<CommandStep onNext={onNext} />);
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Disponível só no app instalado',
     );
     await userEvent.click(screen.getByRole('button', {name: 'Pular'}));
+    expect(onNext).toHaveBeenCalledWith('skipped');
+  });
+
+  it('Tentar de novo re-reads the state after a commandState rejection', async () => {
+    vi.mocked(window.fly.setup.commandState)
+      .mockRejectedValueOnce(new Error('x'))
+      .mockResolvedValueOnce('missing');
+    render(<CommandStep onNext={vi.fn()} />);
+    await screen.findByRole('alert');
+    expect(
+      screen.queryByRole('button', {name: 'Instalar e continuar'}),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole('button', {name: 'Tentar de novo'}));
+    expect(
+      await screen.findByRole('button', {name: 'Instalar e continuar'}),
+    ).toBeVisible();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(window.fly.setup.installCommand).not.toHaveBeenCalled();
+    expect(window.fly.setup.commandState).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the not-pointing-to-fly failure with Tentar de novo and Pular', async () => {
+    vi.mocked(window.fly.setup.commandState).mockResolvedValue('missing');
+    vi.mocked(window.fly.setup.installCommand).mockRejectedValue(
+      new Error(
+        'Falha ao instalar o comando: /usr/local/bin/fly não aponta para o fly',
+      ),
+    );
+    render(<CommandStep onNext={vi.fn()} />);
+    await userEvent.click(
+      await screen.findByRole('button', {name: 'Instalar e continuar'}),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'não aponta para o fly',
+    );
+    expect(screen.getByRole('button', {name: 'Tentar de novo'})).toBeEnabled();
+    expect(screen.getByRole('button', {name: 'Pular'})).toBeVisible();
   });
 });
 
@@ -318,7 +389,9 @@ describe('DoneStep', () => {
       screen.getByRole('button', {name: 'Mover para Lixeira'}),
     );
     await waitFor(() => expect(onFinish).toHaveBeenCalledTimes(1));
-    expect(window.fly.setup.trashInstaller).toHaveBeenCalledTimes(1);
+    expect(window.fly.setup.trashInstaller).toHaveBeenCalledExactlyOnceWith(
+      image.imagePath,
+    );
   });
 
   it('Manter finishes without trashing', async () => {
@@ -360,7 +433,26 @@ describe('DoneStep', () => {
     expect(onFinish).not.toHaveBeenCalled();
   });
 
-  it('shows an installer lookup failure and still finishes', async () => {
+  it('hides every button until the installer lookup has resolved', async () => {
+    let resolve: (value: typeof image | null) => void = () => {};
+    vi.mocked(window.fly.setup.installer).mockImplementation(
+      () => new Promise(r => (resolve = r)),
+    );
+    render(
+      <DoneStep
+        results={{tools: 'done', command: 'done'}}
+        onFinish={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button')).toBeNull();
+    resolve(image);
+    expect(
+      await screen.findByRole('button', {name: 'Mover para Lixeira'}),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', {name: 'Começar'})).toBeNull();
+  });
+
+  it('offers only Começar when the installer lookup fails', async () => {
     vi.mocked(window.fly.setup.installer).mockRejectedValue(new Error('x'));
     const onFinish = vi.fn();
     render(

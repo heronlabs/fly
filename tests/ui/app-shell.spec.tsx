@@ -1058,6 +1058,28 @@ describe('AppShell', () => {
       expect(screen.queryByText(/Passo/)).not.toBeInTheDocument();
     });
 
+    it('keeps the open wizard when a requested reload rejects', async () => {
+      seed({});
+      vi.mocked(window.fly.setup.info).mockResolvedValue(open);
+      vi.mocked(window.fly.setup.doctor).mockResolvedValue({
+        brew: true,
+        tools: [],
+      });
+      await renderShell();
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+      vi.mocked(window.fly.setup.info).mockRejectedValue(new Error('x'));
+      const listener = vi.mocked(window.fly.setup.onRequested).mock
+        .calls[0]?.[0] as () => void;
+      await act(async () => listener());
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+      vi.mocked(window.fly.setup.info).mockResolvedValue({
+        ...open,
+        open: false,
+      });
+      await act(async () => listener());
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+    });
+
     it('reloads setup when main requests it and unsubscribes on unmount', async () => {
       seed({});
       const unsubscribe = vi.fn();

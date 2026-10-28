@@ -140,7 +140,8 @@ const api: FlyApi = {
     commandState: () => ipcRenderer.invoke(channels.setupCommandState),
     installCommand: () => ipcRenderer.invoke(channels.setupInstallCommand),
     installer: () => ipcRenderer.invoke(channels.setupInstaller),
-    trashInstaller: () => ipcRenderer.invoke(channels.setupTrashInstaller),
+    trashInstaller: imagePath =>
+      ipcRenderer.invoke(channels.setupTrashInstaller, imagePath),
     complete: () => ipcRenderer.invoke(channels.setupComplete),
     onRequested: listener => {
       const handler = () => listener();

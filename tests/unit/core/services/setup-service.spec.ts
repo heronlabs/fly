@@ -17,7 +17,14 @@ const version = vi.fn();
 const ghLoggedIn = vi.fn();
 const hasBrew = vi.fn();
 const brewInstall = vi.fn();
-const toolchain: Toolchain = {version, ghLoggedIn, hasBrew, brewInstall};
+const refreshPath = vi.fn();
+const toolchain: Toolchain = {
+  version,
+  ghLoggedIn,
+  hasBrew,
+  brewInstall,
+  refreshPath,
+};
 
 const commandState = vi.fn();
 const installCommand = vi.fn();
@@ -57,6 +64,7 @@ beforeEach(() => {
     ghLoggedIn,
     hasBrew,
     brewInstall,
+    refreshPath,
     commandState,
     installCommand,
     findInstaller,
@@ -70,6 +78,7 @@ beforeEach(() => {
   ghLoggedIn.mockResolvedValue(true);
   hasBrew.mockResolvedValue(true);
   brewInstall.mockResolvedValue(undefined);
+  refreshPath.mockResolvedValue(undefined);
   installCommand.mockResolvedValue(undefined);
   trashInstaller.mockResolvedValue(undefined);
   update.mockResolvedValue({});
@@ -136,6 +145,27 @@ describe('SetupService.doctor', () => {
       brew: true,
     });
     expect(version.mock.calls).toEqual([['git'], ['gh'], ['tmux'], ['claude']]);
+  });
+
+  it('Should refresh the PATH before any probe', async () => {
+    await build(null).doctor();
+
+    expect(refreshPath).toHaveBeenCalledTimes(1);
+    expect(refreshPath.mock.invocationCallOrder[0]).toBeLessThan(
+      version.mock.invocationCallOrder[0] as number,
+    );
+    expect(refreshPath.mock.invocationCallOrder[0]).toBeLessThan(
+      hasBrew.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it('Should still run the doctor when the PATH refresh fails', async () => {
+    refreshPath.mockRejectedValue(new Error('shell gone'));
+
+    const report = await build(null).doctor();
+
+    expect(report.tools).toHaveLength(4);
+    expect(version).toHaveBeenCalledTimes(4);
   });
 
   it('Should report gh logged out and no brew', async () => {
@@ -208,6 +238,24 @@ describe('SetupService command', () => {
     expect(commandState).toHaveBeenCalledExactlyOnceWith(launcher);
   });
 
+  it('Should reject when the link does not point to the launcher after the install', async () => {
+    commandState.mockResolvedValue('other');
+
+    await expect(build(APPLICATIONS_BUNDLE).installCommand()).rejects.toThrow(
+      new Error(
+        'Falha ao instalar o comando: /usr/local/bin/fly não aponta para o fly',
+      ),
+    );
+  });
+
+  it('Should reject when the link is still missing after the install', async () => {
+    commandState.mockResolvedValue('missing');
+
+    await expect(build(APPLICATIONS_BUNDLE).installCommand()).rejects.toThrow(
+      'não aponta para o fly',
+    );
+  });
+
   it('Should install the command then return the fresh state', async () => {
     commandState.mockResolvedValue('installed');
 
@@ -247,24 +295,36 @@ describe('SetupService installer', () => {
     expect(findInstaller).not.toHaveBeenCalled();
   });
 
-  it('Should re-find then trash the installer', async () => {
+  it('Should trash the mounted installer with exactly that image path', async () => {
     findInstaller.mockResolvedValue(image);
 
-    await build(APPLICATIONS_BUNDLE).trashInstaller();
+    await build(APPLICATIONS_BUNDLE).trashInstaller(image.imagePath);
 
+    expect(findInstaller).toHaveBeenCalledExactlyOnceWith(image.imagePath);
     expect(trashInstaller).toHaveBeenCalledExactlyOnceWith(image);
   });
 
-  it('Should do nothing when no installer is found', async () => {
-    findInstaller.mockResolvedValue(null);
+  it.each([
+    ['was ejected', null],
+    [
+      'is another fly image',
+      {imagePath: '/Users/user/Downloads/fly-0.4.0.dmg', mountPoint: '/V/old'},
+    ],
+  ])('Should reject when the installer %s', async (_name, found) => {
+    findInstaller.mockResolvedValue(found);
 
-    await build(APPLICATIONS_BUNDLE).trashInstaller();
-
+    await expect(
+      build(APPLICATIONS_BUNDLE).trashInstaller(image.imagePath),
+    ).rejects.toThrow(
+      new Error('O instalador não está mais montado; apague-o pelo Finder'),
+    );
     expect(trashInstaller).not.toHaveBeenCalled();
   });
 
-  it('Should do nothing on trash when not packaged', async () => {
-    await build(null).trashInstaller();
+  it('Should reject on trash when not packaged', async () => {
+    await expect(build(null).trashInstaller(image.imagePath)).rejects.toThrow(
+      'O instalador não está mais montado',
+    );
 
     expect(findInstaller).not.toHaveBeenCalled();
     expect(trashInstaller).not.toHaveBeenCalled();

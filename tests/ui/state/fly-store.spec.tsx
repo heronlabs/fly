@@ -152,6 +152,50 @@ describe('fly store', () => {
     expect(useFlyStore.getState().workspace?.root).toBe('/r');
   });
 
+  const openInfo = {
+    packaged: true,
+    inApplications: true,
+    bundlePath: '/Applications/fly.app',
+    open: true,
+  };
+
+  it('loadSetup keeps an open wizard when the reload rejects', async () => {
+    useFlyStore.setState({setup: openInfo});
+    vi.mocked(window.fly.setup.info).mockRejectedValue(new Error('x'));
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup).toEqual(openInfo);
+  });
+
+  it('loadSetup keeps an open wizard when the reload says open: false', async () => {
+    useFlyStore.setState({setup: openInfo});
+    vi.mocked(window.fly.setup.info).mockResolvedValue({
+      ...openInfo,
+      open: false,
+    });
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup).toEqual(openInfo);
+  });
+
+  it('loadSetup replaces a closed setup and an open one with fresh info', async () => {
+    useFlyStore.setState({setup: {...openInfo, open: false}});
+    vi.mocked(window.fly.setup.info).mockResolvedValue({
+      ...openInfo,
+      bundlePath: '/Volumes/fly/fly.app',
+    });
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup?.bundlePath).toBe(
+      '/Volumes/fly/fly.app',
+    );
+    vi.mocked(window.fly.setup.info).mockResolvedValue({
+      ...openInfo,
+      bundlePath: '/Applications/fly.app',
+    });
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup?.bundlePath).toBe(
+      '/Applications/fly.app',
+    );
+  });
+
   it('closeSetup clears setup', async () => {
     useFlyStore.setState({
       setup: {

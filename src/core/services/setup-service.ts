@@ -40,6 +40,8 @@ export class SetupService {
   }
 
   async doctor(): Promise<DoctorReport> {
+    // A stale PATH only means probes may miss new tools; the doctor still runs.
+    await this.toolchain.refreshPath().catch(() => undefined);
     const [git, gh, tmux, claude, brew] = await Promise.all([
       this.check('git'),
       this.check('gh'),
@@ -67,7 +69,13 @@ export class SetupService {
 
   async installCommand(): Promise<CommandState> {
     await this.appInstaller.installCommand(this.launcher());
-    return this.commandState();
+    const state = await this.commandState();
+    if (state !== 'installed') {
+      throw new Error(
+        'Falha ao instalar o comando: /usr/local/bin/fly não aponta para o fly',
+      );
+    }
+    return state;
   }
 
   async installer(): Promise<InstallerImage | null> {
@@ -77,11 +85,17 @@ export class SetupService {
     return this.appInstaller.findInstaller();
   }
 
-  async trashInstaller(): Promise<void> {
-    const image = await this.installer();
-    if (image !== null) {
+  // Trashes only the installer the user was shown: it must still be mounted.
+  async trashInstaller(imagePath: string): Promise<void> {
+    const image =
+      this.runtime.bundlePath === null
+        ? null
+        : await this.appInstaller.findInstaller(imagePath);
+    if (image?.imagePath === imagePath) {
       await this.appInstaller.trashInstaller(image);
+      return;
     }
+    throw new Error('O instalador não está mais montado; apague-o pelo Finder');
   }
 
   async complete(): Promise<void> {

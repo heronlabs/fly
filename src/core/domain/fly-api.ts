@@ -151,7 +151,7 @@ export type FlyApi = {
     commandState(): Promise<CommandState>;
     installCommand(): Promise<CommandState>;
     installer(): Promise<InstallerImage | null>;
-    trashInstaller(): Promise<void>;
+    trashInstaller(imagePath: string): Promise<void>;
     complete(): Promise<void>;
     onRequested(listener: () => void): () => void;
   };

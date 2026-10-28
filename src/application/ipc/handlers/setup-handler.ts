@@ -29,8 +29,8 @@ export class SetupHandler {
       this.setup.installCommand(),
     );
     this.host.handle(channels.setupInstaller, () => this.setup.installer());
-    this.host.handle(channels.setupTrashInstaller, () =>
-      this.setup.trashInstaller(),
+    this.host.handle(channels.setupTrashInstaller, (_event, imagePath) =>
+      this.setup.trashInstaller(imagePath as string),
     );
     this.host.handle(channels.setupComplete, () => this.setup.complete());
   }
