@@ -1,3 +1,9 @@
+## v0.9.0 (2026-10-28)
+
+### Features
+
+* feat: notify new fly releases in the footer (#30) (e9fcc1b7a50599b0d090af357774a460b56dd10d)
+
 ## v0.8.0 (2026-10-28)
 
 ### Features
