@@ -1,0 +1,57 @@
+{
+  "framework": "704",
+  "images": [
+    {
+      "autodiskmount": true,
+      "blockcount": 702258,
+      "blocksize": 512,
+      "diskimages2": false,
+      "hdid-pid": 37764,
+      "icon-path": "/System/Library/PrivateFrameworks/DiskImages.framework/Resources/CDiskImage.icns",
+      "image-encrypted": false,
+      "image-path": "/Users/user/Downloads/other-1.0.dmg",
+      "image-type": "UDIF read-only compressed (zlib)",
+      "owner-uid": 501,
+      "removable": true,
+      "system-entities": [
+        {
+          "content-hint": "GUID_partition_scheme",
+          "dev-entry": "/dev/disk4"
+        },
+        {
+          "content-hint": "48465300-0000-11AA-AA11-00306543ECAC",
+          "dev-entry": "/dev/disk4s1",
+          "mount-point": "/Volumes/Other"
+        }
+      ],
+      "writeable": false
+    },
+    {
+      "autodiskmount": true,
+      "blockcount": 702258,
+      "blocksize": 512,
+      "diskimages2": false,
+      "hdid-pid": 37764,
+      "icon-path": "/System/Library/PrivateFrameworks/DiskImages.framework/Resources/CDiskImage.icns",
+      "image-encrypted": false,
+      "image-path": "/Users/user/Downloads/fly-0.7.0-arm64.dmg",
+      "image-type": "UDIF read-only compressed (zlib)",
+      "owner-uid": 501,
+      "removable": true,
+      "system-entities": [
+        {
+          "content-hint": "GUID_partition_scheme",
+          "dev-entry": "/dev/disk5"
+        },
+        {
+          "content-hint": "48465300-0000-11AA-AA11-00306543ECAC",
+          "dev-entry": "/dev/disk5s1",
+          "mount-point": "/Volumes/fly 0.7.0-arm64"
+        }
+      ],
+      "writeable": false
+    }
+  ],
+  "revision": "704",
+  "vendor": "Apple"
+}

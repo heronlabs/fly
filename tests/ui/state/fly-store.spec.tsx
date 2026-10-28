@@ -60,6 +60,7 @@ describe('fly store', () => {
       theme: 'dark',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
     await useFlyStore.getState().bootstrap();
@@ -74,6 +75,7 @@ describe('fly store', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     await useFlyStore.getState().bootstrap();
     expect(window.fly.workspace.open).not.toHaveBeenCalled();
@@ -92,6 +94,7 @@ describe('fly store', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     vi.mocked(window.fly.launch.take).mockResolvedValue({
       root: '/r',
@@ -104,6 +107,106 @@ describe('fly store', () => {
     expect(window.fly.workspace.open).toHaveBeenCalledTimes(1);
     expect(window.fly.workspace.open).toHaveBeenCalledWith('/r');
     expect(useFlyStore.getState().selectedWorktreeId).toBe('b#main');
+  });
+
+  it('bootstrap loads setup before the workspace', async () => {
+    const order: string[] = [];
+    const info = {
+      packaged: true,
+      inApplications: true,
+      bundlePath: '/Applications/fly.app',
+      open: true,
+    };
+    vi.mocked(window.fly.setup.info).mockImplementation(async () => {
+      order.push('setup');
+      return info;
+    });
+    vi.mocked(window.fly.settings.get).mockImplementation(async () => {
+      order.push('settings');
+      return {
+        recentRoots: [],
+        theme: 'system',
+        diffPanel: 'open',
+        explorer: 'open',
+        setupDone: false,
+      };
+    });
+    await useFlyStore.getState().bootstrap();
+    expect(order).toEqual(['setup', 'settings']);
+    expect(useFlyStore.getState().setup).toEqual(info);
+  });
+
+  it('a setup failure leaves setup null and the app continues', async () => {
+    vi.mocked(window.fly.setup.info).mockRejectedValue(new Error('x'));
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      recentRoots: ['/r'],
+      theme: 'system',
+      diffPanel: 'open',
+      explorer: 'open',
+      setupDone: false,
+    });
+    vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
+    await useFlyStore.getState().bootstrap();
+    expect(useFlyStore.getState().setup).toBeNull();
+    expect(useFlyStore.getState().error).toBeNull();
+    expect(useFlyStore.getState().workspace?.root).toBe('/r');
+  });
+
+  const openInfo = {
+    packaged: true,
+    inApplications: true,
+    bundlePath: '/Applications/fly.app',
+    open: true,
+  };
+
+  it('loadSetup keeps an open wizard when the reload rejects', async () => {
+    useFlyStore.setState({setup: openInfo});
+    vi.mocked(window.fly.setup.info).mockRejectedValue(new Error('x'));
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup).toEqual(openInfo);
+  });
+
+  it('loadSetup keeps an open wizard when the reload says open: false', async () => {
+    useFlyStore.setState({setup: openInfo});
+    vi.mocked(window.fly.setup.info).mockResolvedValue({
+      ...openInfo,
+      open: false,
+    });
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup).toEqual(openInfo);
+  });
+
+  it('loadSetup replaces a closed setup and an open one with fresh info', async () => {
+    useFlyStore.setState({setup: {...openInfo, open: false}});
+    vi.mocked(window.fly.setup.info).mockResolvedValue({
+      ...openInfo,
+      bundlePath: '/Volumes/fly/fly.app',
+    });
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup?.bundlePath).toBe(
+      '/Volumes/fly/fly.app',
+    );
+    vi.mocked(window.fly.setup.info).mockResolvedValue({
+      ...openInfo,
+      bundlePath: '/Applications/fly.app',
+    });
+    await useFlyStore.getState().loadSetup();
+    expect(useFlyStore.getState().setup?.bundlePath).toBe(
+      '/Applications/fly.app',
+    );
+  });
+
+  it('closeSetup clears setup', async () => {
+    useFlyStore.setState({
+      setup: {
+        packaged: true,
+        inApplications: true,
+        bundlePath: null,
+        open: true,
+      },
+    });
+    useFlyStore.getState().closeSetup();
+    expect(useFlyStore.getState().setup).toBeNull();
   });
 
   it('takeLaunch is false without a pending launch', async () => {
@@ -141,6 +244,7 @@ describe('fly store', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     vi.mocked(window.fly.launch.take).mockRejectedValue(
       new Error(
@@ -218,6 +322,7 @@ describe('fly store', () => {
       theme: 'light',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     await useFlyStore.getState().setTheme('light');
     expect(window.fly.settings.set).toHaveBeenCalledWith({theme: 'light'});
@@ -790,6 +895,7 @@ describe('errorMessage', () => {
         theme: 'system',
         diffPanel: 'collapsed',
         explorer: 'open',
+        setupDone: false,
       });
       await useFlyStore.getState().setDiffPanel('collapsed');
       expect(window.fly.settings.set).toHaveBeenCalledWith({
@@ -1268,6 +1374,7 @@ describe('files', () => {
         theme: 'system',
         diffPanel: 'open',
         explorer: 'collapsed',
+        setupDone: false,
       });
       await useFlyStore.getState().setExplorer('collapsed');
       expect(window.fly.settings.set).toHaveBeenCalledWith({

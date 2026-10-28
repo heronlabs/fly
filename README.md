@@ -81,6 +81,11 @@ Aplicativos and open it. The app is not signed, so macOS blocks the first
 launch: open Ajustes > Privacidade e Segurança and choose "Abrir mesmo
 assim", or run `xattr -dr com.apple.quarantine /Applications/fly.app`.
 
+On first open a wizard checks that `git`, `gh`, `tmux` and `claude` are
+installed (offering `brew install` where it can), puts the `fly` command in
+`/usr/local/bin` (macOS asks for the administrator password) and offers to move
+the dmg to the Lixeira. "Configurar fly…" in the app menu reopens it.
+
 To update, drag the new dmg's app over the old one in Aplicativos. macOS
 quarantines each new download, so the unblock step above applies again after
 updating.

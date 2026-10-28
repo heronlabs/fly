@@ -6,6 +6,7 @@ import {ExplorerPanel} from './panels/explorer-panel';
 import {FooterBar} from './panels/footer-bar';
 import {NewTaskDialog} from './panels/new-task-dialog';
 import {SearchPanel} from './panels/search-panel';
+import {SetupWizard} from './panels/setup-wizard';
 import {TopBar} from './panels/top-bar';
 import {WelcomePanel} from './panels/welcome-panel';
 import {WorkbenchPanel} from './panels/workbench-panel';
@@ -28,6 +29,9 @@ const noMtimes: Record<string, number | null> = {};
 export const AppShell = () => {
   const {
     workspace,
+    setup,
+    loadSetup,
+    closeSetup,
     config,
     selectedWorktreeId,
     error,
@@ -105,6 +109,11 @@ export const AppShell = () => {
   );
 
   useEffect(() => window.fly.queue.onChanged(applyQueue), [applyQueue]);
+
+  useEffect(
+    () => window.fly.setup.onRequested(() => void loadSetup()),
+    [loadSetup],
+  );
 
   useEffect(
     () => window.fly.launch.onRequested(() => void takeLaunch()),
@@ -195,6 +204,10 @@ export const AppShell = () => {
       useFlyStore.setState({error: errorMessage(failure)});
     }
   };
+
+  if (setup?.open) {
+    return <SetupWizard info={setup} onDone={closeSetup} />;
+  }
 
   if (!workspace) {
     return (

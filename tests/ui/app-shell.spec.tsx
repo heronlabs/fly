@@ -93,6 +93,7 @@ const config = (theme: AppConfig['theme']): AppConfig => ({
   theme,
   diffPanel: 'open',
   explorer: 'open',
+  setupDone: false,
 });
 
 const emptySessions: SessionsSnapshot = {
@@ -129,6 +130,7 @@ const seed = (state: Partial<ReturnType<typeof useFlyStore.getState>>) => {
     activeSessionName: null,
     startingSession: false,
     workspace: null,
+    setup: null,
     config: config('dark'),
     selectedWorktreeId: null,
     loading: false,
@@ -257,6 +259,7 @@ describe('AppShell', () => {
       ...config('dark'),
       diffPanel: 'collapsed',
       explorer: 'open',
+      setupDone: false,
     });
     await renderShell();
     expect(screen.queryByRole('tab', {name: 'Diff'})).not.toBeInTheDocument();
@@ -356,6 +359,7 @@ describe('AppShell', () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
       ...config('dark'),
       explorer: 'collapsed',
+      setupDone: false,
     });
     vi.mocked(window.fly.settings.set).mockResolvedValue(config('dark'));
     await renderShell();
@@ -635,6 +639,7 @@ describe('AppShell', () => {
       ...config('dark'),
       diffPanel: 'collapsed',
       explorer: 'open',
+      setupDone: false,
     });
     await renderShell();
     await userEvent
@@ -1009,5 +1014,96 @@ describe('AppShell', () => {
     expect(window.fly.tasks.create).toHaveBeenCalledTimes(1);
     await act(async () => settle(new Error('falhou')));
     expect(screen.getByRole('button', {name: 'Iniciar'})).toBeEnabled();
+  });
+
+  describe('setup wizard', () => {
+    const open = {
+      packaged: true,
+      inApplications: true,
+      bundlePath: '/Applications/fly.app',
+      open: true,
+    };
+
+    it('renders only the wizard while setup is open, then the welcome screen', async () => {
+      seed({});
+      vi.mocked(window.fly.setup.info).mockResolvedValue(open);
+      vi.mocked(window.fly.setup.doctor).mockResolvedValue({
+        brew: true,
+        tools: (['git', 'gh', 'tmux', 'claude'] as const).map(id => ({
+          id,
+          ok: true,
+          version: '1',
+          problem: null,
+          fix: null,
+        })),
+      });
+      vi.mocked(window.fly.setup.commandState).mockResolvedValue('installed');
+      vi.mocked(window.fly.setup.installer).mockResolvedValue(null);
+      vi.mocked(window.fly.setup.complete).mockResolvedValue(undefined);
+      await renderShell();
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+      expect(
+        screen.queryByRole('button', {name: /Abrir pasta/}),
+      ).not.toBeInTheDocument();
+      await userEvent.click(
+        await screen.findByRole('button', {name: 'Continuar'}),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', {name: 'Continuar'}),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', {name: 'Começar'}),
+      );
+      expect(screen.getByRole('button', {name: /Abrir pasta/})).toBeVisible();
+      expect(screen.queryByText(/Passo/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the open wizard when a requested reload rejects', async () => {
+      seed({});
+      vi.mocked(window.fly.setup.info).mockResolvedValue(open);
+      vi.mocked(window.fly.setup.doctor).mockResolvedValue({
+        brew: true,
+        tools: [],
+      });
+      await renderShell();
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+      vi.mocked(window.fly.setup.info).mockRejectedValue(new Error('x'));
+      const listener = vi.mocked(window.fly.setup.onRequested).mock
+        .calls[0]?.[0] as () => void;
+      await act(async () => listener());
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+      vi.mocked(window.fly.setup.info).mockResolvedValue({
+        ...open,
+        open: false,
+      });
+      await act(async () => listener());
+      expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+    });
+
+    it('reloads setup when main requests it and unsubscribes on unmount', async () => {
+      seed({});
+      const unsubscribe = vi.fn();
+      vi.mocked(window.fly.setup.onRequested).mockReturnValue(unsubscribe);
+      vi.mocked(window.fly.setup.info).mockResolvedValue({
+        ...open,
+        open: false,
+      });
+      const view = render(<AppShell />);
+      await act(async () => {});
+      expect(screen.getByRole('button', {name: /Abrir pasta/})).toBeVisible();
+      vi.mocked(window.fly.setup.info).mockResolvedValue({
+        ...open,
+        inApplications: false,
+        bundlePath: '/Volumes/fly/fly.app',
+      });
+      const listener = vi.mocked(window.fly.setup.onRequested).mock
+        .calls[0]?.[0] as () => void;
+      await act(async () => listener());
+      expect(
+        screen.getByText('Arraste o fly para Aplicativos e abra de lá.'),
+      ).toBeVisible();
+      view.unmount();
+      expect(unsubscribe).toHaveBeenCalled();
+    });
   });
 });

@@ -25,6 +25,7 @@ import type {
   ExplorerMode,
   ThemeMode,
 } from '../../../core/domain/settings';
+import type {SetupInfo} from '../../../core/domain/setup';
 import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
 
@@ -62,6 +63,7 @@ export type Reveal = {
 
 export type FlyState = {
   workspace: Workspace | null;
+  setup: SetupInfo | null;
   config: AppConfig;
   selectedWorktreeId: string | null;
   loading: boolean;
@@ -82,6 +84,8 @@ export type FlyState = {
   searches: Record<string, WorktreeSearch>;
   reveal: Reveal | null;
   bootstrap(): Promise<void>;
+  loadSetup(): Promise<void>;
+  closeSetup(): void;
   takeLaunch(): Promise<boolean>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
@@ -239,11 +243,13 @@ const reread = async (
 
 export const useFlyStore = create<FlyState>((set, get) => ({
   workspace: null,
+  setup: null,
   config: {
     recentRoots: [],
     theme: 'system',
     diffPanel: 'open',
     explorer: 'open',
+    setupDone: false,
   },
   selectedWorktreeId: null,
   loading: false,
@@ -265,6 +271,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   reveal: null,
 
   async bootstrap() {
+    await get().loadSetup();
     try {
       const config = await window.fly.settings.get();
       set({config});
@@ -274,6 +281,22 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     } catch (error) {
       set({error: errorMessage(error)});
     }
+  },
+
+  // A failed probe leaves the wizard closed (setup starts null): the app
+  // must still start. An open wizard is closed only by closeSetup, never by a
+  // reload that fails or says it should not be open.
+  async loadSetup() {
+    try {
+      const info = await window.fly.setup.info();
+      if (info.open || !get().setup?.open) set({setup: info});
+    } catch {
+      // keeps whatever setup holds
+    }
+  },
+
+  closeSetup() {
+    set({setup: null});
   },
 
   // Opens a pending `fly <pasta>` request; false when there was none.

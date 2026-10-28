@@ -6,11 +6,13 @@ export type AppConfig = {
   theme: ThemeMode;
   diffPanel: DiffPanelMode;
   explorer: ExplorerMode;
+  setupDone: boolean;
 };
 export const defaultConfig: AppConfig = {
   recentRoots: [],
   theme: 'system',
   diffPanel: 'open',
   explorer: 'open',
+  setupDone: false,
 };
 export const maxRecentRoots = 10;

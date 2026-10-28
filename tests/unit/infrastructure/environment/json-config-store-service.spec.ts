@@ -43,6 +43,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     expect(exists).toHaveBeenCalledWith(configPath);
     expect(readText).not.toHaveBeenCalled();
@@ -65,6 +66,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
   });
 
@@ -77,6 +79,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
   });
 
@@ -90,6 +93,7 @@ describe('JsonConfigStoreService', () => {
         theme: 'system',
         diffPanel: 'open',
         explorer: 'open',
+        setupDone: false,
       });
     },
   );
@@ -102,6 +106,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
   });
 
@@ -113,6 +118,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'dark',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
   });
 
@@ -139,6 +145,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'system' as const,
       diffPanel: 'collapsed' as const,
       explorer: 'open' as const,
+      setupDone: false,
     };
     await store.save(config);
     withFile(writeText.mock.calls[0]![1] as string);
@@ -169,11 +176,28 @@ describe('JsonConfigStoreService', () => {
       theme: 'system' as const,
       diffPanel: 'open' as const,
       explorer: 'collapsed' as const,
+      setupDone: false,
     };
     await store.save(config);
     withFile(writeText.mock.calls[0]![1] as string);
 
     expect(await store.load()).toEqual(config);
+  });
+
+  it('Should load setupDone true and fall back to false otherwise', async () => {
+    withFile('{"setupDone":true}');
+    expect((await store.load()).setupDone).toBe(true);
+
+    withFile('{"setupDone":false}');
+    expect((await store.load()).setupDone).toBe(false);
+
+    for (const value of ['"yes"', '1', 'null', '[]']) {
+      withFile(`{"setupDone":${value}}`);
+      expect((await store.load()).setupDone).toBe(false);
+    }
+
+    withFile('{"theme":"dark"}');
+    expect((await store.load()).setupDone).toBe(false);
   });
 
   it('Should keep only string roots and cap them at the maximum', async () => {
@@ -194,6 +218,7 @@ describe('JsonConfigStoreService', () => {
       theme: 'dark' as const,
       diffPanel: 'open' as const,
       explorer: 'open' as const,
+      setupDone: false,
     };
 
     await store.save(config);

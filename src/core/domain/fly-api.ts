@@ -11,6 +11,13 @@ import type {QueueSnapshot} from './queue';
 import type {SearchQuery, SearchResult} from './search';
 import type {SessionsSnapshot} from './session';
 import type {AppConfig} from './settings';
+import type {
+  CommandState,
+  DoctorReport,
+  InstallerImage,
+  SetupInfo,
+  ToolId,
+} from './setup';
 import type {NewTaskInput} from './task';
 import type {Workspace} from './workspace';
 
@@ -51,6 +58,15 @@ export const channels = {
   attachmentSaveImage: 'attachment:save-image',
   launchTake: 'launch:take',
   launchRequested: 'launch:requested',
+  setupInfo: 'setup:info',
+  setupDoctor: 'setup:doctor',
+  setupInstallTool: 'setup:install-tool',
+  setupCommandState: 'setup:command-state',
+  setupInstallCommand: 'setup:install-command',
+  setupInstaller: 'setup:installer',
+  setupTrashInstaller: 'setup:trash-installer',
+  setupComplete: 'setup:complete',
+  setupRequested: 'setup:requested',
 } as const;
 
 export type Channel = (typeof channels)[keyof typeof channels];
@@ -126,6 +142,17 @@ export type FlyApi = {
   launch: {
     // The pending `fly <pasta>` request, once; null when there is none.
     take(): Promise<LaunchRequest | null>;
+    onRequested(listener: () => void): () => void;
+  };
+  setup: {
+    info(): Promise<SetupInfo>;
+    doctor(): Promise<DoctorReport>;
+    installTool(id: ToolId): Promise<DoctorReport>;
+    commandState(): Promise<CommandState>;
+    installCommand(): Promise<CommandState>;
+    installer(): Promise<InstallerImage | null>;
+    trashInstaller(imagePath: string): Promise<void>;
+    complete(): Promise<void>;
     onRequested(listener: () => void): () => void;
   };
 };
