@@ -109,6 +109,62 @@ describe('fly store', () => {
     expect(useFlyStore.getState().selectedWorktreeId).toBe('b#main');
   });
 
+  it('bootstrap loads setup before the workspace', async () => {
+    const order: string[] = [];
+    const info = {
+      packaged: true,
+      inApplications: true,
+      bundlePath: '/Applications/fly.app',
+      open: true,
+    };
+    vi.mocked(window.fly.setup.info).mockImplementation(async () => {
+      order.push('setup');
+      return info;
+    });
+    vi.mocked(window.fly.settings.get).mockImplementation(async () => {
+      order.push('settings');
+      return {
+        recentRoots: [],
+        theme: 'system',
+        diffPanel: 'open',
+        explorer: 'open',
+        setupDone: false,
+      };
+    });
+    await useFlyStore.getState().bootstrap();
+    expect(order).toEqual(['setup', 'settings']);
+    expect(useFlyStore.getState().setup).toEqual(info);
+  });
+
+  it('a setup failure leaves setup null and the app continues', async () => {
+    vi.mocked(window.fly.setup.info).mockRejectedValue(new Error('x'));
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      recentRoots: ['/r'],
+      theme: 'system',
+      diffPanel: 'open',
+      explorer: 'open',
+      setupDone: false,
+    });
+    vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
+    await useFlyStore.getState().bootstrap();
+    expect(useFlyStore.getState().setup).toBeNull();
+    expect(useFlyStore.getState().error).toBeNull();
+    expect(useFlyStore.getState().workspace?.root).toBe('/r');
+  });
+
+  it('closeSetup clears setup', async () => {
+    useFlyStore.setState({
+      setup: {
+        packaged: true,
+        inApplications: true,
+        bundlePath: null,
+        open: true,
+      },
+    });
+    useFlyStore.getState().closeSetup();
+    expect(useFlyStore.getState().setup).toBeNull();
+  });
+
   it('takeLaunch is false without a pending launch', async () => {
     expect(await useFlyStore.getState().takeLaunch()).toBe(false);
     expect(window.fly.workspace.open).not.toHaveBeenCalled();

@@ -25,6 +25,7 @@ import type {
   ExplorerMode,
   ThemeMode,
 } from '../../../core/domain/settings';
+import type {SetupInfo} from '../../../core/domain/setup';
 import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo, Workspace, Worktree} from '../../../core/domain/workspace';
 
@@ -62,6 +63,7 @@ export type Reveal = {
 
 export type FlyState = {
   workspace: Workspace | null;
+  setup: SetupInfo | null;
   config: AppConfig;
   selectedWorktreeId: string | null;
   loading: boolean;
@@ -82,6 +84,8 @@ export type FlyState = {
   searches: Record<string, WorktreeSearch>;
   reveal: Reveal | null;
   bootstrap(): Promise<void>;
+  loadSetup(): Promise<void>;
+  closeSetup(): void;
   takeLaunch(): Promise<boolean>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
@@ -239,6 +243,7 @@ const reread = async (
 
 export const useFlyStore = create<FlyState>((set, get) => ({
   workspace: null,
+  setup: null,
   config: {
     recentRoots: [],
     theme: 'system',
@@ -266,6 +271,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
   reveal: null,
 
   async bootstrap() {
+    await get().loadSetup();
     try {
       const config = await window.fly.settings.get();
       set({config});
@@ -275,6 +281,19 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     } catch (error) {
       set({error: errorMessage(error)});
     }
+  },
+
+  // A failed probe leaves the wizard closed: the app must still start.
+  async loadSetup() {
+    try {
+      set({setup: await window.fly.setup.info()});
+    } catch {
+      set({setup: null});
+    }
+  },
+
+  closeSetup() {
+    set({setup: null});
   },
 
   // Opens a pending `fly <pasta>` request; false when there was none.
