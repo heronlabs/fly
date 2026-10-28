@@ -30,6 +30,7 @@ import {SettingsHandler} from '../../src/application/ipc/handlers/settings-handl
 import {SetupHandler} from '../../src/application/ipc/handlers/setup-handler';
 import {ShellHandler} from '../../src/application/ipc/handlers/shell-handler';
 import {TerminalHandler} from '../../src/application/ipc/handlers/terminal-handler';
+import {UpdateHandler} from '../../src/application/ipc/handlers/update-handler';
 import {WorkspaceHandler} from '../../src/application/ipc/handlers/workspace-handler';
 import {IpcModule} from '../../src/application/ipc/ipc-module';
 import {CLAUDE_PROJECTS_DIR} from '../../src/infrastructure/claude/tokens';
@@ -87,6 +88,7 @@ describe('IpcModule (real Nest DI)', () => {
       expect(() => context.get(AttachmentHandler).register()).not.toThrow();
       expect(() => context.get(LaunchHandler).register()).not.toThrow();
       expect(() => context.get(SetupHandler).register()).not.toThrow();
+      expect(() => context.get(UpdateHandler).register()).not.toThrow();
     } finally {
       await context.close();
     }

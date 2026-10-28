@@ -151,6 +151,19 @@ const api: FlyApi = {
       };
     },
   },
+  updates: {
+    get: () => ipcRenderer.invoke(channels.updateGet),
+    onChanged: listener => {
+      const handler = (
+        _event: unknown,
+        notice: Parameters<typeof listener>[0],
+      ) => listener(notice);
+      ipcRenderer.on(channels.updateChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.updateChanged, handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('fly', api);

@@ -17,6 +17,7 @@ import type {
   InstallerImage,
   SetupInfo,
   ToolId,
+  UpdateNotice,
 } from './setup';
 import type {NewTaskInput} from './task';
 import type {Workspace} from './workspace';
@@ -67,6 +68,8 @@ export const channels = {
   setupTrashInstaller: 'setup:trash-installer',
   setupComplete: 'setup:complete',
   setupRequested: 'setup:requested',
+  updateGet: 'update:get',
+  updateChanged: 'update:changed',
 } as const;
 
 export type Channel = (typeof channels)[keyof typeof channels];
@@ -154,6 +157,10 @@ export type FlyApi = {
     trashInstaller(imagePath: string): Promise<void>;
     complete(): Promise<void>;
     onRequested(listener: () => void): () => void;
+  };
+  updates: {
+    get(): Promise<UpdateNotice | null>;
+    onChanged(listener: (notice: UpdateNotice | null) => void): () => void;
   };
 };
 

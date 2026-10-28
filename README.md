@@ -86,9 +86,13 @@ installed (offering `brew install` where it can), puts the `fly` command in
 `/usr/local/bin` (macOS asks for the administrator password) and offers to move
 the dmg to the Lixeira. "Configurar fly…" in the app menu reopens it.
 
-To update, drag the new dmg's app over the old one in Aplicativos. macOS
-quarantines each new download, so the unblock step above applies again after
-updating.
+### Updating
+
+When a newer Release exists, the footer shows `fly vX disponível · Baixar`. fly
+checks at launch and every 6 hours through `gh` (it needs `gh` logged in; dev
+builds never check). `Baixar` opens the Release page: download the new dmg and
+drag its app over the old one in Aplicativos. macOS quarantines each new
+download, so the unblock step above applies again after updating.
 
 ## Development
 

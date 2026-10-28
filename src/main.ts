@@ -18,6 +18,7 @@ import {SettingsHandler} from './application/ipc/handlers/settings-handler';
 import {SetupHandler} from './application/ipc/handlers/setup-handler';
 import {ShellHandler} from './application/ipc/handlers/shell-handler';
 import {TerminalHandler} from './application/ipc/handlers/terminal-handler';
+import {UpdateHandler} from './application/ipc/handlers/update-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
 import {launchFolder} from './application/ipc/launch-args';
@@ -127,9 +128,12 @@ const booted = app
     const launch = context.get(LaunchHandler);
     launch.register();
     launch.request(folderOf(process.argv, process.cwd()));
+    const updateHandler = context.get(UpdateHandler);
+    updateHandler.register();
     const setupHandler = context.get(SetupHandler);
     setupHandler.register();
     if (app.isPackaged) {
+      updateHandler.start();
       Menu.setApplicationMenu(
         Menu.buildFromTemplate(appMenuTemplate(() => setupHandler.request())),
       );
