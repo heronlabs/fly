@@ -22,10 +22,8 @@ const freshDefaults = (): AppConfig => structuredClone(defaultConfig);
 
 const coerce = (value: unknown): AppConfig => {
   // Arrays and primitives have neither field, so they coerce to the defaults.
-  const {recentRoots, theme, diffPanel, explorer} = (value ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const {recentRoots, theme, diffPanel, explorer, setupDone} = (value ??
+    {}) as Record<string, unknown>;
   return {
     recentRoots: Array.isArray(recentRoots)
       ? recentRoots
@@ -41,6 +39,7 @@ const coerce = (value: unknown): AppConfig => {
     explorer: explorerModes.includes(explorer as string)
       ? (explorer as ExplorerMode)
       : defaultConfig.explorer,
+    setupDone: setupDone === true,
   };
 };
 

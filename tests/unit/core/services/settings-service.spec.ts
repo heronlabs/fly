@@ -21,6 +21,7 @@ describe('SettingsService', () => {
       theme: 'dark',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     };
     load.mockResolvedValue(config);
 
@@ -33,6 +34,7 @@ describe('SettingsService', () => {
       theme: 'dark',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
 
     const result = await service.update({theme: 'light'});
@@ -42,6 +44,7 @@ describe('SettingsService', () => {
       theme: 'light',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     expect(save).toHaveBeenCalledWith(result);
   });
@@ -52,6 +55,7 @@ describe('SettingsService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
 
     const result = await service.rememberRoot('/b');
@@ -66,6 +70,7 @@ describe('SettingsService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
 
     const result = await service.rememberRoot('/c');
@@ -80,6 +85,7 @@ describe('SettingsService', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
 
     const result = await service.rememberRoot('/new');

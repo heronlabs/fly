@@ -60,6 +60,7 @@ describe('fly store', () => {
       theme: 'dark',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
     await useFlyStore.getState().bootstrap();
@@ -74,6 +75,7 @@ describe('fly store', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     await useFlyStore.getState().bootstrap();
     expect(window.fly.workspace.open).not.toHaveBeenCalled();
@@ -92,6 +94,7 @@ describe('fly store', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     vi.mocked(window.fly.launch.take).mockResolvedValue({
       root: '/r',
@@ -141,6 +144,7 @@ describe('fly store', () => {
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     vi.mocked(window.fly.launch.take).mockRejectedValue(
       new Error(
@@ -218,6 +222,7 @@ describe('fly store', () => {
       theme: 'light',
       diffPanel: 'open',
       explorer: 'open',
+      setupDone: false,
     });
     await useFlyStore.getState().setTheme('light');
     expect(window.fly.settings.set).toHaveBeenCalledWith({theme: 'light'});
@@ -790,6 +795,7 @@ describe('errorMessage', () => {
         theme: 'system',
         diffPanel: 'collapsed',
         explorer: 'open',
+        setupDone: false,
       });
       await useFlyStore.getState().setDiffPanel('collapsed');
       expect(window.fly.settings.set).toHaveBeenCalledWith({
@@ -1268,6 +1274,7 @@ describe('files', () => {
         theme: 'system',
         diffPanel: 'open',
         explorer: 'collapsed',
+        setupDone: false,
       });
       await useFlyStore.getState().setExplorer('collapsed');
       expect(window.fly.settings.set).toHaveBeenCalledWith({

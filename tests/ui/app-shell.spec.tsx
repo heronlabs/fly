@@ -93,6 +93,7 @@ const config = (theme: AppConfig['theme']): AppConfig => ({
   theme,
   diffPanel: 'open',
   explorer: 'open',
+  setupDone: false,
 });
 
 const emptySessions: SessionsSnapshot = {
@@ -257,6 +258,7 @@ describe('AppShell', () => {
       ...config('dark'),
       diffPanel: 'collapsed',
       explorer: 'open',
+      setupDone: false,
     });
     await renderShell();
     expect(screen.queryByRole('tab', {name: 'Diff'})).not.toBeInTheDocument();
@@ -356,6 +358,7 @@ describe('AppShell', () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
       ...config('dark'),
       explorer: 'collapsed',
+      setupDone: false,
     });
     vi.mocked(window.fly.settings.set).mockResolvedValue(config('dark'));
     await renderShell();
@@ -635,6 +638,7 @@ describe('AppShell', () => {
       ...config('dark'),
       diffPanel: 'collapsed',
       explorer: 'open',
+      setupDone: false,
     });
     await renderShell();
     await userEvent

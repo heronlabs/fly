@@ -244,6 +244,7 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     theme: 'system',
     diffPanel: 'open',
     explorer: 'open',
+    setupDone: false,
   },
   selectedWorktreeId: null,
   loading: false,
