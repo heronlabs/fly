@@ -152,6 +152,40 @@ describe('fly store', () => {
     expect(useFlyStore.getState().workspace?.root).toBe('/r');
   });
 
+  it('bootstrap reads the update notice', async () => {
+    const notice = {
+      version: '0.9.0',
+      url: 'https://github.com/heronlabs/fly/releases/tag/v0.9.0',
+    };
+    vi.mocked(window.fly.updates.get).mockResolvedValue(notice);
+    await useFlyStore.getState().bootstrap();
+    expect(useFlyStore.getState().update).toEqual(notice);
+  });
+
+  it('an update failure leaves update null and the app continues', async () => {
+    vi.mocked(window.fly.updates.get).mockRejectedValue(new Error('x'));
+    vi.mocked(window.fly.settings.get).mockResolvedValue({
+      recentRoots: ['/r'],
+      theme: 'system',
+      diffPanel: 'open',
+      explorer: 'open',
+      setupDone: false,
+    });
+    vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
+    await useFlyStore.getState().bootstrap();
+    expect(useFlyStore.getState().update).toBeNull();
+    expect(useFlyStore.getState().error).toBeNull();
+    expect(useFlyStore.getState().workspace?.root).toBe('/r');
+  });
+
+  it('applyUpdate sets and clears the notice', () => {
+    const notice = {version: '0.9.0', url: 'https://github.com/x'};
+    useFlyStore.getState().applyUpdate(notice);
+    expect(useFlyStore.getState().update).toEqual(notice);
+    useFlyStore.getState().applyUpdate(null);
+    expect(useFlyStore.getState().update).toBeNull();
+  });
+
   const openInfo = {
     packaged: true,
     inApplications: true,

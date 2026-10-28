@@ -30,6 +30,8 @@ export const AppShell = () => {
   const {
     workspace,
     setup,
+    update,
+    applyUpdate,
     loadSetup,
     closeSetup,
     config,
@@ -109,6 +111,8 @@ export const AppShell = () => {
   );
 
   useEffect(() => window.fly.queue.onChanged(applyQueue), [applyQueue]);
+
+  useEffect(() => window.fly.updates.onChanged(applyUpdate), [applyUpdate]);
 
   useEffect(
     () => window.fly.setup.onRequested(() => void loadSetup()),
@@ -385,7 +389,12 @@ export const AppShell = () => {
           )}
         </div>
       </div>
-      <FooterBar counts={counts} message={queue.message} />
+      <FooterBar
+        counts={counts}
+        message={queue.message}
+        update={update}
+        onDownload={url => void openExternal(url)}
+      />
       <NewTaskDialog
         open={taskOpen}
         repos={workspace.repos}

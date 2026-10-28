@@ -204,6 +204,40 @@ describe('AppShell', () => {
     expect(unsubscribe).toHaveBeenCalled();
   });
 
+  it('shows update pushes in the footer and unsubscribes on unmount', async () => {
+    seed({workspace});
+    const unsubscribe = vi.fn();
+    vi.mocked(window.fly.updates.onChanged).mockReturnValue(unsubscribe);
+    const view = render(<AppShell />);
+    await act(async () => {});
+    const listener = vi.mocked(window.fly.updates.onChanged).mock
+      .calls[0]?.[0] as (notice: {version: string; url: string} | null) => void;
+    act(() =>
+      listener({
+        version: '0.9.0',
+        url: 'https://github.com/heronlabs/fly/releases/tag/v0.9.0',
+      }),
+    );
+    expect(screen.getByText('fly v0.9.0 disponível')).toBeInTheDocument();
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('opens the release page on Baixar and shows a rejection as an alert', async () => {
+    const url = 'https://github.com/heronlabs/fly/releases/tag/v0.9.0';
+    seed({workspace});
+    await renderShell();
+    act(() => useFlyStore.getState().applyUpdate({version: '0.9.0', url}));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {name: 'Baixar'}));
+    expect(window.fly.shell.openExternal).toHaveBeenCalledWith(url);
+    vi.mocked(window.fly.shell.openExternal).mockRejectedValue(
+      new Error('sem link'),
+    );
+    await user.click(screen.getByRole('button', {name: 'Baixar'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('sem link');
+  });
+
   it('applies workspace pushes', async () => {
     seed({});
     await renderShell();
