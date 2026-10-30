@@ -1,3 +1,9 @@
+## v0.10.1 (2026-10-30)
+
+### Bug Fixes
+
+* fix(build): sign the release with a keychain codesign can see (#32) (2429e532424d27024a366a7a2d588df3e06cdbf5)
+
 ## v0.10.0 (2026-10-30)
 
 ### Features
