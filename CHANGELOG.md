@@ -1,3 +1,9 @@
+## v0.10.0 (2026-10-30)
+
+### Features
+
+* feat: signed releases, icon fix, agent guide and no Abrir no VSCode (#31) (3f67fcf5a6f57ed4a156ea71a8559359ca4c183c)
+
 ## v0.9.0 (2026-10-28)
 
 ### Features
