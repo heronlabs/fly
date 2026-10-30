@@ -23,4 +23,8 @@ security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
 # in the job while the keychain is unlocked.
 security import "$P12" -k "$KEYCHAIN" -P "$MAC_CERT_PASSWORD" -x -T /usr/bin/codesign >/dev/null
 security set-key-partition-list -S apple-tool:,apple: -s -k "$PASSWORD" "$KEYCHAIN" >/dev/null
+# On the runner codesign finds no identity in a keychain off the user's search
+# list, --keychain or not. `list-keychains -s` replaces the list, so the
+# current keychains follow; delete-keychain takes this one off again.
+security list-keychains -d user | xargs security list-keychains -d user -s "$KEYCHAIN" >/dev/null
 echo "$KEYCHAIN"
