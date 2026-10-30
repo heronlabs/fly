@@ -153,9 +153,6 @@ const renderShell = async () => {
   await act(async () => {});
 };
 
-const topBarEditorButton = () =>
-  screen.getByText('Abrir no VSCode', {selector: 'button'});
-
 describe('AppShell', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn(() => ({
@@ -770,32 +767,10 @@ describe('AppShell', () => {
     expect(window.fly.settings.set).toHaveBeenCalledWith({theme: 'dark'});
   });
 
-  it('opens the selected worktree from the top bar and shows breadcrumb', async () => {
+  it('Should show the selected worktree breadcrumb in the top bar', async () => {
     seed({workspace, selectedWorktreeId: 'w1'});
-    vi.mocked(window.fly.shell.openInEditor).mockResolvedValue();
     await renderShell();
     expect(screen.getByText('repo-a › main')).toBeVisible();
-    await userEvent.setup().click(topBarEditorButton());
-    expect(window.fly.shell.openInEditor).toHaveBeenCalledWith('/tmp/x/repo-a');
-  });
-
-  it('disables the top-bar editor button without a selection', async () => {
-    seed({workspace});
-    await renderShell();
-    expect(topBarEditorButton()).toBeDisabled();
-  });
-
-  it('shows editor errors as an alert (stripped IPC prefix)', async () => {
-    seed({workspace});
-    vi.mocked(window.fly.shell.openInEditor).mockRejectedValue(
-      new Error(
-        "Error invoking remote method 'shell:open-in-editor': Error: sem code",
-      ),
-    );
-    await renderShell();
-    const rows = screen.getAllByRole('button', {name: 'Abrir no VSCode'});
-    await userEvent.setup().click(rows[rows.length - 1] as HTMLElement);
-    expect(await screen.findByRole('alert')).toHaveTextContent('sem code');
   });
 
   it('Should unsubscribe from session pushes on unmount', async () => {

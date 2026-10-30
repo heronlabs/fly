@@ -9,6 +9,7 @@
     "src/application/ipc",
     "src/core",
     "src/infrastructure",
+    "scripts",
     "tests/di",
     "tests/unit",
     "tests/integration",

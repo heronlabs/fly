@@ -30,6 +30,7 @@ void new CliHandler(
     execPath: process.execPath,
     env: process.env,
     interactive: process.stdin.isTTY === true,
+    columns: process.stdout.columns,
   },
   {
     out: line => process.stdout.write(`${line}\n`),

@@ -186,7 +186,7 @@ describe('CliHandler (real tmux, git and files)', () => {
     lines = [];
     expect(await cli(repo).run(['ls'])).toBe(0);
     expect(lines[0]?.split('\n')[1]).toMatch(
-      new RegExp(`^${name} +${folder} +\\S+, \\S+ +não +-$`),
+      new RegExp(`^${name} +\\S+, \\S+ +-$`),
     );
 
     lines = [];

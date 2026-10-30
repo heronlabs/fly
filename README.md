@@ -39,9 +39,11 @@ and xterm.js. macOS first.
 
 ## Why This Project
 
-Running several supera tasks in parallel means several tmux sessions, several
-worktrees and no single view of which ones need a human. fly replaces the
-routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
+Running several Claude Code tasks in parallel means several tmux sessions,
+several worktrees and no single view of which ones need a human. fly replaces
+the routine of "open VSCode, open iTerm, run `start-s`, type the task" with one
+app; `start-s` was a shell alias that started Claude Code in a new tmux session
+(see [Coming from code-sessions](#coming-from-code-sessions)):
 
 - **One window, every repo** — discovers the git repos under a folder, two levels deep, and every worktree of each. Session = worktree = task.
 - **Real terminals, persistent sessions** — each worktree hosts Claude Code inside tmux, so sessions survive app restarts and stay reachable remotely via Tailscale + Termius. The [`fly` CLI](#cli) starts, lists, resumes and stops the same sessions from any terminal, and opens the app on a folder.
@@ -56,7 +58,7 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 3. **Task.** "Nova tarefa" fetches the repo's default branch, creates `.worktrees/<branch>` (branch suggested from the description, editable), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). "Abrir PR" then has that session commit and write the PR, and fly opens it.
 4. **Queue.** A poller tails `~/.claude/projects/<cwd>/<session>.jsonl` and asks `gh` for the pull requests of each worktree, then applies the queue rules and broadcasts a snapshot to the renderer, which shows a badge per worktree and the counts in the footer.
 5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button; above them, the task section offers "Abrir PR", shows the CI and review status of the task, and, when fly stops, "Rodar de novo" (reruns failed jobs after an infrastructure failure), "Retomar" and, once the PR is merged or closed, "Limpar"; the panel collapses from the top bar.
-6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded; "Recolher pastas" collapses every open folder. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; the middle button closes a tab, and a right click offers "Fechar todas" and "Fechar salvas" (a dirty tab always asks `Descartar` first). ⌘S saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note and "Abrir no VSCode".
+6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded; "Recolher pastas" collapses every open folder. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; the middle button closes a tab, and a right click offers "Fechar todas" and "Fechar salvas" (a dirty tab always asks `Descartar` first). ⌘S saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note instead of the editor.
 7. **Search.** The magnifier on a worktree row, or ⇧⌘F for the selected one, swaps the explorer for a Search view of that worktree: `git grep` over its tracked and untracked text files (`.gitignore` honoured) as you type, with case, whole-word and regex toggles. Hits are grouped by file with the line number and a highlighted preview, capped at 100 per file and 2000 in all; a click opens the file in a tab with the match selected. Each worktree keeps its last search.
 
 ## Prerequisites
@@ -67,7 +69,6 @@ routine of "open VSCode, open iTerm, `start-s`, `/supera:ship`" with one app:
 | `gh` | Pull request status, `gh pr create`, failed-job logs and `gh run rerun`, review comments, and `gh pr merge` for the merge button; must be authenticated (`gh auth login`) |
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session |
-| `code` | VSCode on `PATH`, used by "Abrir no VSCode" |
 
 fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or
 `tmux ls` and `tmux attach -t <name>`) from any terminal reach the same
@@ -77,9 +78,28 @@ sessions.
 
 Download `fly-<versão>-arm64.dmg` from the
 [latest Release](https://github.com/heronlabs/fly/releases/latest), drag fly to
-Aplicativos and open it. The app is not signed, so macOS blocks the first
-launch: open Ajustes > Privacidade e Segurança and choose "Abrir mesmo
-assim", or run `xattr -dr com.apple.quarantine /Applications/fly.app`.
+Aplicativos and open it. The app is signed with fly's own certificate but not
+notarized by Apple, so macOS blocks the first launch and cannot tell you who
+signed it. Check that yourself before unblocking it:
+
+```sh
+gh attestation verify fly-<versão>-arm64.dmg --repo heronlabs/fly
+codesign -d -r- /Applications/fly.app
+```
+
+The first proves the dmg was built by fly's release workflow. The second must
+print `certificate root = H"09663078c96575a9f688f6b62b61ea4ddac1528a"`, fly's
+certificate. Then open Ajustes > Privacidade e Segurança and choose "Abrir
+mesmo assim", or run `xattr -dr com.apple.quarantine /Applications/fly.app`.
+
+When fly starts the tmux server (its first session while no other runs), macOS
+asks for privacy permissions (folders, camera, screen recording, …) in fly's
+name for everything that runs in that server's sessions: Claude Code, its MCP
+servers, the browsers it drives, the scripts in your repos. Grant only what you
+use. Every version carries the same signature, so an answer holds across
+updates. If macOS asks again for a permission you already granted, run the
+`codesign` check again before answering; screen recording is the exception,
+since macOS asks for it again from time to time.
 
 On first open a wizard checks that `git`, `gh`, `tmux` and `claude` are
 installed (offering `brew install` where it can), puts the `fly` command in
@@ -92,7 +112,9 @@ When a newer Release exists, the footer shows `fly vX disponível · Baixar`. fl
 checks at launch and every 6 hours through `gh` (it needs `gh` logged in; dev
 builds never check). `Baixar` opens the Release page: download the new dmg and
 drag its app over the old one in Aplicativos. macOS quarantines each new
-download, so the unblock step above applies again after updating.
+download, so the checks and the unblock step above apply again after updating.
+Up to 0.9.0 fly was signed ad hoc, so the first version signed with the
+certificate asks for its permissions once more.
 
 ## Development
 
@@ -132,7 +154,7 @@ build: rerun `pnpm build` after pulling.
 |---|---|
 | `fly [pasta]` | Opens the app on the folder (default: the current one) |
 | `fly start [pasta]` | Starts Claude Code in a new tmux session in the folder (default: the current one), prints the session name and attaches when run from a terminal |
-| `fly ls` | Lists every session on the default tmux server: name, folder, creation time, attached, task |
+| `fly ls` | Lists every session on the default tmux server, one line each: name, creation time and task, cut at the terminal's width |
 | `fly resume <nome>` | Attaches to a session by its exact name |
 | `fly stop <nome>` | Kills a session by its exact name |
 | `fly help` | Prints the usage (also `--help`, `-h`) |

@@ -23,7 +23,6 @@ const api: FlyApi = {
     set: patch => ipcRenderer.invoke(channels.settingsSet, patch),
   },
   shell: {
-    openInEditor: path => ipcRenderer.invoke(channels.shellOpenInEditor, path),
     openExternal: url => ipcRenderer.invoke(channels.shellOpenExternal, url),
   },
   sessions: {

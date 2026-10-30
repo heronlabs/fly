@@ -29,7 +29,6 @@ export const channels = {
   workspaceChanged: 'workspace:changed',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
-  shellOpenInEditor: 'shell:open-in-editor',
   sessionList: 'session:list',
   sessionStart: 'session:start',
   sessionKill: 'session:kill',
@@ -86,7 +85,6 @@ export type FlyApi = {
     set(patch: Partial<AppConfig>): Promise<AppConfig>;
   };
   shell: {
-    openInEditor(path: string): Promise<void>;
     openExternal(url: string): Promise<void>;
   };
   sessions: {

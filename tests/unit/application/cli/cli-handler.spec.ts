@@ -143,10 +143,40 @@ describe('CliHandler', () => {
       expect(await cli({timeZone: 'Asia/Tokyo'}).run(['ls'])).toBe(0);
       expect(out).toHaveBeenCalledWith(
         [
-          'NOME             PASTA                   CRIADA             ANEXADA  TAREFA',
-          'fly-feat-abc123  /w/fly/.worktrees/feat  24/10/2025, 23:03  sim      x',
-          'notes-1          /notes                  01/01/1970, 09:00  não      -',
+          'NOME             CRIADA        TAREFA',
+          'fly-feat-abc123  24/10, 23:03  x',
+          'notes-1          01/01, 09:00  -',
         ].join('\n'),
+      );
+    });
+
+    it('Should cut the task so each line fits the terminal', async () => {
+      list.mockResolvedValue([
+        session({name: 'fly-a', options: {'@fly_task': 'Revisar o código'}}),
+        // The emoji is one character, never split in half.
+        session({name: 'fly-b', options: {'@fly_task': '🧪 Teste longo'}}),
+      ]);
+
+      expect(await cli({timeZone: 'UTC', columns: 27}).run(['ls'])).toBe(0);
+      expect(out).toHaveBeenCalledWith(
+        [
+          'NOME   CRIADA        TAREFA',
+          'fly-a  24/10, 14:03  Revis…',
+          'fly-b  24/10, 14:03  🧪 Tes…',
+        ].join('\n'),
+      );
+    });
+
+    it('Should keep a line exactly as wide as the terminal', async () => {
+      list.mockResolvedValue([
+        session({name: 'fly-a', options: {'@fly_task': 'Revisa'}}),
+      ]);
+
+      await cli({timeZone: 'UTC', columns: 27}).run(['ls']);
+      expect(out).toHaveBeenCalledWith(
+        ['NOME   CRIADA        TAREFA', 'fly-a  24/10, 14:03  Revisa'].join(
+          '\n',
+        ),
       );
     });
 

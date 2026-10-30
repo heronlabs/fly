@@ -11,7 +11,7 @@ You need:
 
 - Node `>=22` (`.node-version`) and pnpm `>=10`;
 - `tmux` `>= 3.2` (`brew install tmux`), which the integration tests and the mutation tests run;
-- `git`, and `gh`, `claude` and `code` to use the app itself (see [Prerequisites](README.md#prerequisites)).
+- `git`, and `gh` and `claude` to use the app itself (see [Prerequisites](README.md#prerequisites)).
 
 ## Commands
 
@@ -41,7 +41,7 @@ Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`. Mu
 
 ## Conventions
 
-`CLAUDE.md` is the reference. In short:
+`AGENTS.md` is the reference, with the architecture and recipes for common changes. In short:
 
 - **Layer rules.** `core` never imports `application`; only `src/application/ipc/ipc-module.ts` imports `infrastructure`; `infrastructure` imports only `core/interfaces` and `core/domain`; `application/ui` imports only itself and type-only `core/domain`; `src/cli.ts` never reaches `electron`. `pnpm dep:cruise` enforces them.
 - **Renderer isolation.** The renderer never touches Node or Electron APIs; it talks to the main process only through `window.fly`, exposed by `preload.ts` via `contextBridge`.

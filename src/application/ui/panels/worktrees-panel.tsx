@@ -1,4 +1,4 @@
-import {CodeOutlined, SearchOutlined} from '@ant-design/icons';
+import {SearchOutlined} from '@ant-design/icons';
 import type {KeyboardEvent} from 'react';
 
 import type {QueueStatus} from '../../../core/domain/queue';
@@ -10,7 +10,6 @@ type Props = {
   workspace: Workspace;
   selectedId: string | null;
   onSelect(id: string): void;
-  onOpenInEditor(path: string): void;
   onSearch(id: string): void;
   sessionCounts: Record<string, number>;
   statuses: Record<string, QueueStatus>;
@@ -20,7 +19,6 @@ export const WorktreesPanel = ({
   workspace,
   selectedId,
   onSelect,
-  onOpenInEditor,
   onSearch,
   sessionCounts,
   statuses,
@@ -152,22 +150,6 @@ export const WorktreesPanel = ({
                         }}
                       >
                         <SearchOutlined />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Abrir no VSCode"
-                        title="Abrir no VSCode"
-                        className="fly-worktree-action"
-                        onClick={() => onOpenInEditor(worktree.path)}
-                        style={{
-                          background: 'none',
-                          border: 0,
-                          padding: '4px 10px',
-                          cursor: 'pointer',
-                          color: 'var(--muted)',
-                        }}
-                      >
-                        <CodeOutlined />
                       </button>
                     </div>
                   );

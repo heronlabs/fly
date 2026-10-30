@@ -34,7 +34,6 @@ const setup = (
     onRerun: vi.fn().mockResolvedValue(undefined),
     onResume: vi.fn().mockResolvedValue(undefined),
     onClean: vi.fn().mockResolvedValue(undefined),
-    onOpenInEditor: vi.fn(),
     onOpenExternal: vi.fn(),
     ...overrides,
   };
@@ -214,7 +213,6 @@ describe('DiffPrPanel', () => {
         onRerun={vi.fn()}
         onResume={vi.fn()}
         onClean={vi.fn()}
-        onOpenInEditor={vi.fn()}
         onOpenExternal={vi.fn()}
       />,
     );
@@ -233,7 +231,6 @@ describe('DiffPrPanel', () => {
         onRerun={vi.fn()}
         onResume={vi.fn()}
         onClean={vi.fn()}
-        onOpenInEditor={vi.fn()}
         onOpenExternal={vi.fn()}
       />,
     );

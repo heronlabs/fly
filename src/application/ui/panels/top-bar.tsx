@@ -1,5 +1,4 @@
 import {
-  CodeOutlined,
   FolderOpenOutlined,
   LayoutOutlined,
   MoonOutlined,
@@ -21,7 +20,6 @@ type Props = {
   onToggleDiffPanel(): void;
   onToggleTheme(): void;
   onOpenFolder(): void;
-  onOpenInEditor(): void;
   canCreateTask: boolean;
   onNewTask(): void;
 };
@@ -47,7 +45,6 @@ export const TopBar = ({
   onToggleDiffPanel,
   onToggleTheme,
   onOpenFolder,
-  onOpenInEditor,
   canCreateTask,
   onNewTask,
 }: Props) => (
@@ -101,14 +98,6 @@ export const TopBar = ({
       onClick={onNewTask}
     >
       <PlusOutlined /> Nova tarefa
-    </button>
-    <button
-      type="button"
-      disabled={!selected}
-      onClick={onOpenInEditor}
-      style={{...buttonStyle, opacity: selected ? 1 : 0.5}}
-    >
-      <CodeOutlined /> Abrir no VSCode
     </button>
     <button type="button" onClick={onToggleDiffPanel} style={buttonStyle}>
       <LayoutOutlined />{' '}

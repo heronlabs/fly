@@ -102,7 +102,6 @@ const setup = (overrides: Partial<Props> = {}) => {
     onReload: vi.fn(),
     onKeep: vi.fn(),
     onPoll: vi.fn(),
-    onOpenInEditor: vi.fn(),
     reveal: null,
     onRevealed: vi.fn(),
     session: {
@@ -389,8 +388,6 @@ describe('WorkbenchPanel', () => {
     expect(props.onReload).toHaveBeenCalledWith('src/b.ts');
     click(screen.getByRole('button', {name: 'Manter'}));
     expect(props.onKeep).toHaveBeenCalledWith('src/b.ts', 42);
-    click(screen.getByRole('button', {name: 'Abrir no VSCode'}));
-    expect(props.onOpenInEditor).toHaveBeenCalledWith('/tmp/x/w1/src/b.ts');
   });
 
   it('Should keep a never-polled file with a null mtime', () => {

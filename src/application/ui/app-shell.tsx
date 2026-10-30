@@ -193,14 +193,6 @@ export const AppShell = () => {
     }
   };
 
-  const openInEditor = async (path: string) => {
-    try {
-      await window.fly.shell.openInEditor(path);
-    } catch (failure) {
-      useFlyStore.setState({error: errorMessage(failure)});
-    }
-  };
-
   const openExternal = async (url: string) => {
     try {
       await window.fly.shell.openExternal(url);
@@ -262,7 +254,6 @@ export const AppShell = () => {
         }
         onToggleTheme={() => void setTheme(theme === 'dark' ? 'light' : 'dark')}
         onOpenFolder={() => void pickAndOpen()}
-        onOpenInEditor={() => selected && void openInEditor(selected.path)}
         canCreateTask={canCreateTask}
         onNewTask={openTask}
       />
@@ -301,7 +292,6 @@ export const AppShell = () => {
               workspace={workspace}
               selectedId={selectedWorktreeId}
               onSelect={select}
-              onOpenInEditor={path => void openInEditor(path)}
               onSearch={openSearch}
               sessionCounts={sessionCounts}
               statuses={statuses}
@@ -360,7 +350,6 @@ export const AppShell = () => {
               selected && keepFile(selected.id, path, mtimeMs)
             }
             onPoll={pollFiles}
-            onOpenInEditor={path => void openInEditor(path)}
             reveal={reveal?.worktreeId === selected?.id ? reveal : null}
             onRevealed={clearReveal}
             session={{
@@ -383,7 +372,6 @@ export const AppShell = () => {
               onRerun={rerunPullRequest}
               onResume={resumePullRequest}
               onClean={cleanPullRequest}
-              onOpenInEditor={path => void openInEditor(path)}
               onOpenExternal={url => void openExternal(url)}
             />
           )}
