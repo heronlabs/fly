@@ -68,3 +68,4 @@ Every pull request must pass:
 | Lint | `pnpm lint:check` |
 | Unit Tests | `pnpm test:unit` at 100% coverage, `pnpm test:di` |
 | Mutation Tests | `pnpm test:mutation` at a 100% mutation score, written to the job summary |
+| Release Signing | `pnpm build`, `pnpm dist` signed with a throwaway certificate on macOS, then checks the signature has an `Authority` |

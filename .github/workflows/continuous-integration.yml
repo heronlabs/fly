@@ -105,6 +105,52 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # The release secrets only reach main, so this signs the way the CD dmg job
+  # does, with a throwaway certificate, to break the release path in a pull
+  # request instead of after the merge.
+  signing:
+    needs: install
+    name: 'Release Signing'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Signing keychain
+        run: |
+          CERT="$RUNNER_TEMP/cert"
+          sh scripts/make-signing-cert.sh "$CERT"
+          KEYCHAIN=$(MAC_CERT_P12=$(base64 -i "$CERT/fly-signing.p12") \
+            MAC_CERT_PASSWORD=$(cat "$CERT/fly-signing.password") \
+            sh scripts/signing-keychain.sh "$RUNNER_TEMP")
+          echo "CSC_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      # electron-builder skips signing in pull requests to keep secrets from
+      # forks; this certificate is no secret.
+      - run: pnpm dist
+        env:
+          CSC_FOR_PULL_REQUEST: 'true'
+
+      - name: Delete the signing keychain
+        if: always()
+        run: '[ -z "${CSC_KEYCHAIN:-}" ] || security delete-keychain "$CSC_KEYCHAIN"'
+
+      - name: Check the signature
+        run: |
+          codesign -d -r- dist/mac-arm64/fly.app
+          codesign -dvv dist/mac-arm64/fly.app 2>&1 | grep '^Authority='
+
   mutation:
     needs: unit
     name: 'Mutation Tests'
