@@ -154,7 +154,7 @@ build: rerun `pnpm build` after pulling.
 |---|---|
 | `fly [pasta]` | Opens the app on the folder (default: the current one) |
 | `fly start [pasta]` | Starts Claude Code in a new tmux session in the folder (default: the current one), prints the session name and attaches when run from a terminal |
-| `fly ls` | Lists every session on the default tmux server: name, folder, creation time, attached, task |
+| `fly ls` | Lists every session on the default tmux server, one line each: name, creation time and task, cut at the terminal's width |
 | `fly resume <nome>` | Attaches to a session by its exact name |
 | `fly stop <nome>` | Kills a session by its exact name |
 | `fly help` | Prints the usage (also `--help`, `-h`) |

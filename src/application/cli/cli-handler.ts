@@ -24,6 +24,9 @@ export type CliContext = {
   interactive: boolean;
   // IANA zone of the times `fly ls` prints; the system's when absent.
   timeZone?: string;
+  // Width of the terminal `fly ls` prints to; absent when piped, which keeps
+  // whole lines for grep.
+  columns?: number;
 };
 
 export type CliOutput = {out(line: string): void; err(line: string): void};
@@ -38,12 +41,16 @@ export const USAGE = [
   '  fly help             mostra esta ajuda',
 ].join('\n');
 
-const HEADER = ['NOME', 'PASTA', 'CRIADA', 'ANEXADA', 'TAREFA'];
+// The name already carries the folder, so the folder column only pushed the
+// task onto a second line.
+const HEADER = ['NOME', 'CRIADA', 'TAREFA'];
 
 const created = (seconds: number, timeZone: string | undefined): string =>
   new Date(seconds * 1000).toLocaleString('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
     timeZone,
   });
 
@@ -52,11 +59,18 @@ const row = (
   timeZone: string | undefined,
 ): string[] => [
   session.name,
-  session.options['@fly_worktree'] ?? session.cwd,
   created(session.createdAt, timeZone),
-  session.attachedClients > 0 ? 'sim' : 'não',
   session.options['@fly_task'] ?? '-',
 ];
+
+// The task is the last column, so cutting the line cuts only the task. Counts
+// characters, not UTF-16 units, so an emoji is never split in half.
+const fit = (line: string, columns: number | undefined): string => {
+  const characters = Array.from(line);
+  return columns === undefined || characters.length <= columns
+    ? line
+    : `${characters.slice(0, columns - 1).join('')}…`;
+};
 
 const table = (rows: string[][]): string[] => {
   const widths = HEADER.map((_, column) =>
@@ -125,7 +139,10 @@ export class CliHandler {
       this.output.out('Nenhuma sessão.');
     } else {
       const rows = listed.map(session => row(session, this.context.timeZone));
-      this.output.out(table([HEADER, ...rows]).join('\n'));
+      const lines = table([HEADER, ...rows]).map(line =>
+        fit(line, this.context.columns),
+      );
+      this.output.out(lines.join('\n'));
     }
     return 0;
   }
