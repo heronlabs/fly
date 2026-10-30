@@ -25,7 +25,6 @@ type Props = {
   onReload(path: string): void;
   onKeep(path: string, mtimeMs: number | null): void;
   onPoll(worktreeId: string): Promise<void> | void;
-  onOpenInEditor(path: string): void;
   reveal: Reveal | null;
   onRevealed(): void;
   session: {
@@ -53,7 +52,6 @@ export const WorkbenchPanel = ({
   onReload,
   onKeep,
   onPoll,
-  onOpenInEditor,
   reveal,
   onRevealed,
   session,
@@ -156,7 +154,6 @@ export const WorkbenchPanel = ({
           >
             <EditorPanel
               file={active}
-              worktreePath={worktree.path}
               theme={theme}
               saving={saving}
               diskMtime={mtimes[active.path]}
@@ -164,7 +161,6 @@ export const WorkbenchPanel = ({
               onSave={text => onSave(active.path, text)}
               onReload={() => onReload(active.path)}
               onKeep={mtimeMs => onKeep(active.path, mtimeMs)}
-              onOpenInEditor={onOpenInEditor}
               editorRef={editorRef}
             />
           </div>

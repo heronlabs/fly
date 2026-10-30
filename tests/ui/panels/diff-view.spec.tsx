@@ -1,5 +1,4 @@
 import {render, screen} from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 
 import {DiffView} from '../../../src/application/ui/panels/diff-view';
 import type {Diff, DiffFile, WorktreeDiff} from '../../../src/core/domain/diff';
@@ -28,17 +27,8 @@ const result = (
   error,
 });
 
-const renderView = (
-  diff: WorktreeDiff | null,
-  onOpenInEditor: (path: string) => void = () => {},
-) =>
-  render(
-    <DiffView
-      diff={diff}
-      onOpenInEditor={onOpenInEditor}
-      worktreePath="/r/repo"
-    />,
-  );
+const renderView = (diff: WorktreeDiff | null) =>
+  render(<DiffView diff={diff} />);
 
 describe('DiffView', () => {
   it('Should render nothing while no diff is loaded', () => {
@@ -94,20 +84,14 @@ describe('DiffView', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('Should offer the editor for a truncated file', async () => {
-    const onOpenInEditor = vi.fn();
+  it('Should note a big file for a truncated file', () => {
     renderView(
       result({
         files: [file({truncated: true, lines: 9000})],
         truncated: false,
       }),
-      onOpenInEditor,
     );
     expect(screen.getByText('Arquivo grande (9000 linhas)')).toBeVisible();
-    await userEvent.click(
-      screen.getByRole('button', {name: 'Abrir no VSCode'}),
-    );
-    expect(onOpenInEditor).toHaveBeenCalledExactlyOnceWith('/r/repo/src/a.ts');
   });
 
   it('Should not note a big file for a truncated file without lines', () => {

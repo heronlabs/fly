@@ -62,7 +62,6 @@ const file = (overrides: Partial<OpenFile> = {}): OpenFile => ({
 const setup = (overrides: Partial<Parameters<typeof EditorPanel>[0]> = {}) => {
   const props = {
     file: file(),
-    worktreePath: '/r/repo-a',
     theme: 'dark' as const,
     saving: false,
     diskMtime: undefined,
@@ -70,7 +69,6 @@ const setup = (overrides: Partial<Parameters<typeof EditorPanel>[0]> = {}) => {
     onSave: vi.fn(),
     onReload: vi.fn(),
     onKeep: vi.fn(),
-    onOpenInEditor: vi.fn(),
     editorRef: createRef<CodeEditorHandle>(),
     ...overrides,
   };
@@ -161,14 +159,6 @@ describe('EditorPanel', () => {
     expect(screen.getByRole('button', {name: 'Salvar'})).toBeDisabled();
   });
 
-  it('Should open the file in VSCode from the header', async () => {
-    const props = setup();
-    await userEvent
-      .setup()
-      .click(screen.getByRole('button', {name: 'Abrir no VSCode'}));
-    expect(props.onOpenInEditor).toHaveBeenCalledWith('/r/repo-a/src/a.ts');
-  });
-
   it('Should offer Recarregar and Manter when the file changed on disk', async () => {
     const user = userEvent.setup();
     const props = setup({
@@ -204,8 +194,8 @@ describe('EditorPanel', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('Should show a binary file without the editor and open it in VSCode', async () => {
-    const props = setup({
+  it('Should show a binary file without the editor', () => {
+    setup({
       file: file({
         path: 'build/icon.png',
         content: {kind: 'binary', path: 'build/icon.png'},
@@ -216,29 +206,17 @@ describe('EditorPanel', () => {
       screen.queryByRole('button', {name: 'Salvar'}),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/UTF-8/)).not.toBeInTheDocument();
-    const body = screen.getByText('Arquivo binário')
-      .parentElement as HTMLElement;
-    await userEvent
-      .setup()
-      .click(within(body).getByRole('button', {name: 'Abrir no VSCode'}));
-    expect(props.onOpenInEditor).toHaveBeenCalledWith(
-      '/r/repo-a/build/icon.png',
-    );
+    expect(screen.getByText('Arquivo binário')).toBeVisible();
   });
 
-  it('Should show a large file with its size in KB and open it in VSCode', async () => {
-    const props = setup({
+  it('Should show a large file with its size in KB', () => {
+    setup({
       file: file({
         path: 'big.bin',
         content: {kind: 'large', path: 'big.bin', bytes: 2_000_000},
       }),
     });
     expect(screen.queryByTestId('code-editor')).not.toBeInTheDocument();
-    const body = screen.getByText('Arquivo grande (2000 KB)')
-      .parentElement as HTMLElement;
-    await userEvent
-      .setup()
-      .click(within(body).getByRole('button', {name: 'Abrir no VSCode'}));
-    expect(props.onOpenInEditor).toHaveBeenCalledWith('/r/repo-a/big.bin');
+    expect(screen.getByText('Arquivo grande (2000 KB)')).toBeVisible();
   });
 });

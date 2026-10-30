@@ -4,8 +4,6 @@ import type {DiffFile, DiffLine, WorktreeDiff} from '../../../core/domain/diff';
 
 type Props = {
   diff: WorktreeDiff | null;
-  onOpenInEditor(path: string): void;
-  worktreePath: string;
 };
 
 const scroller: CSSProperties = {
@@ -17,15 +15,6 @@ const scroller: CSSProperties = {
 };
 
 const note: CSSProperties = {padding: '10px 14px', color: 'var(--muted)'};
-
-const buttonStyle: CSSProperties = {
-  background: 'var(--surface)',
-  color: 'var(--text2)',
-  border: '1px solid var(--border)',
-  borderRadius: 6,
-  padding: '2px 10px',
-  cursor: 'pointer',
-};
 
 const lineStyle = (line: DiffLine): CSSProperties =>
   line.kind === 'add'
@@ -43,29 +32,10 @@ const gutter: CSSProperties = {
   userSelect: 'none',
 };
 
-const FileBody = ({
-  file,
-  onOpenInEditor,
-  worktreePath,
-}: {
-  file: DiffFile;
-  onOpenInEditor(path: string): void;
-  worktreePath: string;
-}) => {
+const FileBody = ({file}: {file: DiffFile}) => {
   if (file.binary) return <div style={note}>Arquivo binário</div>;
   if (file.truncated && file.lines > 0) {
-    return (
-      <div style={note}>
-        <span>Arquivo grande ({file.lines} linhas)</span>{' '}
-        <button
-          type="button"
-          style={buttonStyle}
-          onClick={() => onOpenInEditor(`${worktreePath}/${file.path}`)}
-        >
-          Abrir no VSCode
-        </button>
-      </div>
-    );
+    return <div style={note}>Arquivo grande ({file.lines} linhas)</div>;
   }
   return (
     <>
@@ -91,7 +61,7 @@ const FileBody = ({
   );
 };
 
-export const DiffView = ({diff, onOpenInEditor, worktreePath}: Props) => {
+export const DiffView = ({diff}: Props) => {
   if (diff === null) return <div style={scroller} />;
   if (diff.error !== null) {
     return (
@@ -134,11 +104,7 @@ export const DiffView = ({diff, onOpenInEditor, worktreePath}: Props) => {
             )}
             <span>{`+${file.additions} −${file.deletions}`}</span>
           </header>
-          <FileBody
-            file={file}
-            onOpenInEditor={onOpenInEditor}
-            worktreePath={worktreePath}
-          />
+          <FileBody file={file} />
         </section>
       ))}
     </div>

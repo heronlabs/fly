@@ -11,7 +11,7 @@ const fly: FlyApi = {
     onChanged: vi.fn(),
   },
   settings: {get: vi.fn(), set: vi.fn()},
-  shell: {openInEditor: vi.fn(), openExternal: vi.fn()},
+  shell: {openExternal: vi.fn()},
   diff: {get: vi.fn()},
   files: {
     list: vi.fn(),

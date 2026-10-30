@@ -7,7 +7,6 @@ import type {ResolvedTheme} from '../theme/theme';
 
 type Props = {
   file: OpenFile;
-  worktreePath: string;
   theme: ResolvedTheme;
   saving: boolean;
   diskMtime: number | null | undefined;
@@ -15,7 +14,6 @@ type Props = {
   onSave(text: string): void;
   onReload(): void;
   onKeep(mtimeMs: number | null): void;
-  onOpenInEditor(path: string): void;
   editorRef: RefObject<CodeEditorHandle | null>;
 };
 
@@ -48,7 +46,6 @@ const statusOf = (file: OpenFile, saving: boolean) =>
 
 export const EditorPanel = ({
   file,
-  worktreePath,
   theme,
   saving,
   diskMtime,
@@ -56,12 +53,10 @@ export const EditorPanel = ({
   onSave,
   onReload,
   onKeep,
-  onOpenInEditor,
   editorRef,
 }: Props) => {
   const {content} = file;
   const kind = fileKind(file.path.split('/').pop() ?? file.path);
-  const openInEditor = () => onOpenInEditor(`${worktreePath}/${file.path}`);
   const status = statusOf(file, saving);
   // A clean tab saves only to re-create its missing file (P8).
   const saveable = file.dirty || file.diskState === 'missing';
@@ -124,9 +119,6 @@ export const EditorPanel = ({
             </button>
           </>
         )}
-        <button type="button" onClick={openInEditor} style={buttonStyle}>
-          Abrir no VSCode
-        </button>
       </header>
       {file.diskState === 'changed' && (
         <div role="alert" style={barStyle}>
@@ -192,9 +184,6 @@ export const EditorPanel = ({
               ? 'Arquivo binário'
               : `Arquivo grande (${Math.round(content.bytes / 1000)} KB)`}
           </p>
-          <button type="button" onClick={openInEditor} style={buttonStyle}>
-            Abrir no VSCode
-          </button>
         </div>
       )}
     </section>

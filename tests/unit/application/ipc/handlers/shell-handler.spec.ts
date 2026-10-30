@@ -4,40 +4,21 @@ import type {
   LinkOpener,
 } from '../../../../../src/application/ipc/ipc-types';
 import {channels} from '../../../../../src/core/domain/fly-api';
-import {EditorLauncher} from '../../../../../src/core/interfaces/editor-launcher';
 
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
   on: vi.fn(),
 };
-const open = vi.fn();
 const linkOpen = vi.fn();
 
 beforeEach(() => {
   listeners.clear();
   linkOpen.mockReset();
-  new ShellHandler(
-    host,
-    {open} as unknown as EditorLauncher,
-    {open: linkOpen} as LinkOpener,
-  ).register();
+  new ShellHandler(host, {open: linkOpen} as LinkOpener).register();
 });
 
 describe('ShellHandler', () => {
-  it('open-in-editor delegates to the launcher', async () => {
-    open.mockResolvedValue(undefined);
-    await listeners.get(channels.shellOpenInEditor)!({}, '/wt');
-    expect(open).toHaveBeenCalledWith('/wt');
-  });
-
-  it('propagates the launcher error message', async () => {
-    open.mockRejectedValue(new Error('VSCode não encontrado'));
-    await expect(
-      listeners.get(channels.shellOpenInEditor)!({}, '/wt'),
-    ).rejects.toThrow('VSCode não encontrado');
-  });
-
   it('Should open an https URL', async () => {
     linkOpen.mockResolvedValue(undefined);
     await listeners.get(channels.shellOpenExternal)!(

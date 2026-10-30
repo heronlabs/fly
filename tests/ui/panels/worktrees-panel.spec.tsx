@@ -51,20 +51,18 @@ const setup = (
   statuses: Record<string, QueueStatus> = {},
 ) => {
   const onSelect = vi.fn();
-  const onOpenInEditor = vi.fn();
   const onSearch = vi.fn();
   render(
     <WorktreesPanel
       workspace={workspace}
       selectedId={selectedId}
       onSelect={onSelect}
-      onOpenInEditor={onOpenInEditor}
       onSearch={onSearch}
       sessionCounts={sessionCounts}
       statuses={statuses}
     />,
   );
-  return {onSelect, onOpenInEditor, onSearch};
+  return {onSelect, onSearch};
 };
 
 describe('WorktreesPanel', () => {
@@ -115,15 +113,6 @@ describe('WorktreesPanel', () => {
   it('shows a repo error', () => {
     setup();
     expect(screen.getByText('Repositório inválido')).toBeVisible();
-  });
-
-  it('opens in the editor without selecting the row', async () => {
-    const {onSelect, onOpenInEditor} = setup();
-    const user = userEvent.setup();
-    const [button] = screen.getAllByRole('button', {name: 'Abrir no VSCode'});
-    await user.click(button as HTMLElement);
-    expect(onOpenInEditor).toHaveBeenCalledWith('/r/actions/one');
-    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('Should search a worktree from its row without selecting it here', async () => {

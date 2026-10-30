@@ -14,7 +14,6 @@ describe('TopBar', () => {
         onToggleDiffPanel={vi.fn()}
         onToggleTheme={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenInEditor={vi.fn()}
         canCreateTask={false}
         onNewTask={vi.fn()}
       />,
@@ -40,7 +39,6 @@ describe('TopBar', () => {
         onToggleDiffPanel={onToggleDiffPanel}
         onToggleTheme={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenInEditor={vi.fn()}
         canCreateTask={false}
         onNewTask={vi.fn()}
       />,

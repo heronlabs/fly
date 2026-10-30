@@ -20,7 +20,6 @@ type Props = {
   onRerun(worktreeId: string): Promise<void>;
   onResume(worktreeId: string): Promise<void>;
   onClean(worktreeId: string, confirmed: boolean): Promise<void>;
-  onOpenInEditor(path: string): void;
   onOpenExternal(url: string): void;
 };
 
@@ -66,7 +65,6 @@ export const DiffPrPanel = ({
   onRerun,
   onResume,
   onClean,
-  onOpenInEditor,
   onOpenExternal,
 }: Props) => {
   const [tab, setTab] = useState<Tab>('diff');
@@ -134,11 +132,7 @@ export const DiffPrPanel = ({
       )}
       <div style={{flex: 1, minHeight: 0, marginTop: 8}}>
         {tab === 'diff' ? (
-          <DiffView
-            diff={diff?.scope === scope ? diff : null}
-            onOpenInEditor={onOpenInEditor}
-            worktreePath={worktree.path}
-          />
+          <DiffView diff={diff?.scope === scope ? diff : null} />
         ) : (
           <PrView
             queue={queue}

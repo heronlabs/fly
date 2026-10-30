@@ -8,7 +8,6 @@ import {AppInstaller} from '../../core/interfaces/app-installer';
 import {AppRuntime} from '../../core/interfaces/app-runtime';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {ConfigStore} from '../../core/interfaces/config-store';
-import {EditorLauncher} from '../../core/interfaces/editor-launcher';
 import {FileStore} from '../../core/interfaces/file-store';
 import {IdGenerator} from '../../core/interfaces/id-generator';
 import {ImageStore} from '../../core/interfaces/image-store';
@@ -46,7 +45,6 @@ import {
   USER_DATA_DIR,
 } from '../../infrastructure/environment/tokens';
 import {ToolchainCliService} from '../../infrastructure/environment/toolchain-cli-service';
-import {VscodeEditorLauncherService} from '../../infrastructure/environment/vscode-editor-launcher-service';
 import {GitDirWatcherService} from '../../infrastructure/filesystem/git-dir-watcher-service';
 import {NodeFileStoreService} from '../../infrastructure/filesystem/node-file-store-service';
 import {NodeTaskFilesService} from '../../infrastructure/filesystem/node-task-files-service';
@@ -97,7 +95,6 @@ import {
     {provide: PrGateway, useClass: GhCliService},
     {provide: ReleaseSource, useClass: GhReleaseService},
     {provide: ConfigStore, useClass: JsonConfigStoreService},
-    {provide: EditorLauncher, useClass: VscodeEditorLauncherService},
     {provide: WorkspaceWatcher, useClass: GitDirWatcherService},
     {provide: SessionLauncher, useClass: TmuxSessionService},
     {provide: TerminalSpawner, useClass: NodePtyTerminalService},
