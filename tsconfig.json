@@ -16,5 +16,5 @@
     "target": "ES2022"
   },
   "extends": "gts/tsconfig-google.json",
-  "include": ["src", "tests", "*.ts"]
+  "include": ["src", "tests", "scripts", "*.ts"]
 }

@@ -43,17 +43,24 @@ jobs:
     needs: release
     runs-on: macos-latest
     timeout-minutes: 30
+    # The signing secrets are secrets of this environment, which only main
+    # can deploy to: no other branch's workflow can read them.
+    environment: release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+    # Third-party actions are pinned by commit in this job, since it handles
+    # the signing key.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag }}
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
@@ -62,7 +69,35 @@ jobs:
 
       - run: pnpm build
 
+      # fly's own certificate keeps the app's identity across versions, so
+      # macOS keeps the permissions given to fly (scripts/sign-mac.ts).
+      - name: Signing keychain
+        run: |
+          KEYCHAIN=$(sh scripts/signing-keychain.sh "$RUNNER_TEMP")
+          echo "CSC_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+
       - run: pnpm dist
+
+      # Nothing after the build signs, so the key leaves the runner before
+      # any later step or post step runs.
+      - name: Delete the signing keychain
+        if: always()
+        run: '[ -z "${CSC_KEYCHAIN:-}" ] || security delete-keychain "$CSC_KEYCHAIN"'
+
+      # A release is never ad-hoc: an ad-hoc signature has no Authority.
+      - name: Check the signature
+        run: |
+          codesign -d -r- dist/mac-arm64/fly.app
+          codesign -dvv dist/mac-arm64/fly.app 2>&1 | grep '^Authority='
+
+      # Lets anyone check that a dmg was built by this workflow:
+      # gh attestation verify <dmg> --repo heronlabs/fly
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.dmg
 
       - run: gh release upload "$TAG" dist/*.dmg --clobber
         env:
