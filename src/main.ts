@@ -22,6 +22,7 @@ import {UpdateHandler} from './application/ipc/handlers/update-handler';
 import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
 import {launchFolder} from './application/ipc/launch-args';
+import {windowChrome} from './application/ipc/window-chrome';
 import {userDataFolder} from './core/domain/app-data';
 import {platformOf} from './core/domain/platform';
 import {
@@ -48,6 +49,12 @@ function isAppUrl(
   }
 }
 
+// The window icon on Linux; macOS takes the bundle's icns instead.
+const iconPath = (): string =>
+  app.isPackaged
+    ? join(process.resourcesPath, 'icon.png')
+    : join(app.getAppPath(), 'build/icon.png');
+
 type WindowEvents = {
   // The renderer starts loading: a first load or a reload.
   onReset(windowId: number): void;
@@ -62,8 +69,7 @@ function createWindow(events: WindowEvents): BrowserWindow {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: {x: 14, y: 14},
+    ...windowChrome(platform, iconPath()),
     backgroundColor: '#051528',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -185,6 +191,7 @@ const booted = app
           appMenuTemplate(
             () => setupHandler.request(),
             () => void newWindow(),
+            platform,
           ),
         ),
       );

@@ -22,3 +22,7 @@ mac:
   category: public.app-category.developer-tools
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  extraResources:
+    - from: build/icon.png
+      to: icon.png
