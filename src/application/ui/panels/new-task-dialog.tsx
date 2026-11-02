@@ -8,7 +8,9 @@ import {
 
 import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo} from '../../../core/domain/workspace';
-import {MODEL_OPTIONS, suggestBranch} from './branch-name';
+
+// Mirrors MODELS in core/domain/task: the UI layer may not import it at runtime.
+const MODEL_OPTIONS = ['opus', 'sonnet', 'haiku'];
 
 type Props = {
   open: boolean;
@@ -49,18 +51,10 @@ const DialogBody = ({
   const [repoId, setRepoId] = useState(defaultRepoId ?? repos[0]?.id ?? '');
   const [description, setDescription] = useState('');
   const [branch, setBranch] = useState('');
-  const [branchEdited, setBranchEdited] = useState(false);
   const [model, setModel] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const trimmed = description.trim();
-  const ready = trimmed !== '' && branch.trim() !== '' && !submitting;
-
-  const changeDescription = (value: string) => {
-    setDescription(value);
-    if (!branchEdited) {
-      setBranch(suggestBranch(value));
-    }
-  };
+  const ready = trimmed !== '' && !submitting;
 
   const addAttachments = (paths: string[]) =>
     setAttachments(current => [
@@ -175,7 +169,7 @@ const DialogBody = ({
             autoFocus
             rows={5}
             value={description}
-            onChange={event => changeDescription(event.target.value)}
+            onChange={event => setDescription(event.target.value)}
             style={{...fieldStyle, resize: 'vertical'}}
           />
         </label>
@@ -183,10 +177,8 @@ const DialogBody = ({
           Branch
           <input
             value={branch}
-            onChange={event => {
-              setBranchEdited(true);
-              setBranch(event.target.value);
-            }}
+            placeholder="Gerado a partir da descrição"
+            onChange={event => setBranch(event.target.value)}
             style={fieldStyle}
           />
         </label>

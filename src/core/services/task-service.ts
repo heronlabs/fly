@@ -4,6 +4,7 @@ import {Injectable} from '@nestjs/common';
 
 import {
   MAX_ATTACHMENT_BYTES,
+  MAX_BRANCH_ATTEMPTS,
   MAX_PROMPT_CHARS,
   MODELS,
   NewTaskInput,
@@ -15,6 +16,7 @@ import {PrGateway} from '../interfaces/pr-gateway';
 import {TaskFiles} from '../interfaces/task-files';
 import {TaskStore} from '../interfaces/task-store';
 import {VcsGateway} from '../interfaces/vcs-gateway';
+import {branchCandidate, branchFromDescription} from './branch-naming';
 import {resolveDefaultBranch} from './default-branch';
 import {cleanPrompt, normalizePrompt} from './session-naming';
 import {SessionService} from './session-service';
@@ -23,6 +25,9 @@ import {SessionService} from './session-service';
 const TASK_LABEL_LENGTH = 200;
 
 const WORKTREES_DIR = '.worktrees';
+
+const worktreePath = (repoPath: string, branch: string): string =>
+  posix.join(repoPath, WORKTREES_DIR, branch);
 
 @Injectable()
 export class TaskService {
@@ -52,7 +57,7 @@ export class TaskService {
     input: NewTaskInput,
     description: string,
   ): Promise<string> {
-    const {branch, model} = input;
+    const {model} = input;
     if (Array.from(description).length > MAX_PROMPT_CHARS) {
       throw new Error(
         `Prompt muito longo (máx. ${MAX_PROMPT_CHARS} caracteres)`,
@@ -61,16 +66,12 @@ export class TaskService {
     if (model !== null && !(MODELS as readonly string[]).includes(model)) {
       throw new Error('Modelo inválido');
     }
-    if (!(await this.vcs.validBranchName(repo.path, branch))) {
-      throw new Error('Nome de branch inválido');
-    }
-    if (await this.vcs.branchExists(repo.path, branch)) {
-      throw new Error(`O branch ${branch} já existe`);
-    }
-    const path = posix.join(repo.path, WORKTREES_DIR, branch);
-    if (await this.files.exists(path)) {
-      throw new Error(`Já existe uma pasta em ${path}`);
-    }
+    const typed = input.branch.trim();
+    const branch =
+      typed === ''
+        ? await this.generatedBranch(repo.path, description)
+        : await this.typedBranch(repo.path, typed);
+    const path = worktreePath(repo.path, branch);
     for (const source of input.attachments) {
       const info = await this.files.stat(source);
       if (!info.isFile) {
@@ -134,5 +135,37 @@ export class TaskService {
       createdAt: Date.now(),
     });
     return name;
+  }
+
+  private async typedBranch(repoPath: string, branch: string): Promise<string> {
+    if (!(await this.vcs.validBranchName(repoPath, branch))) {
+      throw new Error('Nome de branch inválido');
+    }
+    if (await this.vcs.branchExists(repoPath, branch)) {
+      throw new Error(`O branch ${branch} já existe`);
+    }
+    const path = worktreePath(repoPath, branch);
+    if (await this.files.exists(path)) {
+      throw new Error(`Já existe uma pasta em ${path}`);
+    }
+    return branch;
+  }
+
+  // The first candidate with neither a branch nor a folder of its name.
+  private async generatedBranch(
+    repoPath: string,
+    description: string,
+  ): Promise<string> {
+    const name = branchFromDescription(description);
+    for (let attempt = 1; attempt <= MAX_BRANCH_ATTEMPTS; attempt++) {
+      const branch = branchCandidate(name, attempt);
+      if (
+        !(await this.vcs.branchExists(repoPath, branch)) &&
+        !(await this.files.exists(worktreePath(repoPath, branch)))
+      ) {
+        return branch;
+      }
+    }
+    throw new Error(`Não foi possível gerar um nome de branch para ${name}`);
   }
 }

@@ -941,7 +941,7 @@ describe('AppShell', () => {
     expect(window.fly.tasks.create).toHaveBeenCalledWith({
       repoId: 'repo-a',
       description: 'corrigir bug',
-      branch: 'corrigir-bug',
+      branch: '',
       model: null,
       attachments: [],
     });

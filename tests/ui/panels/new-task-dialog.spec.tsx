@@ -73,7 +73,7 @@ describe('NewTaskDialog', () => {
     expect(props.onSubmit).toHaveBeenCalledWith({
       repoId: 'repo-a',
       description: 'corrigir bug',
-      branch: 'corrigir-bug',
+      branch: '',
       model: null,
       attachments: [],
     });
@@ -87,7 +87,7 @@ describe('NewTaskDialog', () => {
     expect(props.onSubmit).toHaveBeenCalledWith({
       repoId: 'repo-b',
       description: 'tarefa',
-      branch: 'tarefa',
+      branch: '',
       model: null,
       attachments: [],
     });
@@ -127,16 +127,27 @@ describe('NewTaskDialog', () => {
     );
   });
 
-  it('Should fill Branch from the description until it is edited by hand', async () => {
+  it('Should leave Branch empty for fly to generate', async () => {
     const user = userEvent.setup();
     setup();
     const branch = screen.getByLabelText('Branch');
+    expect(branch).toHaveAttribute(
+      'placeholder',
+      'Gerado a partir da descrição',
+    );
     await user.type(screen.getByLabelText('Descrição'), 'Corrigir ação');
-    expect(branch).toHaveValue('corrigir-acao');
-    await user.clear(branch);
-    await user.type(branch, 'meu-branch');
-    await user.type(screen.getByLabelText('Descrição'), ' extra');
-    expect(branch).toHaveValue('meu-branch');
+    expect(branch).toHaveValue('');
+  });
+
+  it('Should submit a typed branch trimmed', async () => {
+    const user = userEvent.setup();
+    const {props} = setup();
+    await user.type(screen.getByLabelText('Descrição'), 'Corrigir ação');
+    await user.type(screen.getByLabelText('Branch'), '  meu-branch ');
+    await user.click(screen.getByRole('button', {name: 'Iniciar'}));
+    expect(props.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({branch: 'meu-branch'}),
+    );
   });
 
   it('Should offer the models and submit the chosen one', async () => {
@@ -154,21 +165,16 @@ describe('NewTaskDialog', () => {
     );
   });
 
-  it('Should disable Iniciar with an empty branch', async () => {
-    const user = userEvent.setup();
-    setup();
-    const start = screen.getByRole('button', {name: 'Iniciar'});
-    await user.type(screen.getByLabelText('Descrição'), '###');
-    expect(screen.getByLabelText('Branch')).toHaveValue('');
-    expect(start).toBeDisabled();
-  });
-
-  it('Should not submit with Cmd+Enter while the branch is empty', async () => {
+  it('Should submit a blank branch as empty', async () => {
     const user = userEvent.setup();
     const {props} = setup();
     await user.type(screen.getByLabelText('Descrição'), '###');
+    await user.type(screen.getByLabelText('Branch'), '   ');
+    expect(screen.getByRole('button', {name: 'Iniciar'})).toBeEnabled();
     await user.keyboard('{Meta>}{Enter}{/Meta}');
-    expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(props.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({description: '###', branch: ''}),
+    );
   });
 
   it('Should list dropped Finder files and remove them', async () => {

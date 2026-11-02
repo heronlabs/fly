@@ -322,6 +322,11 @@ describe('TaskService', () => {
       expect(save).not.toHaveBeenCalled();
     });
 
+    it('Should trim a typed branch before checking it', async () => {
+      await service.create(input({branch: '  feat-x \n'}));
+      expect(validBranchName).toHaveBeenCalledWith(mainPath, 'feat-x');
+      expect(addWorktree.mock.calls[0]?.[0].branch).toBe('feat-x');
+    });
     it('Should treat a /supera:ship prompt like any prompt', async () => {
       const name = await service.create(
         input({description: '/supera:ship faz x'}),
@@ -334,6 +339,84 @@ describe('TaskService', () => {
         '/supera:ship faz x',
       );
       expect(launch.mock.calls[0]?.[2].task).toBe('/supera:ship faz x');
+    });
+  });
+
+  describe('create with an empty branch', () => {
+    const generated = '/r/talon/.worktrees/faz-x-com-exemplo';
+
+    it.each(['', '  \n'])(
+      'Should name the branch after the description for %j',
+      async branch => {
+        await service.create(input({branch}));
+        expect(calls.slice(0, 3)).toEqual([
+          'branchExists',
+          'exists',
+          'defaultBranch',
+        ]);
+        expect(validBranchName).not.toHaveBeenCalled();
+        expect(branchExists).toHaveBeenCalledWith(
+          mainPath,
+          'faz-x-com-exemplo',
+        );
+        expect(exists).toHaveBeenCalledWith(generated);
+        expect(addWorktree).toHaveBeenCalledWith({
+          repoPath: mainPath,
+          path: generated,
+          branch: 'faz-x-com-exemplo',
+          base: 'origin/main',
+        });
+        expect(launch.mock.calls[0]?.[0]).toBe(
+          'talon/.worktrees/faz-x-com-exemplo',
+        );
+        expect(save.mock.calls[0]?.[0]).toEqual(
+          expect.objectContaining({
+            branch: 'faz-x-com-exemplo',
+            worktreePath: generated,
+          }),
+        );
+      },
+    );
+
+    it('Should number the name past an existing branch', async () => {
+      branchExists.mockImplementation(
+        async (_repo: string, name: string) =>
+          name === 'faz-x-com-exemplo' || name === 'faz-x-com-exemplo-2',
+      );
+      await service.create(input({branch: ''}));
+      expect(branchExists.mock.calls.map(call => call[1])).toEqual([
+        'faz-x-com-exemplo',
+        'faz-x-com-exemplo-2',
+        'faz-x-com-exemplo-3',
+      ]);
+      expect(addWorktree.mock.calls[0]?.[0].branch).toBe('faz-x-com-exemplo-3');
+    });
+
+    it('Should number the name past an existing folder', async () => {
+      exists.mockImplementation(async (path: string) => path === generated);
+      await service.create(input({branch: ''}));
+      expect(exists.mock.calls.map(call => call[0])).toEqual([
+        generated,
+        `${generated}-2`,
+      ]);
+      expect(addWorktree.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          branch: 'faz-x-com-exemplo-2',
+          path: `${generated}-2`,
+        }),
+      );
+    });
+
+    it('Should give up after 100 taken names without creating anything', async () => {
+      branchExists.mockResolvedValue(true);
+      await expect(service.create(input({branch: ''}))).rejects.toThrow(
+        'Não foi possível gerar um nome de branch para faz-x-com-exemplo',
+      );
+      expect(branchExists).toHaveBeenCalledTimes(100);
+      expect(branchExists.mock.calls.at(-1)?.[1]).toBe('faz-x-com-exemplo-100');
+      expect(exists).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(addWorktree).not.toHaveBeenCalled();
     });
   });
 });

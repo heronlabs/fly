@@ -4,7 +4,8 @@ export const PROMPT_FILE_ENV = 'FLY_PROMPT_FILE';
 
 export const MAX_PROMPT_CHARS = 100_000;
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
-export const BRANCH_SUGGESTION_MAX = 40;
+export const GENERATED_BRANCH_MAX = 40;
+export const MAX_BRANCH_ATTEMPTS = 100;
 export const MAX_CI_ATTEMPTS = 3;
 export const MAX_TITLE_CHARS = 72;
 
