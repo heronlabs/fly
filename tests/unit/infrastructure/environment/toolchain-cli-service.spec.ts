@@ -1,10 +1,19 @@
 import {ToolId} from '../../../../src/core/domain/setup';
+import {AppRuntime} from '../../../../src/core/interfaces/app-runtime';
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {ToolchainCliService} from '../../../../src/infrastructure/environment/toolchain-cli-service';
 
 describe('ToolchainCliService', () => {
   const run = vi.fn();
-  const service = new ToolchainCliService({run} as unknown as CommandRunner);
+  const runtimeOn = (platform: AppRuntime['platform']): AppRuntime => ({
+    bundlePath: null,
+    version: '1.0.0',
+    platform,
+  });
+  const service = new ToolchainCliService(
+    {run} as unknown as CommandRunner,
+    runtimeOn('mac'),
+  );
   const originalPath = process.env['PATH'];
   const originalShell = process.env['SHELL'];
 
@@ -43,6 +52,22 @@ describe('ToolchainCliService', () => {
       await service.refreshPath();
 
       expect(run.mock.calls[0]?.[0]).toBe('/bin/zsh');
+    });
+
+    it('Should fall back to bash on Linux when SHELL is unset', async () => {
+      delete process.env['SHELL'];
+      run.mockResolvedValue(loginOutput('/opt/bin'));
+
+      await new ToolchainCliService(
+        {run} as unknown as CommandRunner,
+        runtimeOn('linux'),
+      ).refreshPath();
+
+      expect(run.mock.calls[0]?.[0]).toBe('/bin/bash');
+      expect(run.mock.calls[0]?.[1]).toEqual([
+        '-ilc',
+        expect.stringContaining('__FLY_ENV__'),
+      ]);
     });
 
     it('Should leave PATH exactly as it was when the login shell fails', async () => {

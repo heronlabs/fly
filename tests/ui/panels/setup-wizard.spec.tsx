@@ -6,7 +6,7 @@ import type {SetupInfo} from '../../../src/core/domain/setup';
 
 const info = (patch: Partial<SetupInfo> = {}): SetupInfo => ({
   packaged: true,
-  inApplications: true,
+  inInstallDir: true,
   bundlePath: '/Applications/fly.app',
   open: true,
   ...patch,
@@ -33,7 +33,7 @@ describe('SetupWizard', () => {
   it('shows only the move screen outside Aplicativos', () => {
     render(
       <SetupWizard
-        info={info({inApplications: false, bundlePath: '/Volumes/fly/fly.app'})}
+        info={info({inInstallDir: false, bundlePath: '/Volumes/fly/fly.app'})}
         onDone={vi.fn()}
       />,
     );

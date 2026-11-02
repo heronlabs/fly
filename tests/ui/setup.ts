@@ -50,7 +50,7 @@ const fly: FlyApi = {
   setup: {
     info: vi.fn(async () => ({
       packaged: false,
-      inApplications: false,
+      inInstallDir: false,
       bundlePath: null,
       open: false,
     })),

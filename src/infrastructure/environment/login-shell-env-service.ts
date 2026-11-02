@@ -1,5 +1,6 @@
 import {Injectable} from '@nestjs/common';
 
+import type {Platform} from '../../core/domain/platform';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 
 export type LoginEnv = {PATH?: string; LANG?: string};
@@ -43,3 +44,7 @@ export const mergePath = (
   const entries = [...(login ?? '').split(':'), ...(current ?? '').split(':')];
   return [...new Set(entries.filter(entry => entry !== ''))].join(':');
 };
+
+// The login shell to read PATH from when SHELL is unset: each system's default.
+export const defaultShell = (platform: Platform): string =>
+  platform === 'mac' ? '/bin/zsh' : '/bin/bash';

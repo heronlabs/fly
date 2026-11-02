@@ -1,5 +1,6 @@
 import {
   BREW_TOOLS,
+  bundleRoot,
   checkTool,
   compareVersions,
   isNewer,
@@ -35,11 +36,23 @@ describe('BREW_TOOLS', () => {
   });
 });
 
+describe('bundleRoot', () => {
+  it('Should find the bundle three levels above the mac executable', () => {
+    expect(bundleRoot('/Applications/fly.app/Contents/MacOS/fly', 'mac')).toBe(
+      '/Applications/fly.app',
+    );
+  });
+
+  it('Should find the install dir above the Linux executable', () => {
+    expect(bundleRoot('/opt/fly/fly', 'linux')).toBe('/opt/fly');
+  });
+});
+
 describe('checkTool', () => {
   it.each(['git', 'gh', 'tmux'] as const)(
     'Should offer a brew install when %s is missing',
     id => {
-      expect(checkTool(id, {version: null})).toEqual({
+      expect(checkTool(id, {version: null}, 'mac')).toEqual({
         id,
         ok: false,
         version: null,
@@ -50,7 +63,7 @@ describe('checkTool', () => {
   );
 
   it('Should tell how to install a missing claude', () => {
-    expect(checkTool('claude', {version: null})).toEqual({
+    expect(checkTool('claude', {version: null}, 'mac')).toEqual({
       id: 'claude',
       ok: false,
       version: null,
@@ -60,7 +73,9 @@ describe('checkTool', () => {
   });
 
   it('Should ask for gh auth login when gh is logged out', () => {
-    expect(checkTool('gh', {version: '2.92.0', loggedIn: false})).toEqual({
+    expect(
+      checkTool('gh', {version: '2.92.0', loggedIn: false}, 'mac'),
+    ).toEqual({
       id: 'gh',
       ok: false,
       version: '2.92.0',
@@ -70,32 +85,36 @@ describe('checkTool', () => {
   });
 
   it('Should accept gh logged in', () => {
-    expect(checkTool('gh', {version: '2.92.0', loggedIn: true})).toEqual({
-      id: 'gh',
-      ok: true,
-      version: '2.92.0',
-      problem: null,
-      fix: null,
-    });
+    expect(checkTool('gh', {version: '2.92.0', loggedIn: true}, 'mac')).toEqual(
+      {
+        id: 'gh',
+        ok: true,
+        version: '2.92.0',
+        problem: null,
+        fix: null,
+      },
+    );
   });
 
   it('Should not require a login probe for tools other than gh', () => {
-    expect(checkTool('git', {version: '2.54.0', loggedIn: false})).toEqual({
+    expect(
+      checkTool('git', {version: '2.54.0', loggedIn: false}, 'mac'),
+    ).toEqual({
       id: 'git',
       ok: true,
       version: '2.54.0',
       problem: null,
       fix: null,
     });
-    expect(checkTool('git', {version: '2.54.0'}).ok).toBe(true);
+    expect(checkTool('git', {version: '2.54.0'}, 'mac').ok).toBe(true);
   });
 
   it('Should treat an unprobed gh login as logged in', () => {
-    expect(checkTool('gh', {version: '2.92.0'}).ok).toBe(true);
+    expect(checkTool('gh', {version: '2.92.0'}, 'mac').ok).toBe(true);
   });
 
   it('Should ask for claude update below the minimum version', () => {
-    expect(checkTool('claude', {version: '2.1.300'})).toEqual({
+    expect(checkTool('claude', {version: '2.1.300'}, 'mac')).toEqual({
       id: 'claude',
       ok: false,
       version: '2.1.300',
@@ -105,7 +124,7 @@ describe('checkTool', () => {
   });
 
   it('Should accept claude at the minimum version', () => {
-    expect(checkTool('claude', {version: '2.1.309'})).toEqual({
+    expect(checkTool('claude', {version: '2.1.309'}, 'mac')).toEqual({
       id: 'claude',
       ok: true,
       version: '2.1.309',
@@ -115,6 +134,36 @@ describe('checkTool', () => {
   });
 
   it('Should not hold other tools to the claude minimum', () => {
-    expect(checkTool('tmux', {version: '1.0'}).ok).toBe(true);
+    expect(checkTool('tmux', {version: '1.0'}, 'mac').ok).toBe(true);
+  });
+
+  it.each(['git', 'gh', 'tmux'] as const)(
+    'Should hint apt for a missing %s on Linux',
+    id => {
+      expect(checkTool(id, {version: null}, 'linux')).toEqual({
+        id,
+        ok: false,
+        version: null,
+        problem: 'não encontrado',
+        fix: {kind: 'copy', command: `sudo apt install ${id}`},
+      });
+    },
+  );
+
+  it('Should keep the npm command for claude on Linux', () => {
+    expect(checkTool('claude', {version: null}, 'linux').fix).toEqual({
+      kind: 'copy',
+      command: 'npm install -g @anthropic-ai/claude-code',
+    });
+  });
+
+  it('Should keep the login and update fixes on Linux', () => {
+    expect(
+      checkTool('gh', {version: '2.92.0', loggedIn: false}, 'linux').fix,
+    ).toEqual({kind: 'copy', command: 'gh auth login'});
+    expect(checkTool('claude', {version: '2.1.300'}, 'linux').fix).toEqual({
+      kind: 'copy',
+      command: 'claude update',
+    });
   });
 });

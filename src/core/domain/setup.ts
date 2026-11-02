@@ -1,6 +1,26 @@
-export const APPLICATIONS_BUNDLE = '/Applications/fly.app';
-export const COMMAND_LINK = '/usr/local/bin/fly';
-export const LAUNCHER_IN_BUNDLE = 'Contents/Resources/bin/fly';
+import type {Platform} from './platform';
+
+// Where the installed app lives, where `fly` sits inside it (relative to
+// appPath) and the link on PATH that the setup wizard checks and repairs.
+export type InstallLayout = {
+  appPath: string;
+  launcher: string;
+  commandLink: string;
+};
+export const INSTALL_LAYOUTS: Record<Platform, InstallLayout> = {
+  mac: {
+    appPath: '/Applications/fly.app',
+    launcher: 'Contents/Resources/bin/fly',
+    commandLink: '/usr/local/bin/fly',
+  },
+  // electron-builder's deb installs to /opt/<productName>; the package's
+  // post-install links /usr/bin/fly to the launcher.
+  linux: {
+    appPath: '/opt/fly',
+    launcher: 'resources/bin/fly',
+    commandLink: '/usr/bin/fly',
+  },
+};
 export const MIN_CLAUDE_VERSION = '2.1.309';
 export const FLY_RELEASES_API = 'repos/heronlabs/fly/releases/latest';
 
@@ -19,7 +39,7 @@ export type CommandState = 'installed' | 'missing' | 'other';
 export type InstallerImage = {imagePath: string; mountPoint: string};
 export type SetupInfo = {
   packaged: boolean;
-  inApplications: boolean;
+  inInstallDir: boolean;
   bundlePath: string | null;
   open: boolean;
 };

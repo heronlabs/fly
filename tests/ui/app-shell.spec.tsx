@@ -1040,7 +1040,7 @@ describe('AppShell', () => {
   describe('setup wizard', () => {
     const open = {
       packaged: true,
-      inApplications: true,
+      inInstallDir: true,
       bundlePath: '/Applications/fly.app',
       open: true,
     };
@@ -1114,7 +1114,7 @@ describe('AppShell', () => {
       expect(screen.getByRole('button', {name: /Abrir pasta/})).toBeVisible();
       vi.mocked(window.fly.setup.info).mockResolvedValue({
         ...open,
-        inApplications: false,
+        inInstallDir: false,
         bundlePath: '/Volumes/fly/fly.app',
       });
       const listener = vi.mocked(window.fly.setup.onRequested).mock

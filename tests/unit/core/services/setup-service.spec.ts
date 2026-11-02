@@ -1,11 +1,5 @@
-import {join} from 'node:path';
-
-import {
-  APPLICATIONS_BUNDLE,
-  InstallerImage,
-  LAUNCHER_IN_BUNDLE,
-  ToolId,
-} from '../../../../src/core/domain/setup';
+import {Platform} from '../../../../src/core/domain/platform';
+import {InstallerImage, ToolId} from '../../../../src/core/domain/setup';
 import {AppInstaller} from '../../../../src/core/interfaces/app-installer';
 import {AppRuntime} from '../../../../src/core/interfaces/app-runtime';
 import {Toolchain} from '../../../../src/core/interfaces/toolchain';
@@ -46,8 +40,14 @@ const image: InstallerImage = {
   mountPoint: '/Volumes/fly',
 };
 
-const build = (bundlePath: string | null): SetupService => {
-  const runtime: AppRuntime = {bundlePath, version: '1.0.0', platform: 'mac'};
+const APPLICATIONS_BUNDLE = '/Applications/fly.app';
+const LINUX_INSTALL_DIR = '/opt/fly';
+
+const build = (
+  bundlePath: string | null,
+  platform: Platform = 'mac',
+): SetupService => {
+  const runtime: AppRuntime = {bundlePath, version: '1.0.0', platform};
   return new SetupService(toolchain, installer, settings, runtime);
 };
 
@@ -90,7 +90,7 @@ describe('SetupService.info', () => {
 
     expect(await build(APPLICATIONS_BUNDLE).info(false)).toEqual({
       packaged: true,
-      inApplications: true,
+      inInstallDir: true,
       bundlePath: APPLICATIONS_BUNDLE,
       open: true,
     });
@@ -113,7 +113,7 @@ describe('SetupService.info', () => {
 
     expect(await build('/Volumes/fly/fly.app').info(false)).toEqual({
       packaged: true,
-      inApplications: false,
+      inInstallDir: false,
       bundlePath: '/Volumes/fly/fly.app',
       open: true,
     });
@@ -124,10 +124,39 @@ describe('SetupService.info', () => {
 
     expect(await build(null).info(true)).toEqual({
       packaged: false,
-      inApplications: false,
+      inInstallDir: false,
       bundlePath: null,
       open: false,
     });
+  });
+});
+
+describe('SetupService.info on Linux', () => {
+  it('Should be in the install dir when packaged in /opt/fly', async () => {
+    get.mockResolvedValue({setupDone: false});
+
+    expect(await build(LINUX_INSTALL_DIR, 'linux').info(false)).toEqual({
+      packaged: true,
+      inInstallDir: true,
+      bundlePath: LINUX_INSTALL_DIR,
+      open: true,
+    });
+  });
+
+  it('Should not be in the install dir when run from elsewhere', async () => {
+    get.mockResolvedValue({setupDone: false});
+
+    expect(
+      (await build('/home/user/fly', 'linux').info(false)).inInstallDir,
+    ).toBe(false);
+  });
+
+  it('Should not take the mac bundle path as the Linux install dir', async () => {
+    get.mockResolvedValue({setupDone: false});
+
+    expect(
+      (await build(APPLICATIONS_BUNDLE, 'linux').info(false)).inInstallDir,
+    ).toBe(false);
   });
 });
 
@@ -137,10 +166,10 @@ describe('SetupService.doctor', () => {
 
     expect(report).toEqual({
       tools: [
-        checkTool('git', {version: '2.40.0'}),
-        checkTool('gh', {version: '2.50.0', loggedIn: true}),
-        checkTool('tmux', {version: null}),
-        checkTool('claude', {version: '2.1.100'}),
+        checkTool('git', {version: '2.40.0'}, 'mac'),
+        checkTool('gh', {version: '2.50.0', loggedIn: true}, 'mac'),
+        checkTool('tmux', {version: null}, 'mac'),
+        checkTool('claude', {version: '2.1.100'}, 'mac'),
       ],
       brew: true,
     });
@@ -175,7 +204,7 @@ describe('SetupService.doctor', () => {
     const report = await build(null).doctor();
 
     expect(report.tools[1]).toEqual(
-      checkTool('gh', {version: '2.50.0', loggedIn: false}),
+      checkTool('gh', {version: '2.50.0', loggedIn: false}, 'mac'),
     );
     expect(report.brew).toBe(false);
   });
@@ -188,7 +217,23 @@ describe('SetupService.doctor', () => {
     const report = await build(null).doctor();
 
     expect(ghLoggedIn).not.toHaveBeenCalled();
-    expect(report.tools[1]).toEqual(checkTool('gh', {version: null}));
+    expect(report.tools[1]).toEqual(checkTool('gh', {version: null}, 'mac'));
+  });
+});
+
+describe('SetupService.doctor on Linux', () => {
+  it('Should hint apt for a missing gh', async () => {
+    version.mockImplementation(async (id: ToolId) =>
+      id === 'gh' ? null : versions[id],
+    );
+
+    const report = await build(LINUX_INSTALL_DIR, 'linux').doctor();
+
+    expect(report.tools[1]?.fix).toEqual({
+      kind: 'copy',
+      command: 'sudo apt install gh',
+    });
+    expect(report.tools[1]).toEqual(checkTool('gh', {version: null}, 'linux'));
   });
 });
 
@@ -204,7 +249,7 @@ describe('SetupService.installTool', () => {
 
     expect(brewInstall).toHaveBeenCalledExactlyOnceWith('tmux');
     expect(calls).toEqual(['install']);
-    expect(report.tools[2]).toEqual(checkTool('tmux', {version: '3.4'}));
+    expect(report.tools[2]).toEqual(checkTool('tmux', {version: '3.4'}, 'mac'));
     versions.tmux = null;
   });
 
@@ -229,7 +274,7 @@ describe('SetupService.installTool', () => {
 });
 
 describe('SetupService command', () => {
-  const launcher = join(APPLICATIONS_BUNDLE, LAUNCHER_IN_BUNDLE);
+  const launcher = '/Applications/fly.app/Contents/Resources/bin/fly';
 
   it('Should read the command state for the bundle launcher', async () => {
     commandState.mockResolvedValue('other');
@@ -280,6 +325,37 @@ describe('SetupService command', () => {
     );
 
     expect(installCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe('SetupService command on Linux', () => {
+  it('Should read the command state for the package launcher', async () => {
+    commandState.mockResolvedValue('installed');
+
+    expect(await build(LINUX_INSTALL_DIR, 'linux').commandState()).toBe(
+      'installed',
+    );
+    expect(commandState).toHaveBeenCalledWith('/opt/fly/resources/bin/fly');
+  });
+
+  it('Should install the link to the package launcher', async () => {
+    commandState.mockResolvedValue('installed');
+
+    await build(LINUX_INSTALL_DIR, 'linux').installCommand();
+
+    expect(installCommand).toHaveBeenCalledWith('/opt/fly/resources/bin/fly');
+  });
+
+  it('Should name /usr/bin/fly when the link still points elsewhere', async () => {
+    commandState.mockResolvedValue('other');
+
+    await expect(
+      build(LINUX_INSTALL_DIR, 'linux').installCommand(),
+    ).rejects.toThrow(
+      new Error(
+        'Falha ao instalar o comando: /usr/bin/fly não aponta para o fly',
+      ),
+    );
   });
 });
 

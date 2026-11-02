@@ -1,9 +1,14 @@
 import {Injectable} from '@nestjs/common';
 
 import type {ToolId} from '../../core/domain/setup';
+import {AppRuntime} from '../../core/interfaces/app-runtime';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {Toolchain} from '../../core/interfaces/toolchain';
-import {LoginShellEnvService, mergePath} from './login-shell-env-service';
+import {
+  defaultShell,
+  LoginShellEnvService,
+  mergePath,
+} from './login-shell-env-service';
 
 const PROBE_TIMEOUT_MS = 10_000;
 const BREW_INSTALL_TIMEOUT_MS = 600_000;
@@ -20,14 +25,17 @@ const VERSION_ARGS: Record<ToolId, string[]> = {
 export class ToolchainCliService extends Toolchain {
   private readonly loginShell: LoginShellEnvService;
 
-  constructor(private readonly runner: CommandRunner) {
+  constructor(
+    private readonly runner: CommandRunner,
+    private readonly runtime: AppRuntime,
+  ) {
     super();
     this.loginShell = new LoginShellEnvService(runner);
   }
 
   async refreshPath(): Promise<void> {
     const env = await this.loginShell.resolve(
-      process.env['SHELL'] ?? '/bin/zsh',
+      process.env['SHELL'] ?? defaultShell(this.runtime.platform),
     );
     if (env.PATH !== undefined) {
       process.env['PATH'] = mergePath(process.env['PATH'], env.PATH);

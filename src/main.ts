@@ -25,6 +25,7 @@ import {launchFolder} from './application/ipc/launch-args';
 import {userDataFolder} from './core/domain/app-data';
 import {platformOf} from './core/domain/platform';
 import {
+  defaultShell,
   LoginShellEnvService,
   mergePath,
 } from './infrastructure/environment/login-shell-env-service';
@@ -104,7 +105,7 @@ let context: Awaited<
 > | null = null;
 
 // Throws on anything but macOS and Linux, before the lock or any window.
-platformOf(process.platform);
+const platform = platformOf(process.platform);
 
 // Dev and installed builds keep separate data; set before the lock, which
 // lives in userData.
@@ -144,7 +145,7 @@ const booted = app
     // Apps launched from Finder get a minimal PATH; load the login shell's.
     const env = await new LoginShellEnvService(
       new ExecCommandRunnerService(),
-    ).resolve(process.env['SHELL'] ?? '/bin/zsh');
+    ).resolve(process.env['SHELL'] ?? defaultShell(platform));
     process.env['PATH'] = mergePath(process.env['PATH'], env.PATH);
     process.env['LANG'] ??= env.LANG ?? 'en_US.UTF-8';
     context = await NestFactory.createApplicationContext(IpcModule, {

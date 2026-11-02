@@ -3,11 +3,11 @@ import {join} from 'node:path';
 import {Injectable} from '@nestjs/common';
 
 import {
-  APPLICATIONS_BUNDLE,
   CommandState,
   DoctorReport,
+  INSTALL_LAYOUTS,
   InstallerImage,
-  LAUNCHER_IN_BUNDLE,
+  InstallLayout,
   SetupInfo,
   ToolCheck,
   ToolId,
@@ -33,7 +33,7 @@ export class SetupService {
     const config = await this.settings.get();
     return {
       packaged,
-      inApplications: bundlePath === APPLICATIONS_BUNDLE,
+      inInstallDir: bundlePath === this.layout().appPath,
       bundlePath,
       open: packaged && (requested || !config.setupDone),
     };
@@ -72,7 +72,7 @@ export class SetupService {
     const state = await this.commandState();
     if (state !== 'installed') {
       throw new Error(
-        'Falha ao instalar o comando: /usr/local/bin/fly não aponta para o fly',
+        `Falha ao instalar o comando: ${this.layout().commandLink} não aponta para o fly`,
       );
     }
     return state;
@@ -105,12 +105,13 @@ export class SetupService {
   private async check(id: ToolId): Promise<ToolCheck> {
     const version = await this.toolchain.version(id);
     if (id === 'gh' && version !== null) {
-      return checkTool(id, {
-        version,
-        loggedIn: await this.toolchain.ghLoggedIn(),
-      });
+      return checkTool(
+        id,
+        {version, loggedIn: await this.toolchain.ghLoggedIn()},
+        this.runtime.platform,
+      );
     }
-    return checkTool(id, {version});
+    return checkTool(id, {version}, this.runtime.platform);
   }
 
   private launcher(): string {
@@ -118,6 +119,10 @@ export class SetupService {
     if (bundlePath === null) {
       throw new Error('Disponível só no app instalado');
     }
-    return join(bundlePath, LAUNCHER_IN_BUNDLE);
+    return join(bundlePath, this.layout().launcher);
+  }
+
+  private layout(): InstallLayout {
+    return INSTALL_LAYOUTS[this.runtime.platform];
   }
 }
