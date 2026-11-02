@@ -23,6 +23,7 @@ import {WorkspaceHandler} from './application/ipc/handlers/workspace-handler';
 import {IpcModule} from './application/ipc/ipc-module';
 import {launchFolder} from './application/ipc/launch-args';
 import {userDataFolder} from './core/domain/app-data';
+import {platformOf} from './core/domain/platform';
 import {
   LoginShellEnvService,
   mergePath,
@@ -101,6 +102,9 @@ const show = (window: BrowserWindow): void => {
 let context: Awaited<
   ReturnType<typeof NestFactory.createApplicationContext>
 > | null = null;
+
+// Throws on anything but macOS and Linux, before the lock or any window.
+platformOf(process.platform);
 
 // Dev and installed builds keep separate data; set before the lock, which
 // lives in userData.

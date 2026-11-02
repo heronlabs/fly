@@ -47,7 +47,7 @@ const image: InstallerImage = {
 };
 
 const build = (bundlePath: string | null): SetupService => {
-  const runtime: AppRuntime = {bundlePath, version: '1.0.0'};
+  const runtime: AppRuntime = {bundlePath, version: '1.0.0', platform: 'mac'};
   return new SetupService(toolchain, installer, settings, runtime);
 };
 

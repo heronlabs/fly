@@ -4,6 +4,7 @@ import type {FlyApi} from '../../src/core/domain/fly-api';
 
 // mockReset runs before each test, so tests set their own implementations.
 const fly: FlyApi = {
+  platform: 'mac',
   workspace: {
     pickFolder: vi.fn(),
     open: vi.fn(),

@@ -11,6 +11,7 @@ import {
   webContents,
 } from 'electron';
 
+import {platformOf} from '../../core/domain/platform';
 import {AppInstaller} from '../../core/interfaces/app-installer';
 import {AppRuntime} from '../../core/interfaces/app-runtime';
 import {CommandRunner} from '../../core/interfaces/command-runner';
@@ -116,6 +117,7 @@ import {WindowWorkspacesService} from './window-workspaces-service';
           ? resolve(process.execPath, '../../..')
           : null,
         version: app.getVersion(),
+        platform: platformOf(process.platform),
       }),
     },
     {provide: TRASH_ITEM, useValue: (path: string) => shell.trashItem(path)},
