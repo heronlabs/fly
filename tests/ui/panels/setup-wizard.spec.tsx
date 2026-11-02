@@ -48,6 +48,47 @@ describe('SetupWizard', () => {
     expect(window.fly.setup.doctor).not.toHaveBeenCalled();
   });
 
+  it('keeps a drag spacer for the traffic lights on mac', () => {
+    render(<SetupWizard info={info({inInstallDir: false})} onDone={vi.fn()} />);
+    expect(screen.getByRole('main').firstElementChild).toHaveStyle({
+      height: '38px',
+    });
+  });
+
+  it('asks for the .deb on Linux outside the install dir, with no drag spacer', () => {
+    window.fly.platform = 'linux';
+    render(
+      <SetupWizard
+        info={info({inInstallDir: false, bundlePath: '/home/user/fly'})}
+        onDone={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Instale o pacote .deb do fly e abra pelo menu de aplicativos.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText('O fly está rodando de /home/user/fly.'),
+    ).toBeVisible();
+    expect(screen.queryByText(/Arraste/)).toBeNull();
+    expect(screen.getByRole('main').firstElementChild).not.toHaveStyle({
+      height: '38px',
+    });
+  });
+
+  it('has no drag spacer on Linux inside the install dir', async () => {
+    window.fly.platform = 'linux';
+    render(
+      <SetupWizard info={info({bundlePath: '/opt/fly'})} onDone={vi.fn()} />,
+    );
+    expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+    expect(screen.getByRole('main').firstElementChild).not.toHaveStyle({
+      height: '38px',
+    });
+    await screen.findByRole('button', {name: 'Continuar'});
+  });
+
   it('walks the three steps and completes at step 3', async () => {
     vi.mocked(window.fly.setup.installer).mockResolvedValue(null);
     const onDone = vi.fn();

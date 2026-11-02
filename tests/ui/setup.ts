@@ -67,6 +67,11 @@ const fly: FlyApi = {
 
 Object.defineProperty(window, 'fly', {value: fly, configurable: true});
 
+// Specs switch to Linux per test; every test starts on mac.
+beforeEach(() => {
+  fly.platform = 'mac';
+});
+
 // CodeMirror measures text through Range rects and scrolls the selection into
 // view; jsdom implements neither, so it gets empty rects and a no-op scroll.
 Range.prototype.getClientRects = () => [] as unknown as DOMRectList;

@@ -1,5 +1,6 @@
 import {type CSSProperties, type ReactNode, useEffect, useState} from 'react';
 
+import type {Platform} from '../../../core/domain/platform';
 import type {
   DoctorReport,
   InstallerImage,
@@ -11,6 +12,24 @@ import {errorMessage} from '../state/fly-store';
 export type StepResult = 'done' | 'skipped';
 
 const BREW_SITE = 'https://brew.sh';
+
+// application/ui may import core/domain only for types, so the install layout
+// is spelled out here for the copy.
+const COMMAND_COPY: Record<
+  Platform,
+  {link: string; target: string; note: string}
+> = {
+  mac: {
+    link: '/usr/local/bin/fly',
+    target: '/Applications/fly.app',
+    note: 'Sem mexer no .zshrc: /usr/local/bin já está no PATH padrão do macOS. O macOS vai pedir sua senha de administrador.',
+  },
+  linux: {
+    link: '/usr/bin/fly',
+    target: '/opt/fly',
+    note: 'O pacote .deb já cria esse link; o Linux pede sua senha só para refazê-lo.',
+  },
+};
 
 const buttonStyle: CSSProperties = {
   background: 'var(--surface)',
@@ -242,6 +261,7 @@ export const CommandStep = ({onNext}: {onNext(result: StepResult): void}) => {
   );
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const copy = COMMAND_COPY[window.fly.platform];
 
   const load = () => {
     setError(null);
@@ -272,17 +292,12 @@ export const CommandStep = ({onNext}: {onNext(result: StepResult): void}) => {
         O fly também vai para a linha de comando, como o code do VSCode:
       </p>
       <p style={noteStyle}>
-        <code style={codeStyle}>
-          /usr/local/bin/fly → /Applications/fly.app
-        </code>
+        <code style={codeStyle}>{`${copy.link} → ${copy.target}`}</code>
       </p>
-      <p style={noteStyle}>
-        Sem mexer no .zshrc: /usr/local/bin já está no PATH padrão do macOS. O
-        macOS vai pedir sua senha de administrador.
-      </p>
+      <p style={noteStyle}>{copy.note}</p>
       {state === 'other' && (
         <p style={{...noteStyle, color: 'var(--warn, var(--text2))'}}>
-          /usr/local/bin/fly aponta para outro lugar; será substituído.
+          {`${copy.link} aponta para outro lugar; será substituído.`}
         </p>
       )}
       {state === 'installed' && (
