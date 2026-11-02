@@ -82,3 +82,15 @@ describe('deb depends', () => {
     );
   });
 });
+
+describe('package metadata', () => {
+  // The deb's Homepage field is required; without it electron-builder reads
+  // .git/config, which a worktree does not have (.git is a file there).
+  it('Should name the project homepage', () => {
+    const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
+      homepage?: string;
+    };
+
+    expect(pkg.homepage).toBe('https://github.com/heronlabs/fly');
+  });
+});

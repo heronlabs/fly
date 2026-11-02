@@ -67,6 +67,7 @@
     "node": ">=22",
     "pnpm": ">=10"
   },
+  "homepage": "https://github.com/heronlabs/fly",
   "license": "MIT",
   "main": "./out/main/index.js",
   "name": "@heronlabs/fly",

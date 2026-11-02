@@ -19,6 +19,8 @@ fail() {
 
 # Without recommends, as on a minimal system: what Electron needs must be in
 # the package's own Depends.
+# A runner's package index goes stale; the deb's Depends come from the archive.
+sudo apt-get update
 sudo apt-get install -y --no-install-recommends "$deb"
 
 missing=$(ldd /opt/fly/fly | grep 'not found' || true)
