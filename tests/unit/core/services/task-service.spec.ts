@@ -20,8 +20,8 @@ describe('TaskService', () => {
   const hex = vi.fn();
   const uuid = vi.fn();
   const ids = {hex, uuid} as unknown as IdGenerator;
-  const currentWorkspace = vi.fn();
-  const sessions = {currentWorkspace} as unknown as SessionService;
+  const sessions = {} as unknown as SessionService;
+  let current: Workspace | null;
   const validBranchName = vi.fn();
   const branchExists = vi.fn();
   const defaultBranch = vi.fn();
@@ -63,7 +63,7 @@ describe('TaskService', () => {
     vi.resetAllMocks();
     hex.mockReturnValue('abc123');
     uuid.mockReturnValue('u1');
-    currentWorkspace.mockReturnValue(workspace);
+    current = workspace;
     calls.length = 0;
     const track = (
       name: string,
@@ -92,21 +92,21 @@ describe('TaskService', () => {
 
   describe('create', () => {
     it('Should fail without a workspace', async () => {
-      currentWorkspace.mockReturnValue(null);
-      await expect(service.create(input())).rejects.toThrow(
+      current = null;
+      await expect(service.create(current, input())).rejects.toThrow(
         'Nenhuma pasta aberta',
       );
     });
 
     it('Should fail for an unknown repo', async () => {
-      await expect(service.create(input({repoId: 'nope'}))).rejects.toThrow(
-        'Repositório não encontrado',
-      );
+      await expect(
+        service.create(current, input({repoId: 'nope'})),
+      ).rejects.toThrow('Repositório não encontrado');
     });
 
     it('Should fail for a blank description', async () => {
       await expect(
-        service.create(input({description: ' \n '})),
+        service.create(current, input({description: ' \n '})),
       ).rejects.toThrow('Descreva a tarefa');
     });
   });
@@ -118,6 +118,7 @@ describe('TaskService', () => {
       vi.useFakeTimers();
       vi.setSystemTime(1234);
       const name = await service.create(
+        current,
         input({attachments: ['/d/spec.md'], model: 'opus'}),
       );
       vi.useRealTimers();
@@ -180,28 +181,34 @@ describe('TaskService', () => {
     });
 
     it('Should write a bare prompt without attachments, cleaned and trimmed', async () => {
-      await service.create(input({description: '  a\u0007 $(x) "q"\r\n  '}));
+      await service.create(
+        current,
+        input({description: '  a\u0007 $(x) "q"\r\n  '}),
+      );
       expect(copyIn).not.toHaveBeenCalled();
       expect(write).toHaveBeenCalledWith('u1', 'prompt.md', 'a $(x) "q"');
     });
 
     it('Should list every attachment copy in order', async () => {
       copyIn.mockResolvedValueOnce('/p/a').mockResolvedValueOnce('/p/b');
-      await service.create(input({attachments: ['/d/a', '/d/b']}));
+      await service.create(current, input({attachments: ['/d/a', '/d/b']}));
       expect(write.mock.calls[0]?.[2]).toBe(
         'Faz X\ncom exemplo\n\nArquivos anexados:\n- /p/a\n- /p/b',
       );
     });
 
     it('Should label the session with the first 200 code points', async () => {
-      await service.create(input({description: `${'a'.repeat(199)}🚀bbb`}));
+      await service.create(
+        current,
+        input({description: `${'a'.repeat(199)}🚀bbb`}),
+      );
       expect(launch.mock.calls[0]?.[2].task).toBe(`${'a'.repeat(199)}🚀`);
     });
 
     it('Should fall back to gh for the default branch', async () => {
       defaultBranch.mockResolvedValue(null);
       prDefaultBranch.mockResolvedValue('trunk');
-      await service.create(input());
+      await service.create(current, input());
       expect(prDefaultBranch).toHaveBeenCalledWith(mainPath);
       expect(fetch).toHaveBeenCalledWith(mainPath, 'trunk');
       expect(addWorktree.mock.calls[0]?.[0].base).toBe('origin/trunk');
@@ -209,13 +216,14 @@ describe('TaskService', () => {
     });
 
     it('Should not ask gh when git knows the default branch', async () => {
-      await service.create(input());
+      await service.create(current, input());
       expect(prDefaultBranch).not.toHaveBeenCalled();
     });
 
     it('Should accept exactly the maximum prompt and attachment size', async () => {
       stat.mockResolvedValue({size: 20 * 1024 * 1024, isFile: true});
       await service.create(
+        current,
         input({description: 'a'.repeat(100_000), attachments: ['/d/a']}),
       );
       expect(addWorktree).toHaveBeenCalled();
@@ -278,7 +286,9 @@ describe('TaskService', () => {
       'Should reject %s before anything is created',
       async (_label, over, arrange, message) => {
         arrange();
-        await expect(service.create(input(over))).rejects.toThrow(message);
+        await expect(service.create(current, input(over))).rejects.toThrow(
+          message,
+        );
         expect(fetch).not.toHaveBeenCalled();
         expect(defaultBranch).not.toHaveBeenCalled();
         expect(addWorktree).not.toHaveBeenCalled();
@@ -293,14 +303,14 @@ describe('TaskService', () => {
     it.each(['opus', 'sonnet', 'haiku', null])(
       'Should accept the model %s',
       async model => {
-        await service.create(input({model}));
+        await service.create(current, input({model}));
         expect(launch.mock.calls[0]?.[2].model).toBe(model);
       },
     );
 
     it('Should stop at a failed fetch without a worktree', async () => {
       fetch.mockRejectedValue(new Error('git fetch falhou: offline'));
-      await expect(service.create(input())).rejects.toThrow(
+      await expect(service.create(current, input())).rejects.toThrow(
         'git fetch falhou: offline',
       );
       expect(addWorktree).not.toHaveBeenCalled();
@@ -309,7 +319,9 @@ describe('TaskService', () => {
 
     it('Should leave the worktree and show the error when the prompt cannot be written', async () => {
       write.mockRejectedValue(new Error('disco cheio'));
-      await expect(service.create(input())).rejects.toThrow('disco cheio');
+      await expect(service.create(current, input())).rejects.toThrow(
+        'disco cheio',
+      );
       expect(addWorktree).toHaveBeenCalled();
       expect(launch).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
@@ -317,13 +329,16 @@ describe('TaskService', () => {
 
     it('Should leave the worktree and show the error when the session cannot start', async () => {
       launch.mockRejectedValue(new Error('tmux caiu'));
-      await expect(service.create(input())).rejects.toThrow('tmux caiu');
+      await expect(service.create(current, input())).rejects.toThrow(
+        'tmux caiu',
+      );
       expect(addWorktree).toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should treat a /supera:ship prompt like any prompt', async () => {
       const name = await service.create(
+        current,
         input({description: '/supera:ship faz x'}),
       );
       expect(name).toBe('sess-1');

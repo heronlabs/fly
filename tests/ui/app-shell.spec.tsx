@@ -169,6 +169,18 @@ describe('AppShell', () => {
     expect(screen.queryByText('Sessão')).not.toBeInTheDocument();
   });
 
+  it('titles the window after the open folder', async () => {
+    seed({});
+    await renderShell();
+    expect(document.title).toBe('fly');
+    await act(async () => useFlyStore.setState({workspace}));
+    expect(document.title).toBe('x — fly');
+    await act(async () =>
+      useFlyStore.setState({workspace: {...workspace, root: '/'}}),
+    );
+    expect(document.title).toBe('fly');
+  });
+
   it('bootstraps once and unsubscribes on unmount', async () => {
     seed({});
     const unsubscribe = vi.fn();

@@ -7,6 +7,8 @@ import {SessionService} from '../../../core/services/session-service';
 import {TaskService} from '../../../core/services/task-service';
 import type {Broadcaster, FilePicker, IpcHost} from '../ipc-types';
 import {BROADCASTER, FILE_PICKER, IPC_HOST} from '../ipc-types';
+import {WindowBroadcast} from '../window-broadcast';
+import {WindowWorkspacesService} from '../window-workspaces-service';
 
 export const SESSION_POLL_MS = 3000;
 
@@ -18,26 +20,41 @@ export class SessionHandler {
   private readonly logger = new Logger(SessionHandler.name);
   private timer: NodeJS.Timeout | null = null;
   private running = false;
-  private lastBroadcast: string | null = null;
+  private readonly broadcast: WindowBroadcast<SessionsSnapshot>;
 
   constructor(
     @Inject(IPC_HOST) private readonly host: IpcHost,
-    @Inject(BROADCASTER) private readonly broadcaster: Broadcaster,
+    @Inject(BROADCASTER) broadcaster: Broadcaster,
     private readonly sessions: SessionService,
     private readonly tasks: TaskService,
     @Inject(FILE_PICKER) private readonly picker: FilePicker,
-  ) {}
+    private readonly windows: WindowWorkspacesService,
+  ) {
+    this.broadcast = new WindowBroadcast(
+      broadcaster,
+      channels.sessionChanged,
+      workspace => this.sessions.snapshot(workspace),
+      error =>
+        this.logger.error(`Falha ao atualizar sessões: ${errorMessage(error)}`),
+    );
+  }
 
   register(): void {
-    this.host.handle(channels.sessionList, () => this.list());
-    this.host.handle(channels.sessionStart, (_event, worktreeId: string) =>
-      this.refreshAfter(this.sessions.start(worktreeId)),
+    this.host.handle(channels.sessionList, event =>
+      this.sessions.snapshot(this.windows.of(event.sender.id)),
+    );
+    this.host.handle(channels.sessionStart, (event, worktreeId: string) =>
+      this.refreshAfter(
+        this.sessions.start(this.windows.of(event.sender.id), worktreeId),
+      ),
     );
     this.host.handle(channels.sessionKill, (_event, name: string) =>
       this.refreshAfter(this.sessions.kill(name)),
     );
-    this.host.handle(channels.taskCreate, (_event, input: NewTaskInput) =>
-      this.refreshAfter(this.tasks.create(input)),
+    this.host.handle(channels.taskCreate, (event, input: NewTaskInput) =>
+      this.refreshAfter(
+        this.tasks.create(this.windows.of(event.sender.id), input),
+      ),
     );
     this.host.handle(channels.taskPickAttachments, () => this.picker.pick());
     this.stop();
@@ -48,10 +65,6 @@ export class SessionHandler {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-  }
-
-  private async list(): Promise<SessionsSnapshot> {
-    return this.sessions.snapshot();
   }
 
   // Returns the action's result, then refreshes the renderer right away.
@@ -65,14 +78,7 @@ export class SessionHandler {
     if (this.running) return;
     this.running = true;
     try {
-      const snapshot = await this.sessions.snapshot();
-      const serialized = JSON.stringify(snapshot);
-      if (serialized !== this.lastBroadcast) {
-        this.lastBroadcast = serialized;
-        this.broadcaster.send(channels.sessionChanged, snapshot);
-      }
-    } catch (error) {
-      this.logger.error(`Falha ao atualizar sessões: ${errorMessage(error)}`);
+      await this.broadcast.update(this.windows.entries());
     } finally {
       this.running = false;
     }

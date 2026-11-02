@@ -36,8 +36,10 @@ export class TaskService {
     private readonly taskFiles: TaskFiles,
   ) {}
 
-  async create(input: NewTaskInput): Promise<string> {
-    const workspace = this.sessions.currentWorkspace();
+  async create(
+    workspace: Workspace | null,
+    input: NewTaskInput,
+  ): Promise<string> {
     if (!workspace) throw new Error('Nenhuma pasta aberta');
     const repo = workspace.repos.find(r => r.id === input.repoId);
     if (!repo) throw new Error('Repositório não encontrado');

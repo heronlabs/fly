@@ -2,7 +2,14 @@ import {homedir} from 'node:os';
 import {join, resolve} from 'node:path';
 
 import {Module} from '@nestjs/common';
-import {app, BrowserWindow, dialog, ipcMain, shell} from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  webContents,
+} from 'electron';
 
 import {AppInstaller} from '../../core/interfaces/app-installer';
 import {AppRuntime} from '../../core/interfaces/app-runtime';
@@ -83,6 +90,7 @@ import {
   IPC_HOST,
   LINK_OPENER,
 } from './ipc-types';
+import {WindowWorkspacesService} from './window-workspaces-service';
 
 @Module({
   providers: [
@@ -156,8 +164,15 @@ import {
           BrowserWindow.getAllWindows().forEach(window =>
             window.webContents.send(channel, payload),
           ),
+        sendTo: (windowId, channel, payload) => {
+          const contents = webContents.fromId(windowId);
+          if (contents && !contents.isDestroyed()) {
+            contents.send(channel, payload);
+          }
+        },
       }),
     },
+    WindowWorkspacesService,
     WorkspaceService,
     SettingsService,
     SessionService,

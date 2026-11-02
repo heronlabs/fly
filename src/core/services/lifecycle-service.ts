@@ -6,7 +6,7 @@ import {Injectable} from '@nestjs/common';
 import {PR_TEMPLATE} from '../domain/pr-template';
 import {TaskAction, TaskRecord} from '../domain/task';
 import {TranscriptSummary} from '../domain/transcript';
-import {Repo, Worktree} from '../domain/workspace';
+import {Repo, Workspace, Worktree} from '../domain/workspace';
 import {IdGenerator} from '../interfaces/id-generator';
 import {PrGateway} from '../interfaces/pr-gateway';
 import {
@@ -52,6 +52,19 @@ const worktreeOf = (
   worktrees.find(
     w => w.path === record.worktreePath && w.branch === record.branch,
   );
+
+type Claim = {workspace: Workspace; worktree: Worktree; record: TaskRecord};
+
+// Each record once, with the first workspace that holds its worktree: two
+// windows on one root, or on nested roots, must not act on a task twice.
+const claimed = (workspaces: Workspace[], records: TaskRecord[]): Claim[] =>
+  records.flatMap(record => {
+    for (const workspace of workspaces) {
+      const worktree = worktreeOf(workspace.worktrees, record);
+      if (worktree) return [{workspace, worktree, record}];
+    }
+    return [];
+  });
 
 // P6: a turn that ended after `now` was taken must not pass for the turn the
 // instruction starts.
@@ -105,28 +118,41 @@ export class LifecycleService {
   // P8: asks the worktree's idle session to commit and write the PR's text;
   // tick finishes the job once that turn ends. An overlapping request for the
   // same worktree is refused before anything is read, so one click types once.
-  async openPullRequest(worktreeId: string, now = Date.now()): Promise<void> {
-    const {repo, worktree, branch} = this.locate(worktreeId);
+  async openPullRequest(
+    workspace: Workspace | null,
+    worktreeId: string,
+    now = Date.now(),
+  ): Promise<void> {
+    const {repo, worktree, branch} = this.locate(workspace, worktreeId);
     if (this.requesting.has(worktree.path)) throw new Error(BUSY);
     this.requesting.add(worktree.path);
     try {
-      await this.requestOpen(worktreeId, repo, worktree, branch, now);
+      await this.requestOpen(
+        workspace,
+        worktreeId,
+        repo,
+        worktree,
+        branch,
+        now,
+      );
     } finally {
       this.requesting.delete(worktree.path);
     }
   }
 
   private async requestOpen(
+    workspace: Workspace | null,
     worktreeId: string,
     repo: Repo,
     worktree: Worktree,
     branch: string,
     now: number,
   ): Promise<void> {
-    if (this.queue.pullRequestFor(worktreeId)?.state === 'open') {
+    if (this.queue.pullRequestFor(workspace, worktreeId)?.state === 'open') {
       throw new Error('Já existe um PR aberto');
     }
-    const target = this.target(worktree, (await this.sessions.mapped()).items);
+    const {items} = await this.sessions.mapped(workspace);
+    const target = this.target(worktree, items);
     if (!target) throw new Error('Nenhuma sessão do fly aberta neste worktree');
     const summary = await this.summaryOf(worktree, target);
     const existing = await this.recordOf(worktree);
@@ -168,60 +194,62 @@ export class LifecycleService {
     });
   }
 
-  // P10, after each PR refresh: moves every task of the workspace along its
-  // open PR's CI and review comments (see pollRecord).
-  async poll(now = Date.now()): Promise<void> {
-    const workspace = this.sessions.currentWorkspace();
-    if (!workspace) return;
+  // P10, after each PR refresh: moves every task of the open workspaces
+  // along its open PR's CI and review comments (see pollRecord).
+  async poll(workspaces: Workspace[], now = Date.now()): Promise<void> {
     const gateways = {prs: this.prs, taskFiles: this.taskFiles};
     const records = await this.tasks.list();
     await settled(
-      records.map(async record => {
-        const worktree = worktreeOf(workspace.worktrees, record);
-        if (!worktree) return;
-        const pr = this.queue.pullRequestFor(worktree.id);
-        const next = await pollRecord(gateways, record, pr, now);
-        if (next) await this.replace(record, next);
-      }),
+      claimed(workspaces, records).map(
+        async ({workspace, worktree, record}) => {
+          const pr = this.queue.pullRequestFor(workspace, worktree.id);
+          const next = await pollRecord(gateways, record, pr, now);
+          if (next) await this.replace(record, next);
+        },
+      ),
     );
   }
 
   // Types every queued fix or review into its idle session and settles every
   // pending action whose turn has ended. A tick that starts while another
   // runs returns at once, so nothing is typed, pushed or created twice.
-  async tick(now = Date.now()): Promise<void> {
+  async tick(workspaces: Workspace[], now = Date.now()): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      await this.settleAll(now);
+      await this.settleAll(workspaces, now);
     } finally {
       this.ticking = false;
     }
   }
 
-  private async settleAll(now: number): Promise<void> {
-    const workspace = this.sessions.currentWorkspace();
-    if (!workspace) return;
+  private async settleAll(workspaces: Workspace[], now: number): Promise<void> {
     const records = await this.tasks.list();
     if (!records.some(r => r.pending || r.outbox)) return;
-    const {tmux, items} = await this.sessions.mapped();
-    // Without a tmux listing, a live session would look gone.
-    if (tmux !== 'ok') return;
+    const claims = claimed(workspaces, records);
     await settled(
-      records.map(record =>
-        this.settle(record, workspace.worktrees, items, now),
-      ),
+      workspaces.map(async workspace => {
+        const own = claims.filter(claim => claim.workspace === workspace);
+        // A workspace with no task of its own needs no tmux listing.
+        if (own.length === 0) return;
+        const {tmux, items} = await this.sessions.mapped(workspace);
+        // Without a tmux listing, a live session would look gone.
+        if (tmux !== 'ok') return;
+        await settled(
+          own.map(({record, worktree}) =>
+            this.settle(record, worktree, items, now),
+          ),
+        );
+      }),
     );
   }
 
   private async settle(
     record: TaskRecord,
-    worktrees: Worktree[],
+    worktree: Worktree,
     items: MappedSessions['items'],
     now: number,
   ): Promise<void> {
-    const worktree = worktreeOf(worktrees, record);
-    if (!worktree) return;
     const target = this.target(worktree, items);
     const {pending, outbox} = record;
     if (pending) {
@@ -303,27 +331,32 @@ export class LifecycleService {
 
   // P12: merges the PR, then removes its worktree, branches and record. A
   // cleanup failure after the merge still rejects; "Limpar" runs it again.
-  async merge(worktreeId: string): Promise<void> {
-    await this.holding(worktreeId, async () => {
-      await this.queue.mergePullRequest(worktreeId);
-      await this.cleanup.clean(worktreeId, {confirmed: true});
+  async merge(workspace: Workspace | null, worktreeId: string): Promise<void> {
+    await this.holding(workspace, worktreeId, async () => {
+      await this.queue.mergePullRequest(workspace, worktreeId);
+      await this.cleanup.clean(workspace, worktreeId, {confirmed: true});
     });
   }
 
   // "Limpar": a merged PR's task, or a closed one's once confirmed.
-  async clean(worktreeId: string, confirmed: boolean): Promise<void> {
-    await this.holding(worktreeId, () =>
-      this.cleanup.clean(worktreeId, {confirmed}),
+  async clean(
+    workspace: Workspace | null,
+    worktreeId: string,
+    confirmed: boolean,
+  ): Promise<void> {
+    await this.holding(workspace, worktreeId, () =>
+      this.cleanup.clean(workspace, worktreeId, {confirmed}),
     );
   }
 
   // A worktree with a request or an outbox being typed is not merged or
   // removed under it; it stays held while `work` runs.
   private async holding(
+    workspace: Workspace | null,
     worktreeId: string,
     work: () => Promise<void>,
   ): Promise<void> {
-    const {path} = this.locate(worktreeId).worktree;
+    const {path} = this.locate(workspace, worktreeId).worktree;
     if (this.requesting.has(path)) throw new Error(BUSY);
     this.requesting.add(path);
     try {
@@ -335,8 +368,9 @@ export class LifecycleService {
 
   // "Rodar de novo": reruns the failed jobs of each run an infrastructure
   // stop names, then watches the CI again.
-  async rerun(worktreeId: string): Promise<void> {
-    const record = await this.recordOf(this.locate(worktreeId).worktree);
+  async rerun(workspace: Workspace | null, worktreeId: string): Promise<void> {
+    const {worktree} = this.locate(workspace, worktreeId);
+    const record = await this.recordOf(worktree);
     const stop = record?.stop;
     const runIds = (stop?.kind === 'infra' && stop.runIds) || [];
     if (!record || runIds.length === 0) {
@@ -355,12 +389,13 @@ export class LifecycleService {
   // review sent counts as done), resets the CI counter, and watches the open
   // PR again, else goes back to work. A queued action stays: its comments are
   // already counted as seen.
-  async resume(worktreeId: string): Promise<void> {
-    await this.holding(worktreeId, async () => {
-      const {worktree} = this.locate(worktreeId);
+  async resume(workspace: Workspace | null, worktreeId: string): Promise<void> {
+    await this.holding(workspace, worktreeId, async () => {
+      const {worktree} = this.locate(workspace, worktreeId);
       const record = await this.recordOf(worktree);
       if (!record) return;
-      const open = this.queue.pullRequestFor(worktreeId)?.state === 'open';
+      const open =
+        this.queue.pullRequestFor(workspace, worktreeId)?.state === 'open';
       await this.tasks.save({
         ...record,
         phase: open ? 'ci' : 'working',
@@ -389,12 +424,14 @@ export class LifecycleService {
   }
 
   // Only a branch worktree outside the main checkout can carry a PR.
-  private locate(worktreeId: string): {
+  private locate(
+    workspace: Workspace | null,
+    worktreeId: string,
+  ): {
     repo: Repo;
     worktree: Worktree;
     branch: string;
   } {
-    const workspace = this.sessions.currentWorkspace();
     const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
     const repo = workspace?.repos.find(r => r.id === worktree?.repoId);
     if (!worktree?.branch || worktree.isMain || !repo) {

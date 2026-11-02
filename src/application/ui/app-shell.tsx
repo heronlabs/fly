@@ -124,6 +124,14 @@ export const AppShell = () => {
     [takeLaunch],
   );
 
+  // With several windows open, the Window menu and Mission Control tell them
+  // apart by the folder each one shows.
+  const root = workspace?.root;
+  useEffect(() => {
+    const name = root?.split('/').filter(Boolean).at(-1);
+    document.title = name ? `${name} — fly` : 'fly';
+  }, [root]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey && event.key === 'n' && canCreateTask) {

@@ -146,9 +146,11 @@ const FIX = `fly: a CI do PR #42 falhou (tentativa 1 de 3). Logs: ${DIR}/ci-70-a
 const REVIEW = `fly: há comentários de review novos no PR #42 em ${DIR}/review-42-1700000000000.md. Avalie cada um, corrija o que fizer sentido e commite (Conventional Commits, sem push).`;
 
 describe('LifecycleService', () => {
-  const currentWorkspace = vi.fn();
   const mapped = vi.fn();
-  const sessions = {currentWorkspace, mapped} as unknown as SessionService;
+  const sessions = {mapped} as unknown as SessionService;
+  // What the window acting on the task shows.
+  let current: Workspace | null;
+  const opened = () => (current ? [current] : []);
   const forSession = vi.fn();
   const transcripts = {forSession} as unknown as TranscriptSource;
   const sendText = vi.fn();
@@ -180,11 +182,11 @@ describe('LifecycleService', () => {
     reviewComments,
   } as unknown as PrGateway;
   const pullRequestFor = vi.fn();
-  const refreshPullRequests = vi.fn();
+  const refreshRepo = vi.fn();
   const mergePullRequest = vi.fn();
   const queue = {
     pullRequestFor,
-    refreshPullRequests,
+    refreshRepo,
     mergePullRequest,
   } as unknown as QueueService;
   const clean = vi.fn();
@@ -242,7 +244,7 @@ describe('LifecycleService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     calls.length = 0;
-    currentWorkspace.mockReturnValue(workspace);
+    current = workspace;
     sessionsAre([item(WT, 'fly-feat', 5, 's1')]);
     forSession.mockResolvedValue(summary());
     sendText.mockResolvedValue(undefined);
@@ -257,7 +259,7 @@ describe('LifecycleService', () => {
       url: 'https://github.com/o/r/pull/42',
     });
     pullRequestFor.mockReturnValue(null);
-    refreshPullRequests.mockResolvedValue(undefined);
+    refreshRepo.mockResolvedValue(undefined);
     get.mockResolvedValue(record());
     list.mockResolvedValue([]);
     save.mockResolvedValue(undefined);
@@ -284,16 +286,16 @@ describe('LifecycleService', () => {
 
   describe('openPullRequest', () => {
     const refused = async (message: string, worktreeId = WT) => {
-      await expect(service.openPullRequest(worktreeId, 1000)).rejects.toThrow(
-        message,
-      );
+      await expect(
+        service.openPullRequest(current, worktreeId, 1000),
+      ).rejects.toThrow(message);
       expect(sendText).not.toHaveBeenCalled();
       expect(write).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     };
 
     it('Should refuse without a workspace', async () => {
-      currentWorkspace.mockReturnValue(null);
+      current = null;
       await refused('Worktree não encontrado');
     });
 
@@ -310,7 +312,7 @@ describe('LifecycleService', () => {
     it('Should refuse when the worktree already has an open PR', async () => {
       pullRequestFor.mockReturnValue(openPr('open'));
       await refused('Já existe um PR aberto');
-      expect(pullRequestFor).toHaveBeenCalledWith(WT);
+      expect(pullRequestFor).toHaveBeenCalledWith(workspace, WT);
       expect(mapped).not.toHaveBeenCalled();
     });
 
@@ -358,7 +360,7 @@ describe('LifecycleService', () => {
       forSession.mockResolvedValue(null);
       sessionsAre([item(WT, 'fly-feat', 5, 's1')]);
 
-      await service.openPullRequest(WT, 10_000);
+      await service.openPullRequest(current, WT, 10_000);
 
       expect(sendText).toHaveBeenCalledWith('fly-feat', OPEN);
       expect(save.mock.calls[0]?.[0]).toMatchObject({
@@ -368,13 +370,13 @@ describe('LifecycleService', () => {
 
     it('Should not take a turn that ended after the request was timed for its own', async () => {
       forSession.mockResolvedValue(summary({lastTurnEndAt: 1200}));
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
       const sent = save.mock.calls[0]?.[0] as TaskRecord;
       expect(sent.pending?.sentAt).toBe(1200);
 
       holds(sent);
       save.mockClear();
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(status).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
@@ -404,7 +406,7 @@ describe('LifecycleService', () => {
         record({phase: 'stopped', stop: {kind: 'open', message: 'antes'}}),
       );
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
 
       expect(forSession).toHaveBeenCalledExactlyOnceWith({
         launchCwd: PATH,
@@ -452,7 +454,7 @@ describe('LifecycleService', () => {
       });
       get.mockResolvedValue(merged);
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
 
       expect(sendText).toHaveBeenCalledWith('fly-feat', OPEN);
       expect(save).toHaveBeenCalledExactlyOnceWith({
@@ -475,15 +477,15 @@ describe('LifecycleService', () => {
       });
       sendText.mockImplementationOnce(() => gate);
 
-      const first = service.openPullRequest(WT, 1000);
-      await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(
+      const first = service.openPullRequest(current, WT, 1000);
+      await expect(service.openPullRequest(current, WT, 1000)).rejects.toThrow(
         'A sessão está ocupada; aguarde o turno terminar',
       );
       release();
       await first;
       expect(sendText).toHaveBeenCalledTimes(1);
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
       expect(sendText).toHaveBeenCalledTimes(2);
     });
 
@@ -497,8 +499,10 @@ describe('LifecycleService', () => {
       'Should free the worktree after a request where %s',
       async (_n, arrange) => {
         arrange();
-        await expect(service.openPullRequest(WT, 1000)).rejects.toThrow();
-        await service.openPullRequest(WT, 1000);
+        await expect(
+          service.openPullRequest(current, WT, 1000),
+        ).rejects.toThrow();
+        await service.openPullRequest(current, WT, 1000);
         expect(save).toHaveBeenCalledTimes(1);
       },
     );
@@ -517,7 +521,7 @@ describe('LifecycleService', () => {
       );
       track('sendText', sendText, undefined);
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
       expect(calls).toEqual([
         'write pr-request.md',
         'write pr.json',
@@ -528,7 +532,7 @@ describe('LifecycleService', () => {
       forSession.mockResolvedValue(summary({lastTurnEndAt: 1500}));
       aheadCount.mockResolvedValue(1);
 
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
 
       expect(push).not.toHaveBeenCalled();
       expect(save).toHaveBeenCalledExactlyOnceWith(
@@ -548,7 +552,7 @@ describe('LifecycleService', () => {
       prDefault.mockResolvedValue('trunk');
       read.mockResolvedValue('stale prompt');
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
 
       expect(vcsDefault).toHaveBeenCalledWith('/r/talon');
       expect(prDefault).toHaveBeenCalledWith('/r/talon');
@@ -592,7 +596,7 @@ describe('LifecycleService', () => {
         record({branch: 'old', base: 'dev', pending: opening.pending}),
       );
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
 
       expect(save).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
@@ -607,7 +611,7 @@ describe('LifecycleService', () => {
 
     it('Should not record anything when typing fails', async () => {
       sendText.mockRejectedValue(new Error('tmux falhou'));
-      await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(
+      await expect(service.openPullRequest(current, WT, 1000)).rejects.toThrow(
         'tmux falhou',
       );
       expect(save).not.toHaveBeenCalled();
@@ -625,7 +629,7 @@ describe('LifecycleService', () => {
     it('Should stamp the current time by default', async () => {
       vi.spyOn(Date, 'now').mockReturnValue(1234);
       get.mockResolvedValue(null);
-      await service.openPullRequest(WT);
+      await service.openPullRequest(current, WT);
       expect(save.mock.calls[0]?.[0]).toMatchObject({
         createdAt: 1234,
         pending: {sentAt: 1234},
@@ -655,10 +659,10 @@ describe('LifecycleService', () => {
       prJson('feat: add x');
     });
 
-    it('Should do nothing without a workspace', async () => {
-      currentWorkspace.mockReturnValue(null);
-      await service.tick(1500);
-      expect(list).not.toHaveBeenCalled();
+    it('Should do nothing without an open workspace', async () => {
+      current = null;
+      await service.tick(opened(), 1500);
+      expect(mapped).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -672,14 +676,14 @@ describe('LifecycleService', () => {
           prNumber: 7,
         }),
       ]);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(mapped).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should wait while tmux cannot be listed', async () => {
       mapped.mockResolvedValue({tmux: 'error', message: 'x', items: []});
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -691,14 +695,14 @@ describe('LifecycleService', () => {
       ],
     ])('Should skip a record %s', async (_name, task) => {
       list.mockResolvedValue([task]);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(forSession).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should stop when the session is gone', async () => {
       sessionsAre([item(WT, 'ext', 9), item(OTHER, 'fly-y', 9, 's9')]);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).toHaveBeenCalledExactlyOnceWith(
         stopped({
           kind: 'session',
@@ -718,21 +722,21 @@ describe('LifecycleService', () => {
       ['has no transcript', () => forSession.mockResolvedValue(null)],
     ])('Should wait while the turn %s', async (_name, arrange) => {
       arrange();
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(status).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should reject, saving nothing, when the transcript cannot be read', async () => {
       forSession.mockRejectedValue(new Error('EACCES'));
-      await expect(service.tick(1500)).rejects.toThrow('EACCES');
+      await expect(service.tick(opened(), 1500)).rejects.toThrow('EACCES');
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should settle a request with no send time on any ended turn', async () => {
       holds({...opening, pending: {kind: 'open', headSha: 'abc'}});
       turnEnded(1);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({phase: 'ci', prNumber: 42}),
       );
@@ -740,7 +744,7 @@ describe('LifecycleService', () => {
 
     it('Should read the newest fly session of the worktree', async () => {
       sessionsAre([item(WT, 'fly-old', 1, 's0'), item(WT, 'fly-new', 2, 's1')]);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(forSession).toHaveBeenCalledExactlyOnceWith({
         launchCwd: PATH,
         sessionId: 's1',
@@ -749,7 +753,7 @@ describe('LifecycleService', () => {
 
     it('Should stop on uncommitted changes, listing them', async () => {
       status.mockResolvedValue({'src/a.ts': 'M', 'b.md': 'A'});
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(status).toHaveBeenCalledWith(PATH);
       expect(save).toHaveBeenCalledExactlyOnceWith(
         stopped({
@@ -762,7 +766,7 @@ describe('LifecycleService', () => {
 
     it('Should stop when the branch has nothing ahead of its base', async () => {
       aheadCount.mockResolvedValue(0);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(aheadCount).toHaveBeenCalledWith(PATH, 'origin/main');
       expect(save).toHaveBeenCalledExactlyOnceWith(
         stopped({
@@ -779,7 +783,7 @@ describe('LifecycleService', () => {
       ['without a body', '{"title": "feat: x"}'],
     ])('Should stop when pr.json is %s', async (_name, raw) => {
       read.mockResolvedValue(raw);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(read).toHaveBeenCalledWith('t1', 'pr.json');
       expect(save).toHaveBeenCalledExactlyOnceWith(
         stopped({
@@ -794,7 +798,7 @@ describe('LifecycleService', () => {
       'Should stop on the title %j',
       async title => {
         prJson(title);
-        await service.tick(1500);
+        await service.tick(opened(), 1500);
         expect(save).toHaveBeenCalledExactlyOnceWith(
           stopped({
             kind: 'open',
@@ -813,7 +817,7 @@ describe('LifecycleService', () => {
       ],
     ])('Should stop when the push fails with %j', async (error, message) => {
       push.mockRejectedValue(new Error(error));
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).toHaveBeenCalledExactlyOnceWith(
         stopped({kind: 'open', message}),
       );
@@ -831,7 +835,7 @@ describe('LifecycleService', () => {
       'Should stop when gh pr create fails with %j',
       async (error, message) => {
         create.mockRejectedValue(new Error(error));
-        await service.tick(1500);
+        await service.tick(opened(), 1500);
         expect(save).toHaveBeenCalledExactlyOnceWith(
           stopped({kind: 'open', message}),
         );
@@ -842,11 +846,11 @@ describe('LifecycleService', () => {
       track('push', push, undefined);
       track('write', write, `${DIR}/pr-body.md`);
       track('create', create, {number: 42, url: 'u'});
-      track('refresh', refreshPullRequests, undefined);
+      track('refresh', refreshRepo, undefined);
       track('save', save, undefined);
       prJson('feat(ui)!: add x', '## Description\n\nX');
 
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
 
       expect(push).toHaveBeenCalledWith(PATH, 'feat-x');
       expect(write).toHaveBeenCalledWith(
@@ -868,28 +872,13 @@ describe('LifecycleService', () => {
         pending: null,
         reviewSeenAt: 1500,
       });
+      expect(refreshRepo).toHaveBeenCalledExactlyOnceWith('/r/talon');
       expect(calls).toEqual(['push', 'write', 'create', 'refresh', 'save']);
-    });
-
-    it('Should save the watch even when the PR list refresh fails', async () => {
-      refreshPullRequests.mockRejectedValue(new Error('gh'));
-      prJson('feat(ui)!: add x', 'X');
-
-      await service.tick(1500);
-
-      expect(refreshPullRequests).toHaveBeenCalledTimes(1);
-      expect(save).toHaveBeenCalledExactlyOnceWith({
-        ...opening,
-        prNumber: 42,
-        phase: 'ci',
-        pending: null,
-        reviewSeenAt: 1500,
-      });
     });
 
     it('Should stamp the current time by default', async () => {
       vi.spyOn(Date, 'now').mockReturnValue(2000);
-      await service.tick();
+      await service.tick(opened());
       expect(save.mock.calls[0]?.[0]).toMatchObject({reviewSeenAt: 2000});
     });
 
@@ -918,7 +907,7 @@ describe('LifecycleService', () => {
       'Should stop with the message when %s fails after the turn',
       async (_name, arrange) => {
         arrange();
-        await service.tick(1500);
+        await service.tick(opened(), 1500);
         expect(save).toHaveBeenLastCalledWith(
           stopped({kind: 'open', message: 'git falhou: lock'}),
         );
@@ -929,7 +918,7 @@ describe('LifecycleService', () => {
       aheadCount.mockRejectedValue(
         new Error("git falhou: fatal: bad revision 'origin/main..HEAD'"),
       );
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).toHaveBeenCalledExactlyOnceWith(
         stopped({
           kind: 'open',
@@ -954,7 +943,7 @@ describe('LifecycleService', () => {
           : Promise.resolve(summary({lastTurnEndAt: 1500})),
       );
 
-      await expect(service.tick(1500)).rejects.toThrow('EACCES');
+      await expect(service.tick(opened(), 1500)).rejects.toThrow('EACCES');
 
       expect(save).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({id: 't2', phase: 'ci', prNumber: 42}),
@@ -962,8 +951,8 @@ describe('LifecycleService', () => {
     });
 
     it('Should not settle a request twice when ticks overlap', async () => {
-      const first = service.tick(1500);
-      await service.tick(1500);
+      const first = service.tick(opened(), 1500);
+      await service.tick(opened(), 1500);
       await first;
       expect(push).toHaveBeenCalledTimes(1);
       expect(create).toHaveBeenCalledTimes(1);
@@ -971,8 +960,8 @@ describe('LifecycleService', () => {
 
     it('Should tick again after a tick that rejected', async () => {
       forSession.mockRejectedValueOnce(new Error('EACCES'));
-      await expect(service.tick(1500)).rejects.toThrow('EACCES');
-      await service.tick(1500);
+      await expect(service.tick(opened(), 1500)).rejects.toThrow('EACCES');
+      await service.tick(opened(), 1500);
       expect(create).toHaveBeenCalledTimes(1);
     });
 
@@ -981,7 +970,7 @@ describe('LifecycleService', () => {
         store.delete(PATH);
         return {number: 42, url: 'u'};
       });
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).not.toHaveBeenCalled();
       expect(store.has(PATH)).toBe(false);
     });
@@ -992,7 +981,7 @@ describe('LifecycleService', () => {
         store.set(PATH, resumed);
         return {number: 42, url: 'u'};
       });
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).not.toHaveBeenCalled();
       expect(store.get(PATH)).toEqual(resumed);
     });
@@ -1002,7 +991,7 @@ describe('LifecycleService', () => {
         store.delete(PATH);
         return 0;
       });
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).not.toHaveBeenCalled();
     });
   });
@@ -1062,10 +1051,11 @@ describe('LifecycleService', () => {
       reviewComments.mockResolvedValue([]);
     });
 
-    it('Should do nothing without a workspace', async () => {
-      currentWorkspace.mockReturnValue(null);
-      await service.poll(5000);
-      expect(list).not.toHaveBeenCalled();
+    it('Should do nothing without an open workspace', async () => {
+      current = null;
+      await service.poll(opened(), 5000);
+      expect(pullRequestFor).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -1076,14 +1066,21 @@ describe('LifecycleService', () => {
       ],
     ])('Should skip a record %s', async (_name, task) => {
       holds(task);
-      await service.poll(5000);
+      await service.poll(opened(), 5000);
       expect(pullRequestFor).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
+    it('Should poll a task two workspaces hold once, with the first one', async () => {
+      const copy = structuredClone(workspace);
+      await service.poll([copy, workspace], 5000);
+      expect(pullRequestFor).toHaveBeenCalledExactlyOnceWith(copy, WT);
+      expect(reviewComments).toHaveBeenCalledTimes(1);
+    });
+
     it('Should save nothing when nothing changed', async () => {
-      await service.poll(5000);
-      expect(pullRequestFor).toHaveBeenCalledWith(WT);
+      await service.poll(opened(), 5000);
+      expect(pullRequestFor).toHaveBeenCalledWith(workspace, WT);
       expect(reviewComments).toHaveBeenCalledWith('/r/talon', 42);
       expect(get).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
@@ -1097,7 +1094,7 @@ describe('LifecycleService', () => {
         );
         failedLog.mockResolvedValue(RAW);
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
 
         expect(failedLog).toHaveBeenCalledExactlyOnceWith('/r/talon', '70');
         expect(write).toHaveBeenCalledExactlyOnceWith(
@@ -1121,7 +1118,7 @@ describe('LifecycleService', () => {
           job === '71' ? null : RAW,
         );
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
 
         expect(saved()[0]?.outbox?.text).toBe(
           `fly: a CI do PR #42 falhou (tentativa 1 de 3). Logs: ${DIR}/ci-70-abc1234.log, ${DIR}/ci-72-abc1234.log. Corrija, rode as verificações locais e commite (Conventional Commits, sem push).`,
@@ -1132,7 +1129,7 @@ describe('LifecycleService', () => {
         holds({...watching, ciAttempts: 2, fixedSha: 'old'});
         failing(run());
         failedLog.mockResolvedValue(RAW);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()[0]?.outbox?.text).toContain('(tentativa 3 de 3)');
       });
 
@@ -1191,7 +1188,7 @@ describe('LifecycleService', () => {
         'Should stop on infrastructure with %s',
         async (_name, checkRuns, names, runIds) => {
           failing(...checkRuns);
-          await service.poll(5000);
+          await service.poll(opened(), 5000);
           expect(saved()).toEqual([
             stopOf({
               kind: 'infra',
@@ -1209,7 +1206,7 @@ describe('LifecycleService', () => {
           conclusion: 'FAILURE',
           jobId: '9',
         });
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(failedLog).not.toHaveBeenCalled();
       });
 
@@ -1218,7 +1215,7 @@ describe('LifecycleService', () => {
         failing(run());
         failedLog.mockResolvedValue(RAW);
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
 
         expect(saved()).toEqual([
           stopOf(
@@ -1241,7 +1238,7 @@ describe('LifecycleService', () => {
         holds({...watching, ...over});
         prIs({checks: 'failing', checkRuns: [run()], ...pr});
         failedLog.mockResolvedValue(RAW);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(failedLog).not.toHaveBeenCalled();
         expect(save).not.toHaveBeenCalled();
       });
@@ -1261,12 +1258,12 @@ describe('LifecycleService', () => {
           failing(run(), run({name: 'b', jobId: '71'}));
           arrange();
 
-          await service.poll(5000);
+          await service.poll(opened(), 5000);
           expect(write).not.toHaveBeenCalled();
           expect(save).not.toHaveBeenCalled();
 
           failedLog.mockReset().mockResolvedValue(RAW);
-          await service.poll(5000);
+          await service.poll(opened(), 5000);
           expect(saved()[0]?.outbox?.kind).toBe('fix');
         },
       );
@@ -1283,14 +1280,14 @@ describe('LifecycleService', () => {
       ])('Should clear a $kind stop and the attempts', async stop => {
         holds(stopOf(stop, {...watching, ciAttempts: 3, fixedSha: 'old'}));
         prIs({checks: 'passing'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([watching]);
       });
 
       it('Should reset the attempts of a record without a stop', async () => {
         holds({...watching, ciAttempts: 2, fixedSha: 'old'});
         prIs({checks: 'passing'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([watching]);
       });
 
@@ -1301,7 +1298,7 @@ describe('LifecycleService', () => {
       ])('Should keep a $kind stop', async stop => {
         holds(stopOf(stop));
         prIs({checks: 'passing'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(reviewComments).not.toHaveBeenCalled();
       });
@@ -1309,7 +1306,7 @@ describe('LifecycleService', () => {
       it('Should keep a CI stop while the checks still fail', async () => {
         holds(stopOf({kind: 'infra', message: 'x', runIds: ['7']}));
         prIs({checks: 'failing', checkRuns: [run()], mergeable: 'conflicting'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
       });
     });
@@ -1333,13 +1330,13 @@ describe('LifecycleService', () => {
         prIs({checks: 'failing', checkRuns: [run()], ...pr});
         failedLog.mockResolvedValue(RAW);
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([stopOf(stop)]);
         expect(failedLog).not.toHaveBeenCalled();
         expect(reviewComments).not.toHaveBeenCalled();
 
         prIs();
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()[1]).toEqual(watching);
       });
 
@@ -1360,14 +1357,14 @@ describe('LifecycleService', () => {
       ])('Should replace %s', async (_name, from, pr, to) => {
         holds(stopOf(from));
         prIs(pr);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([stopOf(to)]);
       });
 
       it('Should name the record base', async () => {
         holds({...watching, base: 'dev'});
         prIs({mergeable: 'conflicting'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()[0]?.stop?.message).toBe('Conflito com dev');
       });
     });
@@ -1393,7 +1390,7 @@ describe('LifecycleService', () => {
         ],
       ])('Should adopt the open PR of %s', async (_name, over) => {
         holds({...unwatched, ...over});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([
           {
             ...unwatched,
@@ -1410,7 +1407,7 @@ describe('LifecycleService', () => {
         holds(unwatched);
         failing(run());
         failedLog.mockResolvedValue(RAW);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()[0]).toMatchObject({prNumber: 42, outbox: {kind: 'fix'}});
       });
 
@@ -1426,7 +1423,7 @@ describe('LifecycleService', () => {
       ])('Should not adopt a record %s', async (_name, task, pr) => {
         holds(task);
         pullRequestFor.mockReturnValue(pr);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(reviewComments).not.toHaveBeenCalled();
       });
@@ -1434,7 +1431,7 @@ describe('LifecycleService', () => {
       it('Should not watch the open PR of a record that has no PR number', async () => {
         holds({...unwatched, phase: 'ci'});
         failing(run());
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(failedLog).not.toHaveBeenCalled();
         expect(reviewComments).not.toHaveBeenCalled();
@@ -1449,7 +1446,7 @@ describe('LifecycleService', () => {
           outbox: {kind: 'review', text: 'r', headSha: SHA},
         });
         prIs({state: 'closed'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([
           {...watching, phase: 'working', prNumber: null},
         ]);
@@ -1465,7 +1462,7 @@ describe('LifecycleService', () => {
       ])('Should leave alone %s', async (_name, over, state) => {
         holds({...watching, ...over});
         prIs({state, checks: 'failing', checkRuns: [run()]});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(failedLog).not.toHaveBeenCalled();
       });
@@ -1473,20 +1470,20 @@ describe('LifecycleService', () => {
       it('Should not reset a live loop for an older closed PR of the branch', async () => {
         holds({...watching, ciAttempts: 2, fixedSha: 'old'});
         prIs({state: 'closed', number: 41});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
       });
 
       it('Should leave a record whose PR is not listed', async () => {
         pullRequestFor.mockReturnValue(null);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
       });
 
       it('Should stamp the current time by default', async () => {
         vi.spyOn(Date, 'now').mockReturnValue(2000);
         holds(unwatched);
-        await service.poll();
+        await service.poll(opened());
         expect(saved()[0]?.reviewSeenAt).toBe(2000);
       });
     });
@@ -1498,7 +1495,7 @@ describe('LifecycleService', () => {
       ])('Should keep a $kind stop', async stop => {
         holds(stopOf(stop));
         prIs({mergeable: 'unknown', checks: 'failing', checkRuns: [run()]});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(failedLog).not.toHaveBeenCalled();
       });
@@ -1511,7 +1508,7 @@ describe('LifecycleService', () => {
           checkRuns: [run()],
         });
         reviewComments.mockResolvedValue([comment({})]);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(failedLog).not.toHaveBeenCalled();
         expect(reviewComments).not.toHaveBeenCalled();
         expect(save).not.toHaveBeenCalled();
@@ -1520,7 +1517,7 @@ describe('LifecycleService', () => {
       it('Should still adopt the PR', async () => {
         holds(record({reviewSeenAt: null}));
         prIs({mergeable: 'unknown'});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([
           record({prNumber: 42, phase: 'ci', reviewSeenAt: 5000}),
         ]);
@@ -1532,12 +1529,12 @@ describe('LifecycleService', () => {
       reviewComments.mockResolvedValue([]);
       failing(run(), run({name: 'e2e', state: 'pending', jobId: '71'}));
 
-      await service.poll(5000);
+      await service.poll(opened(), 5000);
       expect(failedLog).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
 
       failing(run(), run({name: 'e2e', jobId: '71'}));
-      await service.poll(5000);
+      await service.poll(opened(), 5000);
       expect(failedLog.mock.calls).toEqual([
         ['/r/talon', '70'],
         ['/r/talon', '71'],
@@ -1552,7 +1549,7 @@ describe('LifecycleService', () => {
       reviewComments.mockResolvedValue([comment({})]);
       failing(run(), run({name: 'e2e', state: 'pending', jobId: '71'}));
 
-      await service.poll(5000);
+      await service.poll(opened(), 5000);
 
       expect(failedLog).not.toHaveBeenCalled();
       expect(saved()).toHaveLength(1);
@@ -1585,7 +1582,7 @@ describe('LifecycleService', () => {
         });
         prIs({number: 50});
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
 
         expect(saved()).toEqual([
           {...watching, prNumber: 50, reviewSeenAt: 5000},
@@ -1599,7 +1596,7 @@ describe('LifecycleService', () => {
           pending: {kind: 'fix', sentAt: 1, headSha: 'abc'},
         });
         prIs({number: 50});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
       });
     });
@@ -1609,7 +1606,7 @@ describe('LifecycleService', () => {
         record({phase: 'stopped', stop: {kind: 'open', message: 'falhou'}}),
       );
       prIs({state: 'closed'});
-      await service.poll(5000);
+      await service.poll(opened(), 5000);
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -1622,7 +1619,7 @@ describe('LifecycleService', () => {
     ])('Should not read gh while %s', async (_name, over) => {
       holds({...watching, ...over});
       prIs({checks: 'failing', checkRuns: [run()], mergeable: 'conflicting'});
-      await service.poll(5000);
+      await service.poll(opened(), 5000);
       expect(failedLog).not.toHaveBeenCalled();
       expect(reviewComments).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
@@ -1642,7 +1639,7 @@ describe('LifecycleService', () => {
           ana,
         ]);
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
 
         expect(write).toHaveBeenCalledExactlyOnceWith(
           't1',
@@ -1665,7 +1662,7 @@ describe('LifecycleService', () => {
         const second = comment({id: 'b', createdAt: SEEN + 2});
         reviewComments.mockResolvedValue([first, second]);
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
 
         expect(write).toHaveBeenCalledWith(
           't1',
@@ -1680,7 +1677,7 @@ describe('LifecycleService', () => {
 
       it('Should start counting from now when nothing was seen yet', async () => {
         holds({...watching, reviewSeenAt: null});
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(reviewComments).not.toHaveBeenCalled();
         expect(saved()).toEqual([{...watching, reviewSeenAt: 5000}]);
       });
@@ -1690,11 +1687,11 @@ describe('LifecycleService', () => {
         prIs({checks: 'passing'});
         reviewComments.mockRejectedValueOnce(new Error('gh não respondeu'));
 
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()).toEqual([watching]);
 
         reviewComments.mockResolvedValue([comment({})]);
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(saved()[1]?.outbox?.kind).toBe('review');
       });
     });
@@ -1706,7 +1703,7 @@ describe('LifecycleService', () => {
           store.delete(PATH);
           return RAW;
         });
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(store.has(PATH)).toBe(false);
       });
@@ -1721,7 +1718,7 @@ describe('LifecycleService', () => {
           store.set(PATH, resumed);
           return RAW;
         });
-        await service.poll(5000);
+        await service.poll(opened(), 5000);
         expect(save).not.toHaveBeenCalled();
         expect(store.get(PATH)).toEqual(resumed);
       });
@@ -1740,11 +1737,11 @@ describe('LifecycleService', () => {
         if (id === 't1') throw new Error('ENOSPC');
         return 'f';
       });
-      pullRequestFor.mockImplementation((id: string) =>
+      pullRequestFor.mockImplementation((_workspace: Workspace, id: string) =>
         id === WT ? pull() : pull({mergeable: 'conflicting'}),
       );
 
-      await expect(service.poll(5000)).rejects.toThrow('ENOSPC');
+      await expect(service.poll(opened(), 5000)).rejects.toThrow('ENOSPC');
 
       expect(saved()).toEqual([
         stopOf({kind: 'conflict', message: 'Conflito com main'}, other),
@@ -1793,12 +1790,62 @@ describe('LifecycleService', () => {
       'Should keep the outbox while the session is %s',
       async (_n, arrange) => {
         arrange();
-        await service.tick(1500);
+        await service.tick(opened(), 1500);
         expect(sendText).not.toHaveBeenCalled();
         expect(save).not.toHaveBeenCalled();
         expect(store.get(PATH)).toEqual(fixing);
       },
     );
+
+    describe('with several open workspaces', () => {
+      it('Should type a task two workspaces hold once, listing only the first', async () => {
+        const copy = structuredClone(workspace);
+        await service.tick([workspace, copy], 1500);
+        expect(sendText).toHaveBeenCalledExactlyOnceWith('fly-feat', FIX);
+        expect(mapped).toHaveBeenCalledExactlyOnceWith(workspace);
+      });
+
+      it('Should list no sessions for a workspace without a task', async () => {
+        const empty: Workspace = {root: '/s', repos: [], worktrees: []};
+        await service.tick([empty, workspace], 1500);
+        expect(mapped).toHaveBeenCalledExactlyOnceWith(workspace);
+        expect(sendText).toHaveBeenCalledTimes(1);
+      });
+
+      it("Should settle each workspace's tasks against its own sessions", async () => {
+        const own: Workspace = {
+          ...workspace,
+          worktrees: workspace.worktrees.filter(w => w.id !== OTHER),
+        };
+        const other: Workspace = {
+          ...workspace,
+          root: '/s',
+          worktrees: workspace.worktrees.filter(w => w.id === OTHER),
+        };
+        holds(fixing, {
+          ...fixing,
+          id: 't2',
+          worktreePath: OTHER_PATH,
+          branch: 'feat-y',
+        });
+        mapped.mockImplementation(async (shown: Workspace) => ({
+          tmux: 'ok',
+          message: null,
+          items: [
+            shown === other
+              ? item(OTHER, 'fly-other', 5, 's2')
+              : item(WT, 'fly-feat', 5, 's1'),
+          ],
+        }));
+
+        await service.tick([own, other], 1500);
+
+        expect(mapped.mock.calls).toEqual([[own], [other]]);
+        expect(sendText).toHaveBeenCalledTimes(2);
+        expect(sendText).toHaveBeenCalledWith('fly-feat', FIX);
+        expect(sendText).toHaveBeenCalledWith('fly-other', FIX);
+      });
+    });
 
     it('Should type the fix once into the idle session', async () => {
       track('headSha', headSha, 'local1');
@@ -1809,8 +1856,8 @@ describe('LifecycleService', () => {
       });
       track('sendText', sendText, undefined);
 
-      await service.tick(1500);
-      await service.tick(1600);
+      await service.tick(opened(), 1500);
+      await service.tick(opened(), 1600);
 
       expect(hasDraft).toHaveBeenCalledWith('fly-feat');
       expect(headSha).toHaveBeenCalledWith(PATH);
@@ -1864,7 +1911,7 @@ describe('LifecycleService', () => {
       'Should not type over a draft started while %s was read',
       async (_name, arrange) => {
         arrange();
-        await service.tick(1500);
+        await service.tick(opened(), 1500);
         expect(sendText).not.toHaveBeenCalled();
         expect(save).not.toHaveBeenCalled();
       },
@@ -1872,23 +1919,23 @@ describe('LifecycleService', () => {
 
     it('Should time the fix after a turn that ended late, so it is not taken for its own', async () => {
       forSession.mockResolvedValue(summary({lastTurnEndAt: 2000}));
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(saved()[0]?.pending?.sentAt).toBe(2000);
 
-      await service.tick(2500);
+      await service.tick(opened(), 2500);
       expect(status).not.toHaveBeenCalled();
       expect(saved()).toHaveLength(1);
     });
 
     it('Should time the fix now for a promptless session with no transcript', async () => {
       forSession.mockResolvedValue(null);
-      await service.tick(20_000);
+      await service.tick(opened(), 20_000);
       expect(saved()[0]?.pending?.sentAt).toBe(20_000);
     });
 
     it('Should type the review into the idle session', async () => {
       holds(reviewing);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(sendText).toHaveBeenCalledExactlyOnceWith('fly-feat', REVIEW);
       expect(saved()).toEqual([
         {
@@ -1907,7 +1954,7 @@ describe('LifecycleService', () => {
         item(WT, 'fly-feat', 5, 's1'),
         item(OTHER, 'fly-y', 5, 's2'),
       ]);
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(sendText).toHaveBeenCalledExactlyOnceWith('fly-feat', FIX);
       expect(saved()).toHaveLength(1);
     });
@@ -1917,24 +1964,24 @@ describe('LifecycleService', () => {
         store.set(PATH, {...fixing, outbox: null});
         return 'local1';
       });
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(sendText).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should not bring back a record removed while typing', async () => {
       sendText.mockImplementation(async () => void store.delete(PATH));
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(save).not.toHaveBeenCalled();
       expect(store.has(PATH)).toBe(false);
     });
 
     it('Should keep the outbox and free the worktree when typing fails', async () => {
       sendText.mockRejectedValueOnce(new Error('tmux falhou'));
-      await expect(service.tick(1500)).rejects.toThrow('tmux falhou');
+      await expect(service.tick(opened(), 1500)).rejects.toThrow('tmux falhou');
       expect(save).not.toHaveBeenCalled();
 
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(sendText).toHaveBeenCalledTimes(2);
       expect(saved()).toHaveLength(1);
     });
@@ -1948,14 +1995,14 @@ describe('LifecycleService', () => {
           }),
       );
       get.mockResolvedValueOnce(null);
-      const opened = service.openPullRequest(WT, 1000);
+      const opening = service.openPullRequest(current, WT, 1000);
       await vi.waitFor(() => expect(sendText).toHaveBeenCalledTimes(1));
 
-      await service.tick(1500);
+      await service.tick(opened(), 1500);
       expect(sendText).toHaveBeenCalledTimes(1);
 
       release();
-      await opened;
+      await opening;
     });
 
     it('Should refuse "Abrir PR" while the fix is being typed', async () => {
@@ -1966,13 +2013,13 @@ describe('LifecycleService', () => {
             release = resolve;
           }),
       );
-      const ticked = service.tick(1500);
+      const ticked = service.tick(opened(), 1500);
       await vi.waitFor(() => expect(sendText).toHaveBeenCalledTimes(1));
 
-      await expect(service.openPullRequest(WT, 1500)).rejects.toThrow(
+      await expect(service.openPullRequest(current, WT, 1500)).rejects.toThrow(
         'A sessão está ocupada; aguarde o turno terminar',
       );
-      await expect(service.resume(WT)).rejects.toThrow(
+      await expect(service.resume(current, WT)).rejects.toThrow(
         'A sessão está ocupada; aguarde o turno terminar',
       );
 
@@ -2001,14 +2048,14 @@ describe('LifecycleService', () => {
 
       it('Should wait while the turn has not ended', async () => {
         forSession.mockResolvedValue(summary({lastTurnEndAt: 1000}));
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(status).not.toHaveBeenCalled();
         expect(save).not.toHaveBeenCalled();
       });
 
       it('Should stop when the session is gone', async () => {
         sessionsAre([]);
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(saved()).toEqual([
           {
             ...fixSent,
@@ -2033,7 +2080,7 @@ describe('LifecycleService', () => {
           track('headSha', headSha, 'local2');
           track('push', push, undefined);
 
-          await service.tick(1600);
+          await service.tick(opened(), 1600);
 
           expect(push).toHaveBeenCalledWith(PATH, 'feat-x');
           expect(calls).toEqual(['status', 'headSha', 'push']);
@@ -2045,7 +2092,7 @@ describe('LifecycleService', () => {
 
       it('Should stop when the fix turn made no commit', async () => {
         headSha.mockResolvedValue('local1');
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(push).not.toHaveBeenCalled();
         expect(saved()).toEqual([
           {
@@ -2060,7 +2107,7 @@ describe('LifecycleService', () => {
       it('Should mark a review done when its turn made no commit', async () => {
         holds(reviewSent);
         headSha.mockResolvedValue('local1');
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(push).not.toHaveBeenCalled();
         expect(saved()).toEqual([
           {
@@ -2074,7 +2121,7 @@ describe('LifecycleService', () => {
 
       it('Should keep a missing review count missing', async () => {
         holds({...reviewSent, review: null});
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(saved()[0]?.review).toBeNull();
       });
 
@@ -2086,7 +2133,7 @@ describe('LifecycleService', () => {
         async (_kind, task, kind) => {
           holds(task);
           status.mockResolvedValue({'src/a.ts': 'M', 'b.md': '?'});
-          await service.tick(1600);
+          await service.tick(opened(), 1600);
           expect(push).not.toHaveBeenCalled();
           expect(saved()).toEqual([
             {
@@ -2115,14 +2162,14 @@ describe('LifecycleService', () => {
         ],
       ])('Should stop when %s', async (_name, arrange, message) => {
         arrange();
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(saved()[0]?.stop).toEqual({kind: 'ci', message});
       });
 
       it('Should not undo a record changed during the push', async () => {
         const resumed = {...fixSent, phase: 'ci' as const, pending: null};
         push.mockImplementation(async () => void store.set(PATH, resumed));
-        await service.tick(1600);
+        await service.tick(opened(), 1600);
         expect(save).not.toHaveBeenCalled();
         expect(store.get(PATH)).toEqual(resumed);
       });
@@ -2147,7 +2194,7 @@ describe('LifecycleService', () => {
     });
 
     it('Should rerun every run of the infrastructure stop, then watch again', async () => {
-      await service.rerun(WT);
+      await service.rerun(current, WT);
       expect(rerun.mock.calls).toEqual([
         ['/r/talon', '7'],
         ['/r/talon', '8'],
@@ -2176,7 +2223,7 @@ describe('LifecycleService', () => {
       ['a record of another branch', {...infra, branch: 'old'}],
     ])('Should refuse with %s', async (_name, task) => {
       holds(...(task ? [task] : []));
-      await expect(service.rerun(WT)).rejects.toThrow(
+      await expect(service.rerun(current, WT)).rejects.toThrow(
         'Nada para rodar de novo',
       );
       expect(rerun).not.toHaveBeenCalled();
@@ -2193,7 +2240,7 @@ describe('LifecycleService', () => {
       'Should not save over a record %s while the runs restarted',
       async (_name, change) => {
         rerun.mockImplementation(async () => change());
-        await service.rerun(WT);
+        await service.rerun(current, WT);
         expect(rerun).toHaveBeenCalledTimes(2);
         expect(save).not.toHaveBeenCalled();
       },
@@ -2201,14 +2248,14 @@ describe('LifecycleService', () => {
 
     it('Should keep the stop when gh cannot rerun', async () => {
       rerun.mockRejectedValue(new Error('gh não respondeu em 30 s'));
-      await expect(service.rerun(WT)).rejects.toThrow(
+      await expect(service.rerun(current, WT)).rejects.toThrow(
         'gh não respondeu em 30 s',
       );
       expect(save).not.toHaveBeenCalled();
     });
 
     it('Should refuse an unknown worktree', async () => {
-      await expect(service.rerun('nope')).rejects.toThrow(
+      await expect(service.rerun(current, 'nope')).rejects.toThrow(
         'Worktree não encontrado',
       );
     });
@@ -2238,8 +2285,8 @@ describe('LifecycleService', () => {
 
     it('Should go back to watching the open PR', async () => {
       pullRequestFor.mockReturnValue(pull());
-      await service.resume(WT);
-      expect(pullRequestFor).toHaveBeenCalledWith(WT);
+      await service.resume(current, WT);
+      expect(pullRequestFor).toHaveBeenCalledWith(workspace, WT);
       expect(saved()).toEqual([{...resumed, phase: 'ci'}]);
     });
 
@@ -2248,7 +2295,7 @@ describe('LifecycleService', () => {
       ['a merged PR', pull({state: 'merged'})],
     ])('Should go back to work with %s', async (_name, pr) => {
       pullRequestFor.mockReturnValue(pr);
-      await service.resume(WT);
+      await service.resume(current, WT);
       expect(saved()).toEqual([{...resumed, phase: 'working'}]);
     });
 
@@ -2256,7 +2303,7 @@ describe('LifecycleService', () => {
       'Should keep the review %j as it is',
       async review => {
         holds({...stuck, review});
-        await service.resume(WT);
+        await service.resume(current, WT);
         expect(saved()[0]?.review).toEqual(review);
       },
     );
@@ -2266,7 +2313,7 @@ describe('LifecycleService', () => {
       ['a record of another branch', {...stuck, branch: 'old'}],
     ])('Should do nothing with %s', async (_name, task) => {
       holds(...(task ? [task] : []));
-      await service.resume(WT);
+      await service.resume(current, WT);
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -2278,22 +2325,22 @@ describe('LifecycleService', () => {
             release = resolve;
           }),
       );
-      const resuming = service.resume(WT);
+      const resuming = service.resume(current, WT);
 
-      await expect(service.resume(WT)).rejects.toThrow(
+      await expect(service.resume(current, WT)).rejects.toThrow(
         'A sessão está ocupada; aguarde o turno terminar',
       );
-      await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(
+      await expect(service.openPullRequest(current, WT, 1000)).rejects.toThrow(
         'A sessão está ocupada; aguarde o turno terminar',
       );
       release();
       await resuming;
-      await service.resume(WT);
+      await service.resume(current, WT);
       expect(save).toHaveBeenCalledTimes(2);
     });
 
     it('Should refuse an unknown worktree', async () => {
-      await expect(service.resume('nope')).rejects.toThrow(
+      await expect(service.resume(current, 'nope')).rejects.toThrow(
         'Worktree não encontrado',
       );
     });
@@ -2304,17 +2351,19 @@ describe('LifecycleService', () => {
       mergePullRequest.mockImplementation(async () => void order.push('merge'));
       clean.mockImplementation(async () => void order.push('clean'));
 
-      await service.merge(WT);
+      await service.merge(current, WT);
 
       expect(order).toEqual(['merge', 'clean']);
-      expect(mergePullRequest).toHaveBeenCalledExactlyOnceWith(WT);
-      expect(clean).toHaveBeenCalledExactlyOnceWith(WT, {confirmed: true});
+      expect(mergePullRequest).toHaveBeenCalledExactlyOnceWith(workspace, WT);
+      expect(clean).toHaveBeenCalledExactlyOnceWith(workspace, WT, {
+        confirmed: true,
+      });
     });
 
     it('Should not clean up when the merge is rejected', async () => {
       mergePullRequest.mockRejectedValue(new Error('conflito'));
 
-      await expect(service.merge(WT)).rejects.toThrow('conflito');
+      await expect(service.merge(current, WT)).rejects.toThrow('conflito');
       expect(clean).not.toHaveBeenCalled();
     });
 
@@ -2322,7 +2371,9 @@ describe('LifecycleService', () => {
       mergePullRequest.mockResolvedValue(undefined);
       clean.mockRejectedValue(new Error('Falha ao limpar: sujo'));
 
-      await expect(service.merge(WT)).rejects.toThrow('Falha ao limpar: sujo');
+      await expect(service.merge(current, WT)).rejects.toThrow(
+        'Falha ao limpar: sujo',
+      );
     });
   });
 
@@ -2332,16 +2383,18 @@ describe('LifecycleService', () => {
       async confirmed => {
         clean.mockResolvedValue(undefined);
 
-        await service.clean(WT, confirmed);
+        await service.clean(current, WT, confirmed);
 
-        expect(clean).toHaveBeenCalledExactlyOnceWith(WT, {confirmed});
+        expect(clean).toHaveBeenCalledExactlyOnceWith(workspace, WT, {
+          confirmed,
+        });
       },
     );
 
     it('Should propagate a cleanup refusal', async () => {
       clean.mockRejectedValue(new Error('Worktree não encontrado'));
 
-      await expect(service.clean(WT, true)).rejects.toThrow(
+      await expect(service.clean(current, WT, true)).rejects.toThrow(
         'Worktree não encontrado',
       );
     });
@@ -2357,12 +2410,12 @@ describe('LifecycleService', () => {
     };
 
     it.each<[string, () => Promise<void>]>([
-      ['merge', () => service.merge(WT)],
-      ['clean', () => service.clean(WT, true)],
+      ['merge', () => service.merge(current, WT)],
+      ['clean', () => service.clean(current, WT, true)],
     ])('Should refuse %s while a request is being typed', async (_n, act) => {
       const {gate, release} = gateway();
       sendText.mockImplementationOnce(() => gate);
-      const opening = service.openPullRequest(WT, 1000);
+      const opening = service.openPullRequest(current, WT, 1000);
 
       await expect(act()).rejects.toThrow(BUSY);
       expect(mergePullRequest).not.toHaveBeenCalled();
@@ -2372,8 +2425,8 @@ describe('LifecycleService', () => {
     });
 
     it.each<[string, () => Promise<void>, ReturnType<typeof vi.fn>]>([
-      ['merge', () => service.merge(WT), mergePullRequest],
-      ['clean', () => service.clean(WT, true), clean],
+      ['merge', () => service.merge(current, WT), mergePullRequest],
+      ['clean', () => service.clean(current, WT, true), clean],
     ])(
       'Should keep a request out while %s runs, and free the worktree after',
       async (_n, act, step) => {
@@ -2382,26 +2435,28 @@ describe('LifecycleService', () => {
         clean.mockImplementation(() => gate);
         const running = act();
 
-        await expect(service.openPullRequest(WT, 1000)).rejects.toThrow(BUSY);
+        await expect(
+          service.openPullRequest(current, WT, 1000),
+        ).rejects.toThrow(BUSY);
         release();
         await running;
-        await service.openPullRequest(WT, 1000);
+        await service.openPullRequest(current, WT, 1000);
         expect(sendText).toHaveBeenCalledTimes(1);
       },
     );
 
     it('Should free the worktree after a rejected merge', async () => {
       mergePullRequest.mockRejectedValue(new Error('conflito'));
-      await expect(service.merge(WT)).rejects.toThrow('conflito');
+      await expect(service.merge(current, WT)).rejects.toThrow('conflito');
 
-      await service.openPullRequest(WT, 1000);
+      await service.openPullRequest(current, WT, 1000);
       expect(sendText).toHaveBeenCalledTimes(1);
     });
 
     it.each<[string, () => Promise<void>]>([
-      ['merge', () => service.merge('nope')],
-      ['clean', () => service.clean('nope', true)],
-      ['merge of the main worktree', () => service.merge('talon')],
+      ['merge', () => service.merge(current, 'nope')],
+      ['clean', () => service.clean(current, 'nope', true)],
+      ['merge of the main worktree', () => service.merge(current, 'talon')],
     ])('Should refuse %s without a branch worktree', async (_n, act) => {
       await expect(act()).rejects.toThrow('Worktree não encontrado');
       expect(mergePullRequest).not.toHaveBeenCalled();

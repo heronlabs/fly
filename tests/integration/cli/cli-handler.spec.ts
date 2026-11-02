@@ -144,8 +144,7 @@ describe('CliHandler (real tmux, git and files)', () => {
   const appSnapshot = async () => {
     const workspace = await new WorkspaceService(files, git).discover(root);
     const app = new SessionService(tmuxService, new CryptoIdGeneratorService());
-    app.setWorkspace(workspace);
-    return (await app.snapshot()).sessions;
+    return (await app.snapshot(workspace)).sessions;
   };
 
   it('Should start, list and stop a session the app maps to its worktree', async () => {

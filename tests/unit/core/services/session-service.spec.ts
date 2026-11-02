@@ -43,43 +43,36 @@ describe('SessionService', () => {
     hex.mockReturnValue('abc123');
     uuid.mockReturnValue('u1');
     service = new SessionService(launcher, ids);
-    service.setWorkspace(workspace);
-  });
-
-  it('Should expose the current workspace', () => {
-    expect(service.currentWorkspace()).toBe(workspace);
-    service.setWorkspace(null);
-    expect(service.currentWorkspace()).toBeNull();
   });
 
   it('Should prefer the explicit @fly_worktree over cwd', async () => {
     list.mockResolvedValue([
       mux({options: {'@fly_worktree': '/r/talon-2'}, cwd: '/r/talon'}),
     ]);
-    const snap = await service.snapshot();
+    const snap = await service.snapshot(workspace);
     expect(snap.sessions[0]?.worktreeId).toBe('talon-2');
   });
 
   it('Should map a cwd to the deepest worktree', async () => {
     list.mockResolvedValue([mux({cwd: '/r/talon/.worktrees/feat/src'})]);
-    const snap = await service.snapshot();
+    const snap = await service.snapshot(workspace);
     expect(snap.sessions[0]?.worktreeId).toBe('talon/.worktrees/feat');
   });
 
   it('Should map a cwd equal to a worktree path', async () => {
     list.mockResolvedValue([mux({cwd: '/r/talon'})]);
-    const snap = await service.snapshot();
+    const snap = await service.snapshot(workspace);
     expect(snap.sessions[0]?.worktreeId).toBe('talon');
   });
 
   it('Should not match a sibling that shares a name prefix', async () => {
     list.mockResolvedValue([mux({cwd: '/r/talon-3/x'})]);
-    expect((await service.snapshot()).sessions).toEqual([]);
+    expect((await service.snapshot(workspace)).sessions).toEqual([]);
   });
 
   it('Should leave out unknown cwds', async () => {
     list.mockResolvedValue([mux({cwd: '/elsewhere'})]);
-    expect(await service.snapshot()).toEqual({
+    expect(await service.snapshot(workspace)).toEqual({
       tmux: 'ok',
       message: null,
       sessions: [],
@@ -87,9 +80,8 @@ describe('SessionService', () => {
   });
 
   it('Should return no sessions without a workspace', async () => {
-    service.setWorkspace(null);
     list.mockResolvedValue([mux({})]);
-    expect((await service.snapshot()).sessions).toEqual([]);
+    expect((await service.snapshot(null)).sessions).toEqual([]);
   });
 
   it('Should fill origin, task and sort by createdAt then name', async () => {
@@ -102,7 +94,7 @@ describe('SessionService', () => {
         options: {'@fly_session_id': 'x', '@fly_task': 'do it'},
       }),
     ]);
-    const {sessions} = await service.snapshot();
+    const {sessions} = await service.snapshot(workspace);
     expect(sessions).toEqual([
       {
         name: 'a',
@@ -135,7 +127,7 @@ describe('SessionService', () => {
     const fly = mux({name: 'a', options: {'@fly_session_id': 'x'}});
     const external = mux({name: 'b', cwd: '/r/talon-2/src', createdAt: 0});
     list.mockResolvedValue([fly, mux({cwd: '/elsewhere'}), external]);
-    expect(await service.mapped()).toEqual({
+    expect(await service.mapped(workspace)).toEqual({
       tmux: 'ok',
       message: null,
       items: [
@@ -147,7 +139,7 @@ describe('SessionService', () => {
 
   it('Should map no items when tmux is missing', async () => {
     list.mockRejectedValue(Object.assign(new Error('spawn'), {code: 'ENOENT'}));
-    expect(await service.mapped()).toEqual({
+    expect(await service.mapped(workspace)).toEqual({
       tmux: 'missing',
       message: 'tmux não encontrado — instale com: brew install tmux',
       items: [],
@@ -156,7 +148,7 @@ describe('SessionService', () => {
 
   it('Should report tmux missing on ENOENT', async () => {
     list.mockRejectedValue(Object.assign(new Error('spawn'), {code: 'ENOENT'}));
-    expect(await service.snapshot()).toEqual({
+    expect(await service.snapshot(workspace)).toEqual({
       tmux: 'missing',
       message: 'tmux não encontrado — instale com: brew install tmux',
       sessions: [],
@@ -165,7 +157,7 @@ describe('SessionService', () => {
 
   it('Should report tmux error with the message', async () => {
     list.mockRejectedValue(new Error('boom'));
-    expect(await service.snapshot()).toEqual({
+    expect(await service.snapshot(workspace)).toEqual({
       tmux: 'error',
       message: 'boom',
       sessions: [],
@@ -174,7 +166,7 @@ describe('SessionService', () => {
 
   it('Should report a null rejection as an error instead of throwing', async () => {
     list.mockRejectedValue(null);
-    expect(await service.snapshot()).toEqual({
+    expect(await service.snapshot(workspace)).toEqual({
       tmux: 'error',
       message: 'null',
       sessions: [],
@@ -183,7 +175,7 @@ describe('SessionService', () => {
 
   it('Should stringify non-Error rejections', async () => {
     list.mockRejectedValue('bad');
-    expect(await service.snapshot()).toEqual({
+    expect(await service.snapshot(workspace)).toEqual({
       tmux: 'error',
       message: 'bad',
       sessions: [],
@@ -192,7 +184,7 @@ describe('SessionService', () => {
 
   it('Should start a claude session in the worktree', async () => {
     start.mockResolvedValue(undefined);
-    const name = await service.start('talon/.worktrees/feat');
+    const name = await service.start(workspace, 'talon/.worktrees/feat');
     expect(name).toBe('talon-feat-abc123');
     expect(start).toHaveBeenCalledWith({
       name: 'talon-feat-abc123',
@@ -207,7 +199,6 @@ describe('SessionService', () => {
 
   it('Should launch a claude session at a path named after its id', async () => {
     start.mockResolvedValue(undefined);
-    service.setWorkspace(null);
     const name = await service.launch('talon/src', '/r/talon/src');
     expect(name).toBe('talon-src-abc123');
     expect(start).toHaveBeenCalledWith({
@@ -258,14 +249,13 @@ describe('SessionService', () => {
   });
 
   it('Should fail to start without a workspace', async () => {
-    service.setWorkspace(null);
-    await expect(service.start('talon')).rejects.toThrow(
+    await expect(service.start(null, 'talon')).rejects.toThrow(
       'Nenhuma pasta aberta',
     );
   });
 
   it('Should fail to start an unknown worktree', async () => {
-    await expect(service.start('nope')).rejects.toThrow(
+    await expect(service.start(workspace, 'nope')).rejects.toThrow(
       'Worktree não encontrado',
     );
   });
@@ -274,7 +264,7 @@ describe('SessionService', () => {
     start.mockRejectedValue(
       Object.assign(new Error('spawn tmux ENOENT'), {code: 'ENOENT'}),
     );
-    await expect(service.start('talon')).rejects.toThrow(
+    await expect(service.start(workspace, 'talon')).rejects.toThrow(
       'tmux não encontrado — instale com: brew install tmux',
     );
   });
@@ -282,7 +272,7 @@ describe('SessionService', () => {
   it('Should pass any other start failure through unchanged', async () => {
     const error = new Error('duplicate session');
     start.mockRejectedValue(error);
-    await expect(service.start('talon')).rejects.toBe(error);
+    await expect(service.start(workspace, 'talon')).rejects.toBe(error);
   });
 
   it('Should delegate kill to the launcher', async () => {

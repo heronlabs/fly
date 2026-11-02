@@ -21,7 +21,7 @@ This session may itself run inside a fly session on the default tmux server. See
 
 | Process | Entry | Role |
 |---------|-------|------|
-| main | `src/main.ts` | Loads the login shell's `PATH` and `LANG` (Finder gives a minimal `PATH`), builds the Nest application context from `IpcModule`, calls `register()` on every handler and opens the window (`contextIsolation: true`, `nodeIntegration: false`, `window.open` denied, navigation off the app blocked). Single instance: a second `fly <pasta>` hands its argv to the first and quits. |
+| main | `src/main.ts` | Loads the login shell's `PATH` and `LANG` (Finder gives a minimal `PATH`), builds the Nest application context from `IpcModule`, calls `register()` on every handler and opens the first window (`contextIsolation: true`, `nodeIntegration: false`, `window.open` denied, navigation off the app blocked). Single instance, many windows: a second `fly <pasta>` hands its argv to the first and quits, and the folder opens in the window that shows its root, else in a new one; "Nova janela" (⌘⇧N, packaged menu) opens an empty one. |
 | preload | `src/preload.ts` | Maps `FlyApi` onto `ipcRenderer` and exposes it as `window.fly` through `contextBridge`. |
 | renderer | `src/application/ui` | React 19, antd, zustand (`state/fly-store.ts`), xterm.js, CodeMirror. Reaches the main process only through `window.fly`. |
 | CLI | `src/cli.ts` | The `fly` command, wired by hand (no Nest). `bin/fly` runs it on fly's own Electron with `ELECTRON_RUN_AS_NODE`, so nothing it reaches may import `electron`. |
@@ -36,7 +36,7 @@ App data lives in `~/Library/Application Support/fly` (packaged) or `fly-dev` (`
 | `core/interfaces` | Ports: abstract classes that double as Nest tokens (`CommandRunner`, `VcsGateway`, `PrGateway`, `SessionLauncher`, `TerminalSpawner`, `TranscriptSource`, …). |
 | `core/services` | The logic. `*-service.ts` are injectable classes; `*-rules.ts`, `lifecycle-steps.ts`, `lifecycle-poll.ts`, `session-naming.ts` and friends are pure functions the services call. |
 | `infrastructure` | One folder per outside tool: `git`, `github` (`gh`), `tmux`, `pty` (node-pty), `claude` (transcripts), `filesystem`, `environment`, `process`. Output parsers are pure `*-parser.ts` files. |
-| `application/ipc` | Handlers: register channels on `IpcHost`, own the timers, broadcast snapshots. `ipc-module.ts` is the composition root. |
+| `application/ipc` | Handlers: register channels on `IpcHost`, own the timers, broadcast snapshots. `ipc-module.ts` is the composition root. `WindowWorkspacesService` holds the workspace each window shows, by the id of its web contents (`event.sender.id`); core services take that workspace as an argument and hold none. |
 | `application/cli` | The `fly` subcommands (`CliHandler`). |
 | `application/ui` | `app-shell.tsx` lays out `panels/`; `editor/` holds the CodeMirror host, languages and the VSCode-like palette (`--ed*` variables); `terminal/`, `theme/`, `state/`. |
 
@@ -53,11 +53,11 @@ App data lives in `~/Library/Application Support/fly` (packaged) or `fly-dev` (`
 
 | Where | When | Does |
 |-------|------|------|
-| `SessionHandler` | every 3 s | Lists tmux sessions, broadcasts `session:changed`. |
-| `QueueHandler.tick` | every 3 s | `LifecycleService.tick` (types queued instructions, settles finished turns), then broadcasts `queue:changed` when the snapshot changed. |
-| `QueueHandler.refresh` | every 30 s | PR list through `gh`, then `LifecycleService.poll` (CI and review). |
-| `GitDirWatcherService` | on `.git` changes (300 ms debounce, 15 s safety tick) | `workspace:changed`. |
-| `TerminalHandler` | 8 ms batches | pty output to `terminal:data`. |
+| `SessionHandler` | every 3 s | Lists tmux sessions, sends each window its own `session:changed` when it changed. |
+| `QueueHandler.tick` | every 3 s | `LifecycleService.tick` over every open workspace (types queued instructions, settles finished turns; a task two windows show is handled once, by the first), then sends each window its own `queue:changed` when it changed. |
+| `QueueHandler.refresh` | every 30 s | PR list through `gh` for the repos of every open workspace, then `LifecycleService.poll` (CI and review). |
+| `GitDirWatcherService` | on `.git` changes (300 ms debounce, 15 s safety tick) | `workspace:changed` to the window whose repos changed. |
+| `TerminalHandler` | 8 ms batches | pty output to `terminal:data` of the window that attached it. |
 | `UpdateHandler` | every 6 h, packaged only | Latest release through `gh`, footer notice. |
 | renderer | every 3 s | Diff of the selected worktree; disk state of open files. |
 
@@ -72,7 +72,7 @@ App data lives in `~/Library/Application Support/fly` (packaged) or `fly-dev` (`
 
 ### Terminal path
 
-xterm.js `onData` → `window.fly.terminal.write` → `TerminalHandler` → `TerminalService` (tracks drafts) → node-pty running `tmux -u attach-session -t =<name>` (no `TMUX`/`TMUX_PANE`, `TERM=xterm-256color`, `COLORTERM=truecolor`). Back: pty output batched every 8 ms → `terminal:data` → `xterm.write`. Resizing goes through `FitAddon` → `pty.resize`. Closing a tab kills only the tmux client; the session lives on.
+xterm.js `onData` → `window.fly.terminal.write` → `TerminalHandler` → `TerminalService` (tracks drafts) → node-pty running `tmux -u attach-session -t =<name>` (no `TMUX`/`TMUX_PANE`, `TERM=xterm-256color`, `COLORTERM=truecolor`). Back: pty output batched every 8 ms → `terminal:data` to the window that attached it → `xterm.write`. Resizing goes through `FitAddon` → `pty.resize`. Closing a tab kills only the tmux client; the session lives on. Reloading or closing a window kills its own clients only.
 
 ## Recipes
 
@@ -80,7 +80,7 @@ xterm.js `onData` → `window.fly.terminal.write` → `TerminalHandler` → `Ter
 
 1. Channel name and `FlyApi` method in `src/core/domain/fly-api.ts`.
 2. Wire it in `src/preload.ts`.
-3. Register it in a handler: `host.handle` for request/response, `host.on` for fire-and-forget, `BROADCASTER` for main → renderer events.
+3. Register it in a handler: `host.handle` for request/response, `host.on` for fire-and-forget, `BROADCASTER` for main → renderer events (`send` to every window, `sendTo` to one). A call that acts on the folder hands the core service `windows.of(event.sender.id)`, the workspace of the window that asked.
 4. A new handler also needs a provider in `ipc-module.ts` and a `register()` call in `main.ts`.
 5. Add it to the `window.fly` mock in `tests/ui/setup.ts` and test the handler with a fake `IpcHost`.
 

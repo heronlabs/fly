@@ -6,6 +6,8 @@ import {LifecycleService} from '../../../core/services/lifecycle-service';
 import {QueueService} from '../../../core/services/queue-service';
 import type {Broadcaster, IpcHost} from '../ipc-types';
 import {BROADCASTER, IPC_HOST} from '../ipc-types';
+import {WindowBroadcast} from '../window-broadcast';
+import {WindowWorkspacesService} from '../window-workspaces-service';
 
 export const QUEUE_POLL_MS = 3000;
 export const PR_POLL_MS = 30_000;
@@ -20,19 +22,28 @@ export class QueueHandler {
   private prTimer: NodeJS.Timeout | null = null;
   private ticking = false;
   private refreshing = false;
-  private lastBroadcast: string | null = null;
+  private readonly broadcast: WindowBroadcast<QueueSnapshot>;
 
   constructor(
     @Inject(IPC_HOST) private readonly host: IpcHost,
-    @Inject(BROADCASTER) private readonly broadcaster: Broadcaster,
+    @Inject(BROADCASTER) broadcaster: Broadcaster,
     private readonly queue: QueueService,
     private readonly lifecycle: LifecycleService,
-  ) {}
+    private readonly windows: WindowWorkspacesService,
+  ) {
+    this.broadcast = new WindowBroadcast(
+      broadcaster,
+      channels.queueChanged,
+      workspace => this.queue.snapshot(workspace),
+      error =>
+        this.logger.error(`Falha ao atualizar a fila: ${errorMessage(error)}`),
+    );
+  }
 
   register(): void {
-    this.host.handle(channels.queueList, () => this.list());
-    this.host.handle(channels.prMerge, async (_event, worktreeId: string) => {
-      await this.lifecycle.merge(worktreeId);
+    this.host.handle(channels.queueList, event => this.list(event.sender.id));
+    this.host.handle(channels.prMerge, async (event, worktreeId: string) => {
+      await this.lifecycle.merge(this.windows.of(event.sender.id), worktreeId);
       await this.tick();
     });
     this.stop();
@@ -49,29 +60,25 @@ export class QueueHandler {
     this.prTimer = null;
   }
 
-  private async list(): Promise<QueueSnapshot> {
-    // Another folder may be open now: refresh its PRs (skipped while one runs).
+  private async list(windowId: number): Promise<QueueSnapshot> {
+    // The window may have opened another folder: refresh the PRs (skipped
+    // while a refresh runs).
     void this.refresh();
-    return this.queue.snapshot();
+    return this.queue.snapshot(this.windows.of(windowId));
   }
 
+  // The tasks of every open folder move along; each window then gets the
+  // queue of its own.
   async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
     try {
       try {
-        await this.lifecycle.tick();
+        await this.lifecycle.tick(this.windows.all());
       } catch (error) {
         this.logger.error(`Falha no ciclo das tarefas: ${errorMessage(error)}`);
       }
-      const snapshot = await this.queue.snapshot();
-      const serialized = JSON.stringify(snapshot);
-      if (serialized !== this.lastBroadcast) {
-        this.lastBroadcast = serialized;
-        this.broadcaster.send(channels.queueChanged, snapshot);
-      }
-    } catch (error) {
-      this.logger.error(`Falha ao atualizar a fila: ${errorMessage(error)}`);
+      await this.broadcast.update(this.windows.entries());
     } finally {
       this.ticking = false;
     }
@@ -81,9 +88,10 @@ export class QueueHandler {
     if (this.refreshing) return;
     this.refreshing = true;
     try {
-      await this.queue.refreshPullRequests();
+      const open = this.windows.all();
+      await this.queue.refreshPullRequests(open);
       try {
-        await this.lifecycle.poll();
+        await this.lifecycle.poll(open);
       } catch (error) {
         this.logger.error(`Falha ao acompanhar a CI: ${errorMessage(error)}`);
       }

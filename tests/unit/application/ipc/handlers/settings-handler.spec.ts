@@ -3,7 +3,7 @@ import type {IpcHost} from '../../../../../src/application/ipc/ipc-types';
 import {channels} from '../../../../../src/core/domain/fly-api';
 import {SettingsService} from '../../../../../src/core/services/settings-service';
 
-const listeners = new Map<string, (...args: unknown[]) => unknown>();
+const listeners = new Map<string, (...args: any[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
   on: vi.fn(),

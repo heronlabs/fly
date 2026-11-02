@@ -46,8 +46,15 @@ function isAppUrl(
   }
 }
 
-// onReset runs when the renderer reloads or the window closes.
-function createWindow(onReset: () => void): void {
+type WindowEvents = {
+  // The renderer starts loading: a first load or a reload.
+  onReset(windowId: number): void;
+  onClosed(windowId: number): void;
+};
+
+// A window is known by the id of its web contents, which the IPC handlers see
+// as the sender of every call.
+function createWindow(events: WindowEvents): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -72,15 +79,24 @@ function createWindow(onReset: () => void): void {
     if (!isAppUrl(url, rendererUrl, indexFile)) event.preventDefault();
   });
   window.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
-  window.webContents.on('did-start-loading', onReset);
-  window.on('closed', onReset);
+  // Read now: the web contents are gone by the time the window is closed.
+  const windowId = window.webContents.id;
+  window.webContents.on('did-start-loading', () => events.onReset(windowId));
+  window.on('closed', () => events.onClosed(windowId));
 
   if (rendererUrl) {
     void window.loadURL(rendererUrl);
   } else {
     void window.loadFile(indexFile);
   }
+  return window;
 }
+
+const show = (window: BrowserWindow): void => {
+  if (window.isMinimized()) window.restore();
+  window.focus();
+  app.focus({steal: true});
+};
 
 let context: Awaited<
   ReturnType<typeof NestFactory.createApplicationContext>
@@ -93,16 +109,33 @@ app.setPath(
   join(app.getPath('appData'), userDataFolder(app.isPackaged)),
 );
 
-// A second `fly <pasta>` hands its argv to this instance and quits.
+// A second `fly <pasta>` hands its argv to this instance and quits; the folder
+// opens in the window that shows its root, else in a new one.
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
 
 const folderOf = (argv: string[], cwd: string): string | null =>
   launchFolder(argv, {cwd, defaultApp: process.defaultApp});
 
+type Booted = {launch: LaunchHandler; newWindow: () => BrowserWindow};
+
+// A folder lands in the window that shows its root, else in a new window;
+// no folder just brings an open window forward.
+const windowFor = async (
+  state: Booted,
+  folder: string | null,
+): Promise<BrowserWindow> => {
+  const windows = BrowserWindow.getAllWindows();
+  if (folder === null) return windows[0] ?? state.newWindow();
+  const shown = await state.launch.windowFor(folder);
+  return (
+    windows.find(window => window.webContents.id === shown) ?? state.newWindow()
+  );
+};
+
 const booted = app
   .whenReady()
-  .then(async () => {
+  .then(async (): Promise<Booted | null> => {
     if (!primary) return null;
     // Apps launched from Finder get a minimal PATH; load the login shell's.
     const env = await new LoginShellEnvService(
@@ -113,7 +146,8 @@ const booted = app
     context = await NestFactory.createApplicationContext(IpcModule, {
       logger: ['error', 'warn'],
     });
-    context.get(WorkspaceHandler).register();
+    const workspaceHandler = context.get(WorkspaceHandler);
+    workspaceHandler.register();
     context.get(SettingsHandler).register();
     context.get(ShellHandler).register();
     context.get(SessionHandler).register();
@@ -124,10 +158,17 @@ const booted = app
     context.get(AttachmentHandler).register();
     const terminalHandler = context.get(TerminalHandler);
     terminalHandler.register();
-    const onReset = () => terminalHandler.reset();
     const launch = context.get(LaunchHandler);
     launch.register();
-    launch.request(folderOf(process.argv, process.cwd()));
+    const newWindow = () =>
+      createWindow({
+        onReset: windowId => terminalHandler.reset(windowId),
+        onClosed: windowId => {
+          terminalHandler.reset(windowId);
+          workspaceHandler.forget(windowId);
+          launch.forget(windowId);
+        },
+      });
     const updateHandler = context.get(UpdateHandler);
     updateHandler.register();
     const setupHandler = context.get(SetupHandler);
@@ -135,7 +176,12 @@ const booted = app
     if (app.isPackaged) {
       updateHandler.start();
       Menu.setApplicationMenu(
-        Menu.buildFromTemplate(appMenuTemplate(() => setupHandler.request())),
+        Menu.buildFromTemplate(
+          appMenuTemplate(
+            () => setupHandler.request(),
+            () => void newWindow(),
+          ),
+        ),
       );
     }
     if (!app.isPackaged && process.platform === 'darwin') {
@@ -143,11 +189,12 @@ const booted = app
         nativeImage.createFromPath(join(app.getAppPath(), 'build/icon.png')),
       );
     }
-    createWindow(onReset);
+    const first = newWindow();
+    launch.request(first.webContents.id, folderOf(process.argv, process.cwd()));
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow(onReset);
+      if (BrowserWindow.getAllWindows().length === 0) newWindow();
     });
-    return {launch, onReset};
+    return {launch, newWindow};
   })
   .catch((error: unknown) => {
     console.error('Falha ao iniciar o fly', error);
@@ -156,17 +203,12 @@ const booted = app
   });
 
 app.on('second-instance', (_event, argv, workingDirectory) => {
-  void booted.then(state => {
+  void booted.then(async state => {
     if (!state) return;
-    state.launch.request(folderOf(argv, workingDirectory));
-    const [window] = BrowserWindow.getAllWindows();
-    if (!window) {
-      createWindow(state.onReset);
-      return;
-    }
-    if (window.isMinimized()) window.restore();
-    window.focus();
-    app.focus({steal: true});
+    const folder = folderOf(argv, workingDirectory);
+    const window = await windowFor(state, folder);
+    state.launch.request(window.webContents.id, folder);
+    show(window);
   });
 });
 

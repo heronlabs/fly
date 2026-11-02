@@ -6,13 +6,13 @@ import type {
 import {channels} from '../../../../../src/core/domain/fly-api';
 import {SetupService} from '../../../../../src/core/services/setup-service';
 
-const listeners = new Map<string, (...args: unknown[]) => unknown>();
+const listeners = new Map<string, (...args: any[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
   on: vi.fn(),
 };
 const send = vi.fn();
-const broadcaster: Broadcaster = {send};
+const broadcaster: Broadcaster = {send, sendTo: vi.fn()};
 const setup = {
   info: vi.fn(),
   doctor: vi.fn(),

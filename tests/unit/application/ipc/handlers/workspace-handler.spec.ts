@@ -6,10 +6,10 @@ import type {
   FolderPicker,
   IpcHost,
 } from '../../../../../src/application/ipc/ipc-types';
+import {WindowWorkspacesService} from '../../../../../src/application/ipc/window-workspaces-service';
 import {channels} from '../../../../../src/core/domain/fly-api';
 import type {Workspace} from '../../../../../src/core/domain/workspace';
 import {WorkspaceWatcher} from '../../../../../src/core/interfaces/workspace-watcher';
-import {SessionService} from '../../../../../src/core/services/session-service';
 import {SettingsService} from '../../../../../src/core/services/settings-service';
 import {WorkspaceService} from '../../../../../src/core/services/workspace-service';
 
@@ -22,22 +22,26 @@ const makeWorkspace = (root: string): Workspace => ({
   worktrees: [],
 });
 
-const listeners = new Map<string, (...args: unknown[]) => unknown>();
+const listeners = new Map<string, (...args: any[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
   on: vi.fn(),
 };
 const send = vi.fn();
-const broadcaster: Broadcaster = {send};
+const sendTo = vi.fn();
+const broadcaster: Broadcaster = {send, sendTo};
 const pick = vi.fn();
 const picker: FolderPicker = {pick};
 const discover = vi.fn();
 const rememberRoot = vi.fn();
 const watch = vi.fn();
-const setWorkspace = vi.fn();
+let windows: WindowWorkspacesService;
+let handler: WorkspaceHandler;
 
+const invokeFrom = (windowId: number, channel: string, ...args: unknown[]) =>
+  listeners.get(channel)!({sender: {id: windowId}}, ...args);
 const invoke = (channel: string, ...args: unknown[]) =>
-  listeners.get(channel)!({}, ...args);
+  invokeFrom(1, channel, ...args);
 
 let changeCallbacks: Array<() => void>;
 let disposers: Array<ReturnType<typeof vi.fn>>;
@@ -54,15 +58,17 @@ beforeEach(() => {
     disposers.push(dispose);
     return dispose;
   });
-  new WorkspaceHandler(
+  windows = new WindowWorkspacesService();
+  handler = new WorkspaceHandler(
     host,
     broadcaster,
     picker,
     {discover} as unknown as WorkspaceService,
     {rememberRoot} as unknown as SettingsService,
     {watch} as unknown as WorkspaceWatcher,
-    {setWorkspace} as unknown as SessionService,
-  ).register();
+    windows,
+  );
+  handler.register();
 });
 
 describe('WorkspaceHandler', () => {
@@ -84,7 +90,7 @@ describe('WorkspaceHandler', () => {
   it('opens a root: remembers it, discovers it and watches its repos', async () => {
     const result = await invoke(channels.workspaceOpen, '/root');
 
-    expect(setWorkspace).toHaveBeenCalledWith(makeWorkspace('/root'));
+    expect(windows.of(1)).toEqual(makeWorkspace('/root'));
     expect(rememberRoot).toHaveBeenCalledWith('/root');
     expect(result).toEqual(makeWorkspace('/root'));
     expect(watch).toHaveBeenCalledWith(
@@ -143,16 +149,15 @@ describe('WorkspaceHandler', () => {
   it('broadcasts a fresh discovery when the watcher fires', async () => {
     await invoke(channels.workspaceOpen, '/root');
     discover.mockClear();
+    const fresh = makeWorkspace('/root');
+    discover.mockResolvedValue(fresh);
     changeCallbacks[0]?.();
-    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    await vi.waitFor(() => expect(sendTo).toHaveBeenCalled());
 
     expect(discover).toHaveBeenCalledWith('/root');
-    expect(setWorkspace).toHaveBeenCalledTimes(2);
-    expect(setWorkspace).toHaveBeenLastCalledWith(makeWorkspace('/root'));
-    expect(send).toHaveBeenCalledWith(
-      channels.workspaceChanged,
-      makeWorkspace('/root'),
-    );
+    expect(windows.of(1)).toBe(fresh);
+    expect(sendTo).toHaveBeenCalledWith(1, channels.workspaceChanged, fresh);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('rejects refresh before any open', async () => {
@@ -173,7 +178,7 @@ describe('WorkspaceHandler', () => {
     const result = (await invoke(channels.workspaceRefresh)) as Workspace;
 
     expect(result.repos.map(repo => repo.id)).toEqual(['c']);
-    expect(setWorkspace).toHaveBeenLastCalledWith(result);
+    expect(windows.of(1)).toBe(result);
     expect(rememberRoot).not.toHaveBeenCalled();
     expect(disposers[0]).toHaveBeenCalledTimes(1);
     expect(watch).toHaveBeenLastCalledWith(['/root/c'], expect.any(Function));
@@ -189,7 +194,7 @@ describe('WorkspaceHandler', () => {
     await vi.waitFor(() => expect(error).toHaveBeenCalled());
 
     expect(String(error.mock.calls[0]?.[0])).toContain('sumiu');
-    expect(send).not.toHaveBeenCalled();
+    expect(sendTo).not.toHaveBeenCalled();
   });
 
   it('logs non-Error rejections from watcher discovery', async () => {
@@ -221,7 +226,7 @@ describe('WorkspaceHandler', () => {
     });
 
     changeCallbacks[0]?.();
-    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    await vi.waitFor(() => expect(sendTo).toHaveBeenCalled());
 
     expect(disposers[0]).toHaveBeenCalledTimes(1);
     expect(watch).toHaveBeenLastCalledWith(
@@ -234,7 +239,7 @@ describe('WorkspaceHandler', () => {
     await invoke(channels.workspaceOpen, '/root');
 
     changeCallbacks[0]?.();
-    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    await vi.waitFor(() => expect(sendTo).toHaveBeenCalled());
 
     expect(disposers[0]).not.toHaveBeenCalled();
     expect(watch).toHaveBeenCalledTimes(1);
@@ -253,14 +258,70 @@ describe('WorkspaceHandler', () => {
     release(makeWorkspace('/one'));
     await new Promise(resolve => setImmediate(resolve));
 
-    expect(send).not.toHaveBeenCalled();
-    expect(setWorkspace).toHaveBeenLastCalledWith(makeWorkspace('/two'));
+    expect(sendTo).not.toHaveBeenCalled();
+    expect(windows.of(1)).toEqual(makeWorkspace('/two'));
   });
 
   it('Should not set the workspace when discovery fails', async () => {
     discover.mockRejectedValue(new Error('sem acesso'));
     await expect(invoke(channels.workspaceOpen, '/x')).rejects.toThrow();
 
-    expect(setWorkspace).not.toHaveBeenCalled();
+    expect(windows.of(1)).toBeNull();
+  });
+
+  describe('with several windows', () => {
+    it('Should keep each window on its own folder and watcher', async () => {
+      await invokeFrom(1, channels.workspaceOpen, '/one');
+      await invokeFrom(2, channels.workspaceOpen, '/two');
+
+      expect(windows.of(1)?.root).toBe('/one');
+      expect(windows.of(2)?.root).toBe('/two');
+      expect(disposers[0]).not.toHaveBeenCalled();
+
+      const refreshed = (await invokeFrom(
+        2,
+        channels.workspaceRefresh,
+      )) as Workspace;
+      expect(refreshed.root).toBe('/two');
+      expect(disposers[1]).toHaveBeenCalledTimes(1);
+      expect(disposers[0]).not.toHaveBeenCalled();
+    });
+
+    it('Should tell only the window whose repos changed', async () => {
+      await invokeFrom(1, channels.workspaceOpen, '/one');
+      await invokeFrom(2, channels.workspaceOpen, '/two');
+
+      changeCallbacks[1]?.();
+      await vi.waitFor(() => expect(sendTo).toHaveBeenCalled());
+
+      expect(sendTo).toHaveBeenCalledExactlyOnceWith(
+        2,
+        channels.workspaceChanged,
+        makeWorkspace('/two'),
+      );
+    });
+
+    it('Should drop a closed window with its watcher, and ignore its late change', async () => {
+      const error = vi
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      await invokeFrom(1, channels.workspaceOpen, '/one');
+      await invokeFrom(2, channels.workspaceOpen, '/two');
+
+      handler.forget(1);
+      handler.forget(3);
+      changeCallbacks[0]?.();
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(disposers[0]).toHaveBeenCalledTimes(1);
+      expect(disposers[1]).not.toHaveBeenCalled();
+      expect(windows.of(1)).toBeNull();
+      expect(windows.of(2)?.root).toBe('/two');
+      expect(sendTo).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+      await expect(invokeFrom(1, channels.workspaceRefresh)).rejects.toThrow(
+        'Nenhuma pasta aberta',
+      );
+    });
   });
 });

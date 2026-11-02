@@ -1,16 +1,24 @@
 import type {Channel} from '../../core/domain/fly-api';
 
+// What a listener needs of Electron's event: the window that sent it, by the
+// id of its web contents.
+export type IpcEvent = {sender: {id: number}};
 export type IpcHost = {
   handle(
     channel: Channel,
-    listener: (event: unknown, ...args: any[]) => unknown,
+    listener: (event: IpcEvent, ...args: any[]) => unknown,
   ): void;
   on(
     channel: Channel,
-    listener: (event: unknown, ...args: any[]) => void,
+    listener: (event: IpcEvent, ...args: any[]) => void,
   ): void;
 };
-export type Broadcaster = {send(channel: Channel, payload: unknown): void};
+export type Broadcaster = {
+  // Every window.
+  send(channel: Channel, payload: unknown): void;
+  // One window, by the id of its web contents; a closed one gets nothing.
+  sendTo(windowId: number, channel: Channel, payload: unknown): void;
+};
 export type FolderPicker = {pick(): Promise<string | null>};
 export type FilePicker = {pick(): Promise<string[]>};
 export type LinkOpener = {open(url: string): Promise<void>};

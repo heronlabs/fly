@@ -45,7 +45,7 @@ the routine of "open VSCode, open iTerm, run `start-s`, type the task" with one
 app; `start-s` was a shell alias that started Claude Code in a new tmux session
 (see [Coming from code-sessions](#coming-from-code-sessions)):
 
-- **One window, every repo** — discovers the git repos under a folder, two levels deep, and every worktree of each. Session = worktree = task.
+- **One window, every repo** — discovers the git repos under a folder, two levels deep, and every worktree of each. Session = worktree = task. More folders open side by side, one window each.
 - **Real terminals, persistent sessions** — each worktree hosts Claude Code inside tmux, so sessions survive app restarts and stay reachable remotely via Tailscale + Termius. The [`fly` CLI](#cli) starts, lists, resumes and stops the same sessions from any terminal, and opens the app on a folder.
 - **Nova tarefa** — pick a repo, type a description, fly fetches the repo's default branch, creates `.worktrees/<branch>` (branch suggested from the description, editable), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). "Abrir PR" then has that session commit and write the PR, and fly opens it.
 - **Queue, not chat** — the state of each worktree is derived from the Claude Code transcript and `gh`. The TUI stays the chat.
@@ -166,9 +166,12 @@ usage error.
 **Opening a folder.** fly runs as a single instance per build kind: a dev build
 (`pnpm dev`, the dev `fly`) and the installed app run side by side, each with its
 own data folder, and each `fly` hands folders to its own instance. A second `fly <pasta>`
-hands the folder to the running app, which comes to the front (or reopens its
-window) and opens it the way a folder picked on the welcome screen opens,
-remembered among the recent folders. The root it opens climbs to a recent
+hands the folder to the running app: the window that already shows the folder's
+root comes to the front, else a new window opens it, the way a folder picked on
+the welcome screen opens, remembered among the recent folders. "Nova janela"
+(⌘⇧N) opens an empty window; only the first window reopens the last folder used,
+and a reloaded window keeps its own. Each window has its own queue, sessions and
+terminals; the tasks of every open window move along together. The root it opens climbs to a recent
 folder: a folder inside one of them opens the deepest such recent folder; a
 folder inside a git repo opens the parent of the repo's main worktree, since
 discovery lists the repos under a root; any other folder opens as the root
@@ -234,7 +237,7 @@ script via `contextBridge`.
 
 ```
 src/
-├── main.ts                   # Electron entry: boots Nest, opens the window, single instance
+├── main.ts                   # Electron entry: boots Nest, opens the windows, single instance
 ├── preload.ts                # contextBridge → window.fly (channels in core/domain/fly-api.ts)
 ├── cli.ts                    # `fly` CLI entry (bin/fly runs it on Electron in Node mode)
 ├── application/

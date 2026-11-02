@@ -2,6 +2,7 @@ import type {MenuItemConstructorOptions} from 'electron';
 
 export function appMenuTemplate(
   onSetup: () => void,
+  onNewWindow: () => void,
 ): MenuItemConstructorOptions[] {
   return [
     {
@@ -20,7 +21,18 @@ export function appMenuTemplate(
         {role: 'quit'},
       ],
     },
-    {role: 'fileMenu'},
+    {
+      role: 'fileMenu',
+      submenu: [
+        {
+          label: 'Nova janela',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => onNewWindow(),
+        },
+        {type: 'separator'},
+        {role: 'close'},
+      ],
+    },
     {role: 'editMenu'},
     {role: 'viewMenu'},
     {role: 'windowMenu'},

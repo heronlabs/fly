@@ -12,24 +12,28 @@ import {channels} from '../../../../../src/core/domain/fly-api';
 import type {TerminalSink} from '../../../../../src/core/services/terminal-service';
 import {TerminalService} from '../../../../../src/core/services/terminal-service';
 
-const handlers = new Map<string, (...args: unknown[]) => unknown>();
-const listeners = new Map<string, (...args: unknown[]) => unknown>();
+const handlers = new Map<string, (...args: any[]) => unknown>();
+const listeners = new Map<string, (...args: any[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void handlers.set(channel, listener),
   on: (channel, listener) => void listeners.set(channel, listener),
 };
 const send = vi.fn();
+const sendTo = vi.fn();
 const attach = vi.fn();
 const write = vi.fn();
 const resize = vi.fn();
 const detach = vi.fn();
-const detachAll = vi.fn();
 let handler: TerminalHandler;
 
 let sink: TerminalSink;
+// Every sink attach handed out, by the session it attached to.
+const sinks = new Map<string, TerminalSink>();
 
+const invokeFrom = (windowId: number, channel: string, ...args: unknown[]) =>
+  handlers.get(channel)!({sender: {id: windowId}}, ...args);
 const invoke = (channel: string, ...args: unknown[]) =>
-  handlers.get(channel)!({}, ...args);
+  invokeFrom(1, channel, ...args);
 const emit = (channel: string, ...args: unknown[]) =>
   listeners.get(channel)!({}, ...args);
 
@@ -37,16 +41,18 @@ beforeEach(() => {
   vi.useFakeTimers();
   handlers.clear();
   listeners.clear();
+  sinks.clear();
   attach.mockImplementation(
-    (_name: string, _size: unknown, terminalSink: TerminalSink) => {
+    (name: string, _size: unknown, terminalSink: TerminalSink) => {
       sink = terminalSink;
-      return 't1';
+      sinks.set(name, terminalSink);
+      return name === 'sess' ? 't1' : `t-${name}`;
     },
   );
   handler = new TerminalHandler(
     host,
-    {send} as Broadcaster,
-    {attach, write, resize, detach, detachAll} as unknown as TerminalService,
+    {send, sendTo} as Broadcaster,
+    {attach, write, resize, detach} as unknown as TerminalService,
   );
   handler.register();
 });
@@ -73,11 +79,11 @@ describe('TerminalHandler', () => {
     vi.advanceTimersByTime(TERMINAL_FLUSH_MS - 1);
     sink.data('t1', 'b');
     sink.data('t1', 'c');
-    expect(send).not.toHaveBeenCalled();
+    expect(sendTo).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
 
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith(channels.terminalData, {
+    expect(sendTo).toHaveBeenCalledTimes(1);
+    expect(sendTo).toHaveBeenCalledWith(1, channels.terminalData, {
       terminalId: 't1',
       data: 'abc',
     });
@@ -90,15 +96,15 @@ describe('TerminalHandler', () => {
     sink.data('t2', 'b');
     vi.advanceTimersByTime(TERMINAL_FLUSH_MS);
 
-    expect(send).toHaveBeenCalledWith(channels.terminalData, {
+    expect(sendTo).toHaveBeenCalledWith(1, channels.terminalData, {
       terminalId: 't1',
       data: 'a',
     });
-    expect(send).toHaveBeenCalledWith(channels.terminalData, {
+    expect(sendTo).toHaveBeenCalledWith(1, channels.terminalData, {
       terminalId: 't2',
       data: 'b',
     });
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(sendTo).toHaveBeenCalledTimes(2);
   });
 
   it('Should start a new batch after a flush', async () => {
@@ -109,11 +115,11 @@ describe('TerminalHandler', () => {
     sink.data('t1', 'b');
     vi.advanceTimersByTime(TERMINAL_FLUSH_MS);
 
-    expect(send).toHaveBeenLastCalledWith(channels.terminalData, {
+    expect(sendTo).toHaveBeenLastCalledWith(1, channels.terminalData, {
       terminalId: 't1',
       data: 'b',
     });
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(sendTo).toHaveBeenCalledTimes(2);
   });
 
   it('Should send pending data before the exit event', async () => {
@@ -122,12 +128,12 @@ describe('TerminalHandler', () => {
     sink.data('t1', 'bye');
     sink.exit('t1', 3);
 
-    expect(send.mock.calls).toEqual([
-      [channels.terminalData, {terminalId: 't1', data: 'bye'}],
-      [channels.terminalExit, {terminalId: 't1', exitCode: 3}],
+    expect(sendTo.mock.calls).toEqual([
+      [1, channels.terminalData, {terminalId: 't1', data: 'bye'}],
+      [1, channels.terminalExit, {terminalId: 't1', exitCode: 3}],
     ]);
     vi.advanceTimersByTime(TERMINAL_FLUSH_MS);
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(sendTo).toHaveBeenCalledTimes(2);
   });
 
   it('Should cancel the flush timer when the exit flushes the data', async () => {
@@ -145,8 +151,8 @@ describe('TerminalHandler', () => {
 
     sink.exit('t1', 0);
 
-    expect(send.mock.calls).toEqual([
-      [channels.terminalExit, {terminalId: 't1', exitCode: 0}],
+    expect(sendTo.mock.calls).toEqual([
+      [1, channels.terminalExit, {terminalId: 't1', exitCode: 0}],
     ]);
   });
 
@@ -158,19 +164,55 @@ describe('TerminalHandler', () => {
     vi.advanceTimersByTime(TERMINAL_FLUSH_MS * 2);
 
     expect(detach).toHaveBeenCalledWith('t1');
+    expect(sendTo).not.toHaveBeenCalled();
+  });
+
+  it("Should send a terminal's output only to the window that attached it", async () => {
+    await invokeFrom(1, channels.terminalAttach, 'a', {cols: 80, rows: 24});
+    await invokeFrom(2, channels.terminalAttach, 'b', {cols: 80, rows: 24});
+
+    sinks.get('a')!.data('t-a', 'x');
+    sinks.get('b')!.data('t-b', 'y');
+    vi.advanceTimersByTime(TERMINAL_FLUSH_MS);
+    sinks.get('b')!.exit('t-b', 0);
+
+    expect(sendTo.mock.calls).toEqual([
+      [1, channels.terminalData, {terminalId: 't-a', data: 'x'}],
+      [2, channels.terminalData, {terminalId: 't-b', data: 'y'}],
+      [2, channels.terminalExit, {terminalId: 't-b', exitCode: 0}],
+    ]);
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('Should drop every pending buffer and detach all on reset', async () => {
-    await invoke(channels.terminalAttach, 'sess', {cols: 80, rows: 24});
-    sink.data('t1', 'a');
-    sink.data('t2', 'b');
+  it("Should drop only the reset window's buffers and terminals", async () => {
+    await invokeFrom(1, channels.terminalAttach, 'a', {cols: 80, rows: 24});
+    await invokeFrom(1, channels.terminalAttach, 'c', {cols: 80, rows: 24});
+    await invokeFrom(2, channels.terminalAttach, 'b', {cols: 80, rows: 24});
+    sinks.get('a')!.data('t-a', 'x');
+    sinks.get('b')!.data('t-b', 'y');
 
-    handler.reset();
+    handler.reset(1);
     vi.advanceTimersByTime(TERMINAL_FLUSH_MS * 2);
 
-    expect(send).not.toHaveBeenCalled();
-    expect(detachAll).toHaveBeenCalledTimes(1);
+    expect(detach.mock.calls).toEqual([['t-a'], ['t-c']]);
+    expect(sendTo.mock.calls).toEqual([
+      [2, channels.terminalData, {terminalId: 't-b', data: 'y'}],
+    ]);
+
+    handler.reset(1);
+    expect(detach).toHaveBeenCalledTimes(2);
+  });
+
+  it('Should not detach again on reset a terminal that exited or was detached', async () => {
+    await invoke(channels.terminalAttach, 'a', {cols: 80, rows: 24});
+    await invoke(channels.terminalAttach, 'c', {cols: 80, rows: 24});
+    sinks.get('a')!.exit('t-a', 0);
+    await invoke(channels.terminalDetach, 't-c');
+    detach.mockClear();
+
+    handler.reset(1);
+
+    expect(detach).not.toHaveBeenCalled();
   });
 
   it('Should detach an id that has nothing pending', async () => {
@@ -191,7 +233,7 @@ describe('TerminalHandler', () => {
     const logged = vi
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => {});
-    send.mockImplementation(() => {
+    sendTo.mockImplementation(() => {
       throw new Error('window destroyed');
     });
     await invoke(channels.terminalAttach, 'sess', {cols: 80, rows: 24});
@@ -208,7 +250,7 @@ describe('TerminalHandler', () => {
     const logged = vi
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => {});
-    send.mockImplementation(() => {
+    sendTo.mockImplementation(() => {
       throw 'boom';
     });
     await invoke(channels.terminalAttach, 'sess', {cols: 80, rows: 24});
