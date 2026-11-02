@@ -23,6 +23,15 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
+  target: deb
+  executableName: fly
+  category: Development
+  maintainer: Heron Labs <org@heronlabs.com.br>
   extraResources:
     - from: build/icon.png
       to: icon.png
+deb:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  afterInstall: build/linux/after-install.tpl
+  afterRemove: build/linux/after-remove.tpl
+  recommends: [git, tmux]
