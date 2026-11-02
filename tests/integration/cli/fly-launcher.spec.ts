@@ -191,4 +191,52 @@ describe('bin/fly and scripts/install-cli.sh (real sh)', () => {
       expect(result.status).toBe(1);
     });
   });
+
+  // electron-builder's deb: Electron is /opt/fly/fly and the package links
+  // /usr/bin/fly through update-alternatives to resources/bin/fly.
+  describe('inside the Linux package', () => {
+    let install: string;
+
+    beforeEach(() => {
+      install = join(dir, 'opt/fly');
+      mkdirSync(join(install, 'resources/bin'), {recursive: true});
+      mkdirSync(join(dir, 'usr/bin'), {recursive: true});
+      mkdirSync(join(dir, 'etc/alternatives'), {recursive: true});
+      writeFileSync(join(install, 'resources/app.asar'), '');
+      copyFileSync(resolve('bin/fly'), join(install, 'resources/bin/fly'));
+      chmodSync(join(install, 'resources/bin/fly'), 0o755);
+      executable(
+        join(install, 'fly'),
+        '#!/bin/sh\nprintf \'%s\\n\' "${ELECTRON_RUN_AS_NODE-unset}" "$@"\n',
+      );
+      symlinkSync(
+        join(install, 'resources/bin/fly'),
+        join(dir, 'etc/alternatives/fly'),
+      );
+      symlinkSync(join(dir, 'etc/alternatives/fly'), join(dir, 'usr/bin/fly'));
+    });
+
+    it("Should run the Linux package's Electron", () => {
+      const result = run(join(dir, 'usr/bin/fly'), ['help']);
+
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe(
+        ['1', `${install}/resources/app.asar/out/main/cli.js`, 'help', ''].join(
+          '\n',
+        ),
+      );
+      expect(result.status).toBe(0);
+    });
+
+    it('Should name the missing Linux executable', () => {
+      rmSync(join(install, 'fly'));
+
+      const result = run(join(dir, 'usr/bin/fly'), []);
+
+      expect(result.stderr).toBe(
+        `fly: executável não encontrado em ${install}: reinstale o fly\n`,
+      );
+      expect(result.status).toBe(1);
+    });
+  });
 });

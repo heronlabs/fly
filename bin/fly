@@ -3,7 +3,8 @@
 # bundle's) in Node mode, the way VSCode's `code` does, so no separate Node is needed.
 set -eu
 
-# Follow the symlink chain (e.g. ~/.local/bin/fly) back to the checkout or the bundle (fly.app/Contents/Resources/bin/fly).
+# Follow the symlink chain (e.g. ~/.local/bin/fly, /usr/local/bin/fly, or /usr/bin/fly
+# through /etc/alternatives) back to the checkout or the installed app's resources/bin/fly.
 self=$0
 while [ -L "$self" ]; do
   link=$(readlink "$self")
@@ -14,13 +15,20 @@ while [ -L "$self" ]; do
 done
 ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
 
-# Two layouts share this script. Installed bundle: ROOT is fly.app/Contents/Resources,
-# which holds app.asar; Electron is Contents/MacOS/fly. Checkout: ROOT is the repo.
+# Three layouts share this script. Installed, ROOT holds app.asar: on macOS ROOT is
+# fly.app/Contents/Resources and Electron is Contents/MacOS/fly; in the Linux
+# package ROOT is /opt/fly/resources and Electron is /opt/fly/fly. Checkout: ROOT is
+# the repo.
 if [ -f "$ROOT/app.asar" ]; then
-  ELECTRON="$ROOT/../MacOS/fly"
+  if [ -d "$ROOT/../MacOS" ]; then
+    EXE_DIR="$ROOT/../MacOS"
+  else
+    EXE_DIR="$ROOT/.."
+  fi
+  ELECTRON="$EXE_DIR/fly"
   CLI="$ROOT/app.asar/out/main/cli.js"
   if [ ! -x "$ELECTRON" ]; then
-    echo "fly: executável não encontrado em $(cd "$ROOT/../MacOS" 2>/dev/null && pwd -P || echo "$ROOT/../MacOS"): reinstale o fly" >&2
+    echo "fly: executável não encontrado em $(cd "$EXE_DIR" 2>/dev/null && pwd -P || echo "$EXE_DIR"): reinstale o fly" >&2
     exit 1
   fi
 else
