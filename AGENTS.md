@@ -1,6 +1,6 @@
 # fly — agent guide
 
-fly is a macOS desktop app (Electron, arm64) for driving Claude Code across many repositories. The user opens a root folder; fly finds the git repos under it and their worktrees, runs `claude` in tmux sessions per worktree, and carries each task from prompt to merged pull request. The `fly` CLI starts, lists, resumes and stops the same sessions from any terminal.
+fly is a desktop app (Electron; macOS arm64, Linux x64 and arm64) for driving Claude Code across many repositories. The user opens a root folder; fly finds the git repos under it and their worktrees, runs `claude` in tmux sessions per worktree, and carries each task from prompt to merged pull request. The `fly` CLI starts, lists, resumes and stops the same sessions from any terminal.
 
 The UI and the errors services throw are user-facing text in Portuguese (pt-BR). Code, comments, commits and docs are in English.
 
@@ -26,7 +26,9 @@ This session may itself run inside a fly session on the default tmux server. See
 | renderer | `src/application/ui` | React 19, antd, zustand (`state/fly-store.ts`), xterm.js, CodeMirror. Reaches the main process only through `window.fly`. |
 | CLI | `src/cli.ts` | The `fly` command, wired by hand (no Nest). `bin/fly` runs it on fly's own Electron with `ELECTRON_RUN_AS_NODE`, so nothing it reaches may import `electron`. |
 
-App data lives in `~/Library/Application Support/fly` (packaged) or `fly-dev` (`pnpm dev`): `config.json`, `tasks.json` and one `tasks/<id>/` folder per task.
+App data lives in Electron's appData, `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` or `~/.config` on Linux, under `fly` (packaged) or `fly-dev` (`pnpm dev`): `config.json`, `tasks.json` and one `tasks/<id>/` folder per task. The CLI computes the same path (`cli-layout.ts`).
+
+`Platform` (`core/domain/platform.ts`, `'mac' | 'linux'`) picks the behaviour at each seam: install layout and installer (`INSTALL_LAYOUTS`, `MacosInstallerService`/`LinuxInstallerService`), the doctor's install hints, the CLI data dir, window chrome and app menu (`window-chrome.ts`, `app-menu.ts`), and the renderer's shortcuts (`window.fly.platform`, `ui/keys.ts`). Any other `process.platform` fails at start.
 
 ### Layers
 
@@ -99,6 +101,10 @@ The CD `dmg` job runs in the GitHub environment `release`, which only `main` can
 
 A local `pnpm dist` has no keychain and signs ad-hoc. `scripts/make-signing-cert.sh` made the certificate; a new one is a new identity, so every user grants fly's permissions again, and its fingerprint changes in README, SECURITY.md and here. Not notarized: Gatekeeper still blocks the first launch.
 
+### Linux package
+
+`pnpm dist --linux deb --<x64|arm64>` builds `dist/fly-<version>-<amd64|arm64>.deb`. node-pty compiles at `pnpm install` and `npmRebuild: false` packs that binary, so each architecture builds on a machine of its own architecture (CI: `ubuntu-24.04` and `ubuntu-24.04-arm`). The package installs to `/opt/fly`; Electron is `/opt/fly/fly` and `bin/fly` is `/opt/fly/resources/bin/fly`. `build/linux/after-install.tpl` and `after-remove.tpl` are electron-builder's own scripts with one change, `/usr/bin/fly` linked to the CLI instead of Electron; `tests/unit/build/deb-scripts.spec.ts` fails when an electron-builder upgrade changes the originals, so copy them again and re-apply the change. `scripts/check-deb.sh <deb>` installs a deb with apt and checks the link, `fly help`, the icon and the AppArmor profile; the CI job `Linux Package` and the CD job `deb` run it.
+
 ### The app icon
 
 Edit `build/icon.png`, run `scripts/make-icns.sh`, commit both. electron-builder picks `build/icon.icns` over the png; its own conversion draws the 16 and 32 px sizes as noise.
@@ -109,7 +115,7 @@ Edit `build/icon.png`, run `scripts/make-icns.sh`, commit both. electron-builder
 |---------|---------|
 | `pnpm dev` | Run the app with hot reload (electron-vite) |
 | `pnpm build` | Build main (app `index.js` and CLI `cli.js`), preload and renderer into `out/` |
-| `pnpm dist` | Build the arm64 dmg into `dist/` (run `pnpm build` first) |
+| `pnpm dist` | Build the arm64 dmg into `dist/` (run `pnpm build` first); `pnpm dist --linux deb --<arch>` builds the deb on Linux |
 | `pnpm cli:install` | Build, then link `bin/fly` into `~/.local/bin` (or `$FLY_BIN_DIR`) |
 | `pnpm lint:check` | gts lint + json/yml lint (`pnpm lint:fix` applies fixes) |
 | `pnpm typecheck` | Typecheck node and web projects |
@@ -139,7 +145,7 @@ Isolation:
 - **tmux.** The default tmux server holds the user's real sessions, maybe including the one running you. Tests use a private socket `-L fly-test-<hex>` and kill that server afterwards; a manual probe does the same before you finish. Never `tmux kill-server` or kill a session you did not create on the default server.
 - **claude.** A test that starts a session through `SessionService` (which types `claude …` into the pane) first sets the private server's `default-shell` to a fake shell that only records typed lines, so no pane runs `claude`.
 - **Transcripts.** An `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token; the DI test points `CLAUDE_CONFIG_DIR` at a temp dir. Never the real `~/.claude`.
-- **App data.** CLI tests inject the user-data dir. Never the real `~/Library/Application Support/fly` or `fly-dev`.
+- **App data.** CLI tests inject the user-data dir. Never the real `~/Library/Application Support/fly`, `~/.config/fly` or their `fly-dev`.
 - **`gh`.** Always mocked, through `CommandRunner` or `PrGateway`. Never the real `gh`.
 - **`git`.** Mocked through `CommandRunner` in unit tests; an `mkdtemp` repo in integration tests. Never the user's repos.
 - **Files.** Every path the renderer sends over `file:*` is worktree-relative POSIX. `FileService` resolves it inside the worktree's real path and refuses anything else (`Caminho fora do worktree`); new files are created exclusively (`wx`), so a dangling symlink is never followed; an existing symlink is written only when its real path is inside the worktree.
@@ -152,6 +158,7 @@ Kill a surviving mutant with a test first; if that is not possible, with a behav
 ## Conventions
 
 - **Structure is checked by tools, not by review.** `dep:cruise`, lint and typecheck own the layout. A convention worth keeping gets a check; review looks at behaviour.
+- **Shortcuts go through `isShortcut` (`ui/keys.ts`)**, never `event.metaKey`: ⌘ on macOS, Ctrl on Linux, and on Linux a key pressed inside `.xterm` stays with the terminal, so Ctrl+C reaches `claude`. The Linux app menu registers no accelerators for the same reason.
 - Kebab-case files. Injectable classes end in `-service.ts`, `-handler.ts` or `-module.ts`; pure logic sits in `-rules.ts` and similar files next to its service.
 - Comments say why, not what.
 - Public docs (README, the blog post, the tool page) never link private repositories such as `heronlabs/code-sessions`; they explain the point in the text.

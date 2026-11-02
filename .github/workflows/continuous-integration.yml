@@ -151,6 +151,49 @@ jobs:
           codesign -d -r- dist/mac-arm64/fly.app
           codesign -dvv dist/mac-arm64/fly.app 2>&1 | grep '^Authority='
 
+  # node-pty has no Linux prebuilds and compiles at install, so each
+  # architecture's deb is built on a runner of that architecture. The deb is
+  # installed on the runner and checked, then kept for a manual check on a
+  # Linux desktop.
+  package-linux:
+    needs: install
+    name: 'Linux Package (${{ matrix.arch }})'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm dist --linux deb --${{ matrix.arch }}
+
+      - run: sh scripts/check-deb.sh dist/*.deb
+
+      - name: Upload the deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: fly-deb-${{ matrix.arch }}
+          path: dist/*.deb
+          retention-days: 7
+          if-no-files-found: error
+
   mutation:
     needs: unit
     name: 'Mutation Tests'

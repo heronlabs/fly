@@ -10,7 +10,8 @@ pnpm dev
 You need:
 
 - Node `>=22` (`.node-version`) and pnpm `>=10`;
-- `tmux` `>= 3.2` (`brew install tmux`), which the integration tests and the mutation tests run;
+- `tmux` `>= 3.2` (`brew install tmux`, or `sudo apt install tmux`), which the integration tests and the mutation tests run;
+- on Linux, `build-essential` and `python3`: `pnpm install` compiles node-pty, which has no Linux prebuilds;
 - `git`, and `gh` and `claude` to use the app itself (see [Prerequisites](README.md#prerequisites)).
 
 ## Commands
@@ -52,7 +53,7 @@ Targeted run without coverage: `pnpm vitest run --project <node|ui> <paths>`. Mu
 Tests never touch your real sessions, transcripts, repositories or GitHub account:
 
 - **tmux.** Tests that touch tmux use a private socket `-L fly-test-<hex>` and kill that server afterwards, never the default tmux server, where your real sessions live. A test that starts a session through `SessionService` gives that server a fake `default-shell` that only records typed lines, so no pane runs `claude`.
-- **App config.** CLI tests inject the user-data dir, never the real `~/Library/Application Support/fly` or `~/Library/Application Support/fly-dev`.
+- **App config.** CLI tests inject the user-data dir, never the real `~/Library/Application Support/fly`, `~/.config/fly` or their `fly-dev`.
 - **Transcripts.** Transcript tests use an `mkdtemp` projects dir injected through the `CLAUDE_PROJECTS_DIR` token, and the DI test points `CLAUDE_CONFIG_DIR` at a temp dir, never the real `~/.claude`.
 - **`gh`.** Always mocked, through `CommandRunner` or `PrGateway`, never the real `gh`.
 - **`git`.** Mocked through `CommandRunner` in unit tests; runs against an `mkdtemp` repo in integration tests, never your repositories.
@@ -69,3 +70,4 @@ Every pull request must pass:
 | Unit Tests | `pnpm test:unit` at 100% coverage, `pnpm test:di` |
 | Mutation Tests | `pnpm test:mutation` at a 100% mutation score, written to the job summary |
 | Release Signing | `pnpm build`, `pnpm dist` signed with a throwaway certificate on macOS, then checks the signature has an `Authority` |
+| Linux Package (x64, arm64) | `pnpm build`, `pnpm dist --linux deb` on a runner of each architecture, then `scripts/check-deb.sh` installs the deb and checks `/usr/bin/fly`; the deb is kept 7 days as an artifact |

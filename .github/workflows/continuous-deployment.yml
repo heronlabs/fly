@@ -103,3 +103,48 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release.outputs.tag }}
+
+  # Linux packages: one deb per architecture, each built on a runner of that
+  # architecture (node-pty compiles at install). The deb is not signed; it
+  # comes from the Release. Actions are pinned by commit like the dmg job's,
+  # since this job can write to the Release.
+  deb:
+    needs: release
+    name: 'deb (${{ matrix.arch }})'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm dist --linux deb --${{ matrix.arch }}
+
+      - run: sh scripts/check-deb.sh dist/*.deb
+
+      - run: gh release upload "$TAG" dist/*.deb --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
