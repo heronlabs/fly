@@ -1,7 +1,13 @@
 import {dirname, resolve} from 'node:path';
 
 import type {Platform} from '../domain/platform';
-import {MIN_CLAUDE_VERSION, ToolCheck, ToolFix, ToolId} from '../domain/setup';
+import {
+  MIN_CLAUDE_VERSION,
+  MIN_GH_VERSION,
+  ToolCheck,
+  ToolFix,
+  ToolId,
+} from '../domain/setup';
 
 export const BREW_TOOLS: readonly ToolId[] = ['git', 'gh', 'tmux'];
 
@@ -33,6 +39,16 @@ const missingFix = (id: ToolId, platform: Platform): ToolFix => {
     : {kind: 'copy', command: `sudo apt install ${id}`};
 };
 
+// Homebrew has the current gh; on Linux a distro's gh can be too old, and
+// GitHub's own apt repository is the way to a newer one.
+const GH_UPGRADE: Record<Platform, ToolFix> = {
+  mac: {kind: 'copy', command: 'brew upgrade gh'},
+  linux: {
+    kind: 'copy',
+    command: 'https://github.com/cli/cli/blob/trunk/docs/install_linux.md',
+  },
+};
+
 export const checkTool = (
   id: ToolId,
   probe: {version: string | null; loggedIn?: boolean},
@@ -48,6 +64,12 @@ export const checkTool = (
   });
   if (version === null) {
     return fail('não encontrado', missingFix(id, platform));
+  }
+  if (id === 'gh' && compareVersions(version, MIN_GH_VERSION) < 0) {
+    return fail(
+      `versão ${version}; precisa ${MIN_GH_VERSION} ou mais`,
+      GH_UPGRADE[platform],
+    );
   }
   if (id === 'gh' && loggedIn === false) {
     return fail('não logado', {kind: 'copy', command: 'gh auth login'});

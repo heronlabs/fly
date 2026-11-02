@@ -31,9 +31,11 @@ export class LinuxInstallerService extends AppInstaller {
   }
 
   async installCommand(launcher: string): Promise<void> {
-    // -n replaces a link to a directory instead of writing inside it.
+    // Absolute paths: pkexec looks a bare program up in the caller's PATH and
+    // runs it as root. -n replaces a link to a directory instead of writing
+    // inside it.
     const result = await this.runner
-      .run('/usr/bin/pkexec', ['ln', '-sfn', launcher, COMMAND_LINK], {
+      .run('/usr/bin/pkexec', ['/bin/ln', '-sfn', launcher, COMMAND_LINK], {
         timeoutMs: INSTALL_TIMEOUT_MS,
       })
       .catch((error: Error) => {

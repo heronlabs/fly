@@ -46,7 +46,7 @@ describe('LinuxInstallerService', () => {
 
       expect(run).toHaveBeenCalledExactlyOnceWith(
         '/usr/bin/pkexec',
-        ['ln', '-sfn', LAUNCHER, '/usr/bin/fly'],
+        ['/bin/ln', '-sfn', LAUNCHER, '/usr/bin/fly'],
         {timeoutMs: 120_000},
       );
     });

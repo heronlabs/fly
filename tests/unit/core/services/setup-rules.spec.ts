@@ -166,4 +166,36 @@ describe('checkTool', () => {
       command: 'claude update',
     });
   });
+
+  // Ubuntu 22.04's apt gh (2.4.0) has no `run rerun --failed` and no
+  // headRefOid in `pr list --json`; Debian 12's 2.23.0 has both.
+  it.each([
+    ['mac', 'brew upgrade gh'],
+    ['linux', 'https://github.com/cli/cli/blob/trunk/docs/install_linux.md'],
+  ] as const)(
+    'Should ask for a newer gh below the minimum on %s',
+    (platform, command) => {
+      expect(
+        checkTool('gh', {version: '2.4.0', loggedIn: true}, platform),
+      ).toEqual({
+        id: 'gh',
+        ok: false,
+        version: '2.4.0',
+        problem: 'versão 2.4.0; precisa 2.23.0 ou mais',
+        fix: {kind: 'copy', command},
+      });
+    },
+  );
+
+  it('Should report an old gh before its login', () => {
+    expect(
+      checkTool('gh', {version: '2.22.9', loggedIn: false}, 'mac').problem,
+    ).toBe('versão 2.22.9; precisa 2.23.0 ou mais');
+  });
+
+  it('Should accept gh at the minimum version', () => {
+    expect(
+      checkTool('gh', {version: '2.23.0', loggedIn: true}, 'linux').ok,
+    ).toBe(true);
+  });
 });

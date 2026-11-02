@@ -22,6 +22,9 @@ export const INSTALL_LAYOUTS: Record<Platform, InstallLayout> = {
   },
 };
 export const MIN_CLAUDE_VERSION = '2.1.309';
+// The oldest gh checked to have every flag and --json field fly uses (Debian
+// 12's); Ubuntu 22.04's apt gh 2.4.0 lacks `run rerun --failed` and headRefOid.
+export const MIN_GH_VERSION = '2.23.0';
 export const FLY_RELEASES_API = 'repos/heronlabs/fly/releases/latest';
 
 export type ToolId = 'git' | 'gh' | 'tmux' | 'claude';

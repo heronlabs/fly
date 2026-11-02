@@ -70,8 +70,11 @@ app; `start-s` was a shell alias that started Claude Code in a new tmux session
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session |
 
-On Linux, `sudo apt install git gh tmux` installs the first three (Ubuntu 22.04+,
-Debian 12+; GitHub's own apt repository has a newer `gh`).
+fly needs `gh` 2.23 or newer, and the setup wizard checks it. On Linux,
+`sudo apt install git gh tmux` installs the first three on Ubuntu 24.04+ and
+Debian 12+; Ubuntu 22.04's `gh` is too old, so install it from
+[GitHub's apt repository](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)
+there.
 
 fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or
 `tmux ls` and `tmux attach -t <name>`) from any terminal reach the same
