@@ -40,3 +40,45 @@ describe('deb maintainer scripts', () => {
     }
   });
 });
+
+// Replacing electron-builder's depends drops its defaults, so they are listed
+// again; Electron 44 also loads libgbm and libasound at start, even to run the
+// CLI, and electron-builder no longer lists them (libasound2 became
+// libasound2t64 on Ubuntu 24.04).
+describe('deb depends', () => {
+  const debDepends = (): string[] => {
+    const lines = readFileSync(resolve('electron-builder.yml'), 'utf8').split(
+      '\n',
+    );
+    const deb = lines.indexOf('deb:');
+    const start = lines.indexOf('  depends:', deb);
+    const items: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+      if (!line.startsWith('    - ')) break;
+      items.push(line.slice('    - '.length).replace(/^'(.*)'$/, '$1'));
+    }
+    return deb === -1 || start === -1 ? [] : items;
+  };
+
+  const builderDefaults = (): string[] => {
+    const source = readFileSync(
+      resolve('node_modules/app-builder-lib/out/targets/FpmTarget.js'),
+      'utf8',
+    );
+    const match = /return (\["libgtk-3-0"[^\]]*\]);/.exec(source);
+    return match ? (JSON.parse(match[1]!) as string[]) : [];
+  };
+
+  it("Should keep every one of electron-builder's default depends", () => {
+    const defaults = builderDefaults();
+
+    expect(defaults.length).toBeGreaterThan(0);
+    expect(debDepends()).toEqual(expect.arrayContaining(defaults));
+  });
+
+  it('Should depend on the libraries Electron loads that the defaults miss', () => {
+    expect(debDepends()).toEqual(
+      expect.arrayContaining(['libgbm1', 'libasound2t64 | libasound2']),
+    );
+  });
+});

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Installs a built fly .deb on this machine (a CI runner) and checks what the
-# package must provide: /usr/bin/fly runs the CLI, and the window icon and the
-# AppArmor profile are in place.
+# package must provide: Electron's libraries, /usr/bin/fly running the CLI, and
+# the window icon and the AppArmor profile in place. A runner already has most
+# desktop libraries, so the library check bites on a minimal system (Docker).
 set -eu
 
 if [ $# -ne 1 ] || [ ! -f "$1" ]; then
@@ -16,7 +17,12 @@ fail() {
   exit 1
 }
 
-sudo apt-get install -y "$deb"
+# Without recommends, as on a minimal system: what Electron needs must be in
+# the package's own Depends.
+sudo apt-get install -y --no-install-recommends "$deb"
+
+missing=$(ldd /opt/fly/fly | grep 'not found' || true)
+[ -z "$missing" ] || fail "bibliotecas faltando para /opt/fly/fly: $missing"
 
 link=$(readlink -f /usr/bin/fly) || fail "/usr/bin/fly não existe"
 [ "$link" = /opt/fly/resources/bin/fly ] ||
