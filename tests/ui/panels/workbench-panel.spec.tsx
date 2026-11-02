@@ -267,6 +267,15 @@ describe('WorkbenchPanel', () => {
     expect(props.onSave).toHaveBeenCalledWith('src/b.ts', 'live w1\0src/b.ts');
   });
 
+  it('Should save a dirty text tab on Ctrl+S on Linux, and not on ⌘S', () => {
+    window.fly.platform = 'linux';
+    const {props} = setup({activePath: 'src/b.ts'});
+    expect(commandS()).toBe(true);
+    expect(props.onSave).not.toHaveBeenCalled();
+    expect(fireEvent.keyDown(window, {key: 's', ctrlKey: true})).toBe(false);
+    expect(props.onSave).toHaveBeenCalledWith('src/b.ts', 'live w1\0src/b.ts');
+  });
+
   it('Should re-create a clean missing text tab on ⌘S', () => {
     const {props} = setup({
       activePath: 'src/a.ts',

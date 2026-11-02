@@ -93,6 +93,17 @@ describe('NewTaskDialog', () => {
     });
   });
 
+  it('Should submit with Ctrl+Enter on Linux, and not with Super+Enter', async () => {
+    window.fly.platform = 'linux';
+    const user = userEvent.setup();
+    const {props} = setup();
+    await user.type(screen.getByLabelText('Descrição'), 'tarefa');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(props.onSubmit).not.toHaveBeenCalled();
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    expect(props.onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it('Should not submit with Cmd+Enter when blank', async () => {
     const user = userEvent.setup();
     const {props} = setup();

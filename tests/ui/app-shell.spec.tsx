@@ -424,6 +424,26 @@ describe('AppShell', () => {
     expect(screen.getByRole('textbox', {name: 'Buscar'})).toHaveFocus();
   });
 
+  it('Should open the search with Ctrl+Shift+F on Linux', async () => {
+    window.fly.platform = 'linux';
+    seed({workspace, selectedWorktreeId: 'w1'});
+    vi.mocked(window.fly.settings.set).mockResolvedValue(config('dark'));
+    await renderShell();
+    expect(
+      fireEvent.keyDown(window, {key: 'F', metaKey: true, shiftKey: true}),
+    ).toBe(true);
+    let handled = true;
+    await act(async () => {
+      handled = fireEvent.keyDown(window, {
+        key: 'F',
+        ctrlKey: true,
+        shiftKey: true,
+      });
+    });
+    expect(handled).toBe(false);
+    expect(screen.getByRole('navigation', {name: 'Busca'})).toBeVisible();
+  });
+
   it('Should ignore ⇧⌘F without a selected worktree', async () => {
     seed({workspace});
     await renderShell();
@@ -923,6 +943,31 @@ describe('AppShell', () => {
     await renderShell();
     await user.keyboard('{Meta>}n{/Meta}');
     expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('Should open the dialog with Ctrl+N on Linux and not with the Super key', async () => {
+    window.fly.platform = 'linux';
+    const user = userEvent.setup();
+    seed({workspace});
+    await renderShell();
+    await user.keyboard('{Meta>}n{/Meta}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.keyboard('{Control>}n{/Control}');
+    expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('Should leave Ctrl+N pressed in the terminal to the terminal on Linux', async () => {
+    window.fly.platform = 'linux';
+    seed({workspace});
+    await renderShell();
+    const terminal = document.createElement('div');
+    terminal.className = 'xterm';
+    const input = document.createElement('textarea');
+    terminal.append(input);
+    document.body.append(terminal);
+    expect(fireEvent.keyDown(input, {key: 'n', ctrlKey: true})).toBe(true);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    terminal.remove();
   });
 
   it('Should not open the dialog with Cmd+N when the workspace has no repos', async () => {
