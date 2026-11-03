@@ -1,3 +1,9 @@
+## v0.11.0 (2026-11-03)
+
+### Features
+
+* feat(task): generate the branch name when left empty (#33) (0706515ca8bc9468436a389c7ef23e8ebf5d7346)
+
 ## v0.10.1 (2026-10-30)
 
 ### Bug Fixes
