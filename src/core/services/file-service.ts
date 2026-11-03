@@ -10,7 +10,7 @@ import {
   WriteResult,
 } from '../domain/files';
 import {SearchQuery, SearchResult} from '../domain/search';
-import {Worktree} from '../domain/workspace';
+import {Workspace, Worktree} from '../domain/workspace';
 import {FileStore} from '../interfaces/file-store';
 import {VcsGateway} from '../interfaces/vcs-gateway';
 import {
@@ -29,7 +29,7 @@ import {
   MAX_HITS_PER_FILE,
   resultOf,
 } from './search-rules';
-import {errorMessage, SessionService} from './session-service';
+import {errorMessage} from './session-service';
 
 export const OUTSIDE_WORKTREE = 'Caminho fora do worktree';
 export const NOT_A_FILE = 'Não é um arquivo';
@@ -38,21 +38,43 @@ export const CHANGED_ON_DISK =
 
 type Resolved = {absolute: string; exists: boolean};
 
+const worktreeIn = (
+  workspace: Workspace | null,
+  worktreeId: string,
+): Worktree => {
+  const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
+  if (!worktree) throw new Error('Worktree não encontrado');
+  return worktree;
+};
+
 @Injectable()
 export class FileService {
   constructor(
-    private readonly sessions: SessionService,
     private readonly files: FileStore,
     private readonly vcs: VcsGateway,
   ) {}
 
-  async list(worktreeId: string, dir: string): Promise<FileEntry[]> {
-    const {absolute} = await this.resolve(this.worktree(worktreeId), dir);
+  async list(
+    workspace: Workspace | null,
+    worktreeId: string,
+    dir: string,
+  ): Promise<FileEntry[]> {
+    const {absolute} = await this.resolve(
+      worktreeIn(workspace, worktreeId),
+      dir,
+    );
     return visibleEntries(await this.files.readDir(absolute));
   }
 
-  async read(worktreeId: string, path: string): Promise<FileContent> {
-    const {absolute} = await this.resolve(this.worktree(worktreeId), path);
+  async read(
+    workspace: Workspace | null,
+    worktreeId: string,
+    path: string,
+  ): Promise<FileContent> {
+    const {absolute} = await this.resolve(
+      worktreeIn(workspace, worktreeId),
+      path,
+    );
     const stat = await this.files.stat(absolute);
     if (!stat.isFile) throw new Error(NOT_A_FILE);
     if (stat.size > MAX_FILE_BYTES) {
@@ -70,6 +92,7 @@ export class FileService {
   }
 
   async write(
+    workspace: Workspace | null,
     worktreeId: string,
     path: string,
     text: string,
@@ -77,7 +100,7 @@ export class FileService {
     expectedMtimeMs: number | null,
   ): Promise<WriteResult> {
     const {absolute, exists} = await this.resolve(
-      this.worktree(worktreeId),
+      worktreeIn(workspace, worktreeId),
       path,
     );
     const content = withEol(text, eol);
@@ -95,8 +118,12 @@ export class FileService {
     return {mtimeMs: (await this.files.stat(absolute)).mtimeMs};
   }
 
-  async poll(worktreeId: string, openPaths: string[]): Promise<FilesPoll> {
-    const worktree = this.worktree(worktreeId);
+  async poll(
+    workspace: Workspace | null,
+    worktreeId: string,
+    openPaths: string[],
+  ): Promise<FilesPoll> {
+    const worktree = worktreeIn(workspace, worktreeId);
     let flags: FilesPoll['flags'] = {};
     let error: string | null = null;
     try {
@@ -116,8 +143,12 @@ export class FileService {
     return {flags, mtimes, error};
   }
 
-  async search(worktreeId: string, query: SearchQuery): Promise<SearchResult> {
-    const worktree = this.worktree(worktreeId);
+  async search(
+    workspace: Workspace | null,
+    worktreeId: string,
+    query: SearchQuery,
+  ): Promise<SearchResult> {
+    const worktree = worktreeIn(workspace, worktreeId);
     if (query.text === '') return emptySearch;
     const hits = await this.vcs.grep({
       worktreePath: worktree.path,
@@ -139,14 +170,6 @@ export class FileService {
       }
       throw error;
     }
-  }
-
-  private worktree(worktreeId: string): Worktree {
-    const worktree = this.sessions
-      .currentWorkspace()
-      ?.worktrees.find(w => w.id === worktreeId);
-    if (!worktree) throw new Error('Worktree não encontrado');
-    return worktree;
   }
 
   // The target's real path (its parent's, for a file not created yet) must be

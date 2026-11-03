@@ -129,12 +129,4 @@ export class TerminalService {
     this.terminals.delete(terminalId);
     entry?.process.kill();
   }
-
-  detachAll(): void {
-    const all = [...this.terminals.values()];
-    this.terminals.clear();
-    for (const {process} of all) {
-      process.kill();
-    }
-  }
 }

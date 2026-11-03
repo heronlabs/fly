@@ -35,6 +35,14 @@ type SessionRead = {
 const hasBranch = (worktree: Worktree): boolean =>
   !worktree.isMain && !!worktree.branch;
 
+// Only a repo with a branch worktree can have a PR the queue shows.
+const polledRepoPaths = (workspace: Workspace): string[] => {
+  const polled = new Set(
+    workspace.worktrees.filter(hasBranch).map(w => w.repoId),
+  );
+  return workspace.repos.filter(r => polled.has(r.id)).map(r => r.path);
+};
+
 const githubStatus = (failures: unknown[]): GithubStatus => {
   if (failures.length === 0) return {github: 'ok', message: null};
   if (failures.some(isMissing)) return {github: 'missing', message: GH_MISSING};
@@ -54,18 +62,14 @@ export class QueueService {
     private readonly tasks: TaskStore,
   ) {}
 
-  async refreshPullRequests(): Promise<void> {
-    const workspace = this.sessions.currentWorkspace();
-    if (!workspace) return;
-    const polled = new Set(
-      workspace.worktrees.filter(hasBranch).map(w => w.repoId),
-    );
-    const repos = workspace.repos.filter(r => polled.has(r.id));
+  // Every open workspace at once: a repo two of them share is listed once.
+  async refreshPullRequests(workspaces: Workspace[]): Promise<void> {
+    const polled = new Set(workspaces.flatMap(polledRepoPaths));
     const results = await Promise.allSettled(
-      repos.map(async r => [r.path, await this.prs.list(r.path)] as const),
+      [...polled].map(async path => [path, await this.prs.list(path)] as const),
     );
-    // A failed repo keeps its last list; repos gone from the workspace drop out.
-    const paths = new Set(workspace.repos.map(r => r.path));
+    // A failed repo keeps its last list; repos no workspace holds drop out.
+    const paths = new Set(workspaces.flatMap(w => w.repos.map(r => r.path)));
     const next = new Map(
       [...this.pullRequests].filter(([path]) => paths.has(path)),
     );
@@ -78,8 +82,10 @@ export class QueueService {
     this.github = githubStatus(failures);
   }
 
-  async mergePullRequest(worktreeId: string): Promise<void> {
-    const workspace = this.sessions.currentWorkspace();
+  async mergePullRequest(
+    workspace: Workspace | null,
+    worktreeId: string,
+  ): Promise<void> {
     const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
     if (!workspace || !worktree) throw new Error('Worktree não encontrado');
     const repo = workspace.repos.find(r => r.id === worktree.repoId);
@@ -87,13 +93,26 @@ export class QueueService {
     const pullRequest = this.pullRequestOf(workspace, worktree);
     if (pullRequest?.state !== 'open') throw new Error(NO_OPEN_PR);
     await this.prs.merge(repo.path, pullRequest.number);
-    await this.refreshPullRequests();
+    await this.refreshRepo(repo.path);
   }
 
-  async snapshot(now = Date.now()): Promise<QueueSnapshot> {
-    const workspace = this.sessions.currentWorkspace();
+  // One repo after fly changed its PRs, so the queue shows it at once; the
+  // other repos keep their lists, and so does this one if gh fails (the next
+  // refresh reports it).
+  async refreshRepo(repoPath: string): Promise<void> {
+    try {
+      this.pullRequests.set(repoPath, await this.prs.list(repoPath));
+    } catch {
+      // keeps the last list
+    }
+  }
+
+  async snapshot(
+    workspace: Workspace | null,
+    now = Date.now(),
+  ): Promise<QueueSnapshot> {
     if (!workspace) return {...this.github, worktrees: []};
-    const {items} = await this.sessions.mapped();
+    const {items} = await this.sessions.mapped(workspace);
     const reads = await this.readSessions(items, now);
     const records = await this.tasks.list();
     const worktrees = await Promise.all(
@@ -110,8 +129,10 @@ export class QueueService {
   }
 
   // The PR the queue shows for a worktree (see pullRequestOf).
-  pullRequestFor(worktreeId: string): PullRequest | null {
-    const workspace = this.sessions.currentWorkspace();
+  pullRequestFor(
+    workspace: Workspace | null,
+    worktreeId: string,
+  ): PullRequest | null {
     const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
     return workspace && worktree
       ? this.pullRequestOf(workspace, worktree)

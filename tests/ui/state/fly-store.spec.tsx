@@ -54,13 +54,17 @@ beforeEach(() => {
 });
 
 describe('fly store', () => {
-  it('bootstrap opens the first recent root', async () => {
+  it('bootstrap opens the folder the main process hands the window', async () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
-      recentRoots: ['/r', '/q'],
+      recentRoots: ['/q'],
       theme: 'dark',
       diffPanel: 'open',
       explorer: 'open',
       setupDone: false,
+    });
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/r',
+      worktreeId: null,
     });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
     await useFlyStore.getState().bootstrap();
@@ -69,9 +73,9 @@ describe('fly store', () => {
     expect(useFlyStore.getState().workspace?.root).toBe('/r');
   });
 
-  it('bootstrap without recent roots opens nothing', async () => {
+  it('bootstrap opens nothing when the main process hands no folder', async () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
-      recentRoots: [],
+      recentRoots: ['/r'],
       theme: 'system',
       diffPanel: 'open',
       explorer: 'open',
@@ -88,7 +92,7 @@ describe('fly store', () => {
     expect(useFlyStore.getState().error).toBe('boom');
   });
 
-  it('bootstrap opens a pending launch instead of the recent root', async () => {
+  it('bootstrap opens a pending launch and selects its worktree', async () => {
     vi.mocked(window.fly.settings.get).mockResolvedValue({
       recentRoots: ['/q'],
       theme: 'system',
@@ -145,6 +149,10 @@ describe('fly store', () => {
       explorer: 'open',
       setupDone: false,
     });
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/r',
+      worktreeId: null,
+    });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
     await useFlyStore.getState().bootstrap();
     expect(useFlyStore.getState().setup).toBeNull();
@@ -170,6 +178,10 @@ describe('fly store', () => {
       diffPanel: 'open',
       explorer: 'open',
       setupDone: false,
+    });
+    vi.mocked(window.fly.launch.take).mockResolvedValue({
+      root: '/r',
+      worktreeId: null,
     });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace());
     await useFlyStore.getState().bootstrap();
@@ -243,8 +255,8 @@ describe('fly store', () => {
     expect(useFlyStore.getState().setup).toBeNull();
   });
 
-  it('takeLaunch is false without a pending launch', async () => {
-    expect(await useFlyStore.getState().takeLaunch()).toBe(false);
+  it('takeLaunch opens nothing without a folder for the window', async () => {
+    await useFlyStore.getState().takeLaunch();
     expect(window.fly.workspace.open).not.toHaveBeenCalled();
   });
 
@@ -255,7 +267,7 @@ describe('fly store', () => {
       worktreeId: null,
     });
     vi.mocked(window.fly.workspace.open).mockResolvedValue(workspace(['a']));
-    expect(await useFlyStore.getState().takeLaunch()).toBe(true);
+    await useFlyStore.getState().takeLaunch();
     expect(useFlyStore.getState().workspace?.root).toBe('/r');
     expect(useFlyStore.getState().selectedWorktreeId).toBe('a#main');
   });
@@ -267,7 +279,7 @@ describe('fly store', () => {
       worktreeId: 'a#main',
     });
     vi.mocked(window.fly.workspace.open).mockRejectedValue(new Error('no'));
-    expect(await useFlyStore.getState().takeLaunch()).toBe(true);
+    await useFlyStore.getState().takeLaunch();
     expect(useFlyStore.getState().selectedWorktreeId).toBeNull();
     expect(useFlyStore.getState().error).toBe('no');
   });

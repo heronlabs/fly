@@ -123,22 +123,6 @@ describe('TerminalService', () => {
     expect(sink.exit).not.toHaveBeenCalled();
   });
 
-  it('Should kill every process on detachAll and drop late events', () => {
-    const a = service.attach('a', size, sink);
-    service.attach('b', size, sink);
-
-    service.detachAll();
-    processes[0]!.emitData('late');
-    processes[1]!.emitExit(0);
-    service.write(a, 'x');
-
-    expect(processes[0]!.kill).toHaveBeenCalledTimes(1);
-    expect(processes[1]!.kill).toHaveBeenCalledTimes(1);
-    expect(sink.data).not.toHaveBeenCalled();
-    expect(sink.exit).not.toHaveBeenCalled();
-    expect(processes[0]!.write).not.toHaveBeenCalled();
-  });
-
   it('Should remove the id when the process exits', () => {
     const id = service.attach('a', size, sink);
 

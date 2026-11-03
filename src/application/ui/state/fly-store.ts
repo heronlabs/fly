@@ -88,7 +88,7 @@ export type FlyState = {
   loadSetup(): Promise<void>;
   closeSetup(): void;
   applyUpdate(notice: UpdateNotice | null): void;
-  takeLaunch(): Promise<boolean>;
+  takeLaunch(): Promise<void>;
   pickAndOpen(): Promise<void>;
   openRoot(root: string): Promise<void>;
   refresh(): Promise<void>;
@@ -288,11 +288,9 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     // Read together: the notice must not delay the workspace load.
     await Promise.all([get().loadSetup(), loadUpdate(set)]);
     try {
-      const config = await window.fly.settings.get();
-      set({config});
-      if (!(await get().takeLaunch()) && config.recentRoots[0]) {
-        await get().openRoot(config.recentRoots[0]);
-      }
+      set({config: await window.fly.settings.get()});
+      // The main process says which folder this window opens, if any.
+      await get().takeLaunch();
     } catch (error) {
       set({error: errorMessage(error)});
     }
@@ -318,11 +316,12 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     set({update: notice});
   },
 
-  // Opens a pending `fly <pasta>` request; false when there was none.
+  // Opens the folder the main process hands this window: a `fly <pasta>`
+  // request, the window's own folder after a reload, or the last one used.
   async takeLaunch() {
     try {
       const launch = await window.fly.launch.take();
-      if (!launch) return false;
+      if (!launch) return;
       await get().openRoot(launch.root);
       const {workspace} = get();
       const worktree =
@@ -333,7 +332,6 @@ export const useFlyStore = create<FlyState>((set, get) => ({
     } catch (error) {
       set({error: errorMessage(error)});
     }
-    return true;
   },
 
   async pickAndOpen() {

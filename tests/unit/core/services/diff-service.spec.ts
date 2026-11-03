@@ -2,7 +2,6 @@ import {DiffFile} from '../../../../src/core/domain/diff';
 import {Workspace, Worktree} from '../../../../src/core/domain/workspace';
 import {VcsGateway} from '../../../../src/core/interfaces/vcs-gateway';
 import {baseOf, DiffService} from '../../../../src/core/services/diff-service';
-import {SessionService} from '../../../../src/core/services/session-service';
 
 const wt = (
   id: string,
@@ -61,35 +60,31 @@ describe('baseOf', () => {
 
 describe('DiffService', () => {
   const diff = vi.fn();
-  const currentWorkspace = vi.fn();
   const resolveBase = vi.fn();
-  const service = new DiffService(
-    {currentWorkspace} as unknown as SessionService,
-    {diff, resolveBase} as unknown as VcsGateway,
-  );
+  const service = new DiffService({
+    diff,
+    resolveBase,
+  } as unknown as VcsGateway);
 
   beforeEach(() => {
     diff.mockReset();
     resolveBase.mockReset().mockImplementation(async (_p, b) => b);
-    currentWorkspace.mockReset().mockReturnValue(workspace);
   });
 
   it('Should throw for an unknown worktree id', async () => {
-    await expect(service.read('nope', 'live')).rejects.toThrow(
+    await expect(service.read(workspace, 'nope', 'live')).rejects.toThrow(
       'Worktree não encontrado',
     );
   });
 
   it('Should throw when no workspace is open', async () => {
-    currentWorkspace.mockReturnValue(null);
-
-    await expect(service.read('a', 'live')).rejects.toThrow(
+    await expect(service.read(null, 'a', 'live')).rejects.toThrow(
       'Worktree não encontrado',
     );
   });
 
   it('Should give a null diff and no error for the main worktree in branch scope', async () => {
-    expect(await service.read('a', 'branch')).toEqual({
+    expect(await service.read(workspace, 'a', 'branch')).toEqual({
       worktreeId: 'a',
       scope: 'branch',
       base: null,
@@ -103,7 +98,7 @@ describe('DiffService', () => {
     diff.mockResolvedValue([file(2)]);
     resolveBase.mockResolvedValue('origin/main');
 
-    const result = await service.read('a/feat', 'branch');
+    const result = await service.read(workspace, 'a/feat', 'branch');
 
     expect(resolveBase).toHaveBeenCalledExactlyOnceWith('/r/a/feat', 'main');
     expect(diff).toHaveBeenCalledWith({
@@ -123,7 +118,7 @@ describe('DiffService', () => {
   it('Should not resolve a detached main head', async () => {
     diff.mockResolvedValue([]);
 
-    const result = await service.read('b/feat', 'branch');
+    const result = await service.read(workspace, 'b/feat', 'branch');
 
     expect(resolveBase).not.toHaveBeenCalled();
     expect(diff).toHaveBeenCalledWith({
@@ -137,7 +132,7 @@ describe('DiffService', () => {
   it('Should not resolve a detached head that spells another repo branch', async () => {
     diff.mockResolvedValue([]);
 
-    const result = await service.read('d/feat', 'branch');
+    const result = await service.read(workspace, 'd/feat', 'branch');
 
     expect(resolveBase).not.toHaveBeenCalled();
     expect(result.base).toBe('main');
@@ -146,7 +141,7 @@ describe('DiffService', () => {
   it('Should turn a resolveBase rejection into an error row', async () => {
     resolveBase.mockRejectedValue(new Error('git não respondeu em 15 s'));
 
-    expect(await service.read('a/feat', 'branch')).toEqual({
+    expect(await service.read(workspace, 'a/feat', 'branch')).toEqual({
       worktreeId: 'a/feat',
       scope: 'branch',
       base: 'main',
@@ -159,7 +154,7 @@ describe('DiffService', () => {
   it('Should not resolve the base for the live scope', async () => {
     diff.mockResolvedValue([]);
 
-    await service.read('a/feat', 'live');
+    await service.read(workspace, 'a/feat', 'live');
 
     expect(resolveBase).not.toHaveBeenCalled();
   });
@@ -167,7 +162,7 @@ describe('DiffService', () => {
   it('Should read the live diff, reporting the base too', async () => {
     diff.mockResolvedValue([]);
 
-    const result = await service.read('a/feat', 'live');
+    const result = await service.read(workspace, 'a/feat', 'live');
 
     expect(diff).toHaveBeenCalledWith({
       worktreePath: '/r/a/feat',
@@ -185,7 +180,7 @@ describe('DiffService', () => {
   it('Should read the live diff of the main worktree with a null base', async () => {
     diff.mockResolvedValue([]);
 
-    const result = await service.read('a', 'live');
+    const result = await service.read(workspace, 'a', 'live');
 
     expect(result.base).toBeNull();
     expect(result.diff).toEqual({files: [], truncated: false});
@@ -194,7 +189,7 @@ describe('DiffService', () => {
   it('Should cap the diff', async () => {
     diff.mockResolvedValue([file(501)]);
 
-    const result = await service.read('a/feat', 'live');
+    const result = await service.read(workspace, 'a/feat', 'live');
 
     expect(result.diff?.files[0]).toMatchObject({truncated: true, hunks: []});
   });
@@ -202,7 +197,7 @@ describe('DiffService', () => {
   it('Should turn a gateway rejection into an error string', async () => {
     diff.mockRejectedValue(new Error('git falhou: boom'));
 
-    expect(await service.read('a/feat', 'live')).toEqual({
+    expect(await service.read(workspace, 'a/feat', 'live')).toEqual({
       worktreeId: 'a/feat',
       scope: 'live',
       base: 'main',

@@ -83,9 +83,9 @@ const record = (over: Partial<TaskRecord> = {}): TaskRecord => ({
 });
 
 describe('CleanupService', () => {
-  const currentWorkspace = vi.fn();
   const mapped = vi.fn();
-  const sessions = {currentWorkspace, mapped} as unknown as SessionService;
+  const sessions = {mapped} as unknown as SessionService;
+  let current: Workspace | null;
   const kill = vi.fn();
   const launcher = {kill} as unknown as SessionLauncher;
   const listWorktrees = vi.fn();
@@ -140,7 +140,7 @@ describe('CleanupService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     calls.length = 0;
-    currentWorkspace.mockReturnValue(workspace);
+    current = workspace;
     mapped.mockResolvedValue({
       tmux: 'ok',
       message: null,
@@ -174,7 +174,7 @@ describe('CleanupService', () => {
 
   describe('a merged PR', () => {
     it('Should run every step in order', async () => {
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(calls).toEqual([
         'kill',
@@ -186,7 +186,8 @@ describe('CleanupService', () => {
         'removeRecord',
       ]);
       expect(kill.mock.calls).toEqual([['fly-a'], ['fly-c']]);
-      expect(pullRequestFor).toHaveBeenCalledWith(WT);
+      expect(pullRequestFor).toHaveBeenCalledWith(workspace, WT);
+      expect(mapped).toHaveBeenCalledWith(workspace);
       expect(listWorktrees).toHaveBeenCalledWith('/r/talon');
       expect(removeWorktree).toHaveBeenCalledWith('/r/talon', PATH);
       expect(branchExists).toHaveBeenCalledWith('/r/talon', 'feat-x');
@@ -200,7 +201,7 @@ describe('CleanupService', () => {
     it('Should skip removeWorktree once the worktree is no longer listed', async () => {
       listWorktrees.mockResolvedValue([{path: '/r/talon'}]);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(removeWorktree).not.toHaveBeenCalled();
       expect(deleteBranch).toHaveBeenCalled();
@@ -209,7 +210,7 @@ describe('CleanupService', () => {
     it('Should skip deleteBranch when the branch is gone', async () => {
       branchExists.mockResolvedValue(false);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(deleteBranch).not.toHaveBeenCalled();
       expect(deleteRemoteBranch).toHaveBeenCalled();
@@ -219,7 +220,7 @@ describe('CleanupService', () => {
     it('Should skip the record steps for a worktree without a record', async () => {
       get.mockResolvedValue(null);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(deleteRemoteBranch).toHaveBeenCalled();
       expect(removeFiles).not.toHaveBeenCalled();
@@ -229,7 +230,7 @@ describe('CleanupService', () => {
     it("Should leave another branch's record at the path alone", async () => {
       get.mockResolvedValue(record({branch: 'old'}));
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(removeFiles).not.toHaveBeenCalled();
       expect(remove).not.toHaveBeenCalled();
@@ -238,7 +239,7 @@ describe('CleanupService', () => {
     it('Should kill nothing when no session is mapped', async () => {
       mapped.mockResolvedValue({tmux: 'ok', message: null, items: []});
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(kill).not.toHaveBeenCalled();
       expect(removeWorktree).toHaveBeenCalled();
@@ -247,7 +248,7 @@ describe('CleanupService', () => {
     it('Should go on when tmux is not installed', async () => {
       mapped.mockResolvedValue({tmux: 'missing', message: 'x', items: []});
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(removeWorktree).toHaveBeenCalled();
     });
@@ -255,9 +256,9 @@ describe('CleanupService', () => {
     it('Should refuse when tmux cannot be listed, as a session may be alive', async () => {
       mapped.mockResolvedValue({tmux: 'error', message: 'boom', items: []});
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('Falha ao limpar: boom'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('Falha ao limpar: boom'));
       expect(removeWorktree).not.toHaveBeenCalled();
     });
   });
@@ -277,7 +278,7 @@ describe('CleanupService', () => {
     };
 
     it("Should require the branch to be an ancestor of the PR's head", async () => {
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(isAncestor).toHaveBeenCalledExactlyOnceWith(
         '/r/talon',
@@ -290,9 +291,9 @@ describe('CleanupService', () => {
     it('Should refuse a diverged branch before any kill or write', async () => {
       isAncestor.mockResolvedValue(false);
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('O branch local não corresponde ao PR #42'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('O branch local não corresponde ao PR #42'));
       wrote();
       expect(mapped).not.toHaveBeenCalled();
     });
@@ -300,7 +301,7 @@ describe('CleanupService', () => {
     it('Should fetch an unknown PR head once and run when the branch then descends from it', async () => {
       isAncestor.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(fetch).toHaveBeenCalledExactlyOnceWith(
         '/r/talon',
@@ -316,7 +317,7 @@ describe('CleanupService', () => {
     });
 
     it('Should not fetch when the branch already descends from the head', async () => {
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(fetch).not.toHaveBeenCalled();
     });
@@ -324,9 +325,9 @@ describe('CleanupService', () => {
     it('Should refuse a branch that still diverges after the fetch', async () => {
       isAncestor.mockResolvedValue(false);
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('O branch local não corresponde ao PR #42'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('O branch local não corresponde ao PR #42'));
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(isAncestor).toHaveBeenCalledTimes(2);
       wrote();
@@ -337,9 +338,9 @@ describe('CleanupService', () => {
       isAncestor.mockResolvedValue(false);
       fetch.mockRejectedValue(new Error('no network'));
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('O branch local não corresponde ao PR #42'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('O branch local não corresponde ao PR #42'));
       expect(isAncestor).toHaveBeenCalledTimes(1);
       wrote();
       expect(mapped).not.toHaveBeenCalled();
@@ -348,9 +349,9 @@ describe('CleanupService', () => {
     it('Should refuse a PR without a head sha', async () => {
       pullRequestFor.mockReturnValue(pull('merged', null));
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('O branch local não corresponde ao PR #42'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('O branch local não corresponde ao PR #42'));
       expect(isAncestor).not.toHaveBeenCalled();
       expect(fetch).not.toHaveBeenCalled();
       wrote();
@@ -360,7 +361,7 @@ describe('CleanupService', () => {
       branchExists.mockResolvedValue(false);
       isAncestor.mockResolvedValue(false);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(isAncestor).not.toHaveBeenCalled();
       expect(deleteBranch).not.toHaveBeenCalled();
@@ -373,9 +374,9 @@ describe('CleanupService', () => {
     ])('Should prefix a failing %s', async (_name, step) => {
       step.mockRejectedValue(new Error('boom'));
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('Falha ao limpar: boom'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('Falha ao limpar: boom'));
       wrote();
     });
   });
@@ -384,7 +385,9 @@ describe('CleanupService', () => {
     it('Should refuse a dirty listed worktree before any kill or write', async () => {
       status.mockResolvedValue({'a.ts': 'M', 'b.ts': '?'});
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(
         new Error('Falha ao limpar: Ficaram mudanças sem commit: a.ts, b.ts'),
       );
       expect(status).toHaveBeenCalledWith(PATH);
@@ -396,7 +399,7 @@ describe('CleanupService', () => {
     it('Should not read the status of a worktree that is no longer listed', async () => {
       listWorktrees.mockResolvedValue([{path: '/r/talon'}]);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(status).not.toHaveBeenCalled();
     });
@@ -406,9 +409,9 @@ describe('CleanupService', () => {
     beforeEach(() => pullRequestFor.mockReturnValue(pull('closed')));
 
     it('Should refuse without confirmation and call nothing', async () => {
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error(CONFIRM),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error(CONFIRM));
       expect(mapped).not.toHaveBeenCalled();
       nothingRan();
     });
@@ -416,7 +419,7 @@ describe('CleanupService', () => {
     it('Should run with confirmation, without comparing the branch', async () => {
       isAncestor.mockResolvedValue(false);
 
-      await service.clean(WT, {confirmed: true});
+      await service.clean(current, WT, {confirmed: true});
 
       expect(isAncestor).not.toHaveBeenCalled();
       expect(calls).toContain('removeWorktree');
@@ -428,13 +431,13 @@ describe('CleanupService', () => {
     it.each([
       ['an open PR', () => pullRequestFor.mockReturnValue(pull('open'))],
       ['no PR', () => pullRequestFor.mockReturnValue(null)],
-      ['no workspace', () => currentWorkspace.mockReturnValue(null)],
+      ['no workspace', () => (current = null)],
     ])('Should refuse %s with no calls', async (_name, arrange) => {
       arrange();
 
-      await expect(service.clean(WT, {confirmed: true})).rejects.toThrow(
-        new Error(NO_WORKTREE),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: true}),
+      ).rejects.toThrow(new Error(NO_WORKTREE));
       nothingRan();
     });
 
@@ -444,9 +447,9 @@ describe('CleanupService', () => {
       ['an unknown repo', 'ghost/.worktrees/y'],
       ['an unknown worktree', 'nope'],
     ])('Should refuse %s', async (_name, id) => {
-      await expect(service.clean(id, {confirmed: true})).rejects.toThrow(
-        new Error(NO_WORKTREE),
-      );
+      await expect(
+        service.clean(current, id, {confirmed: true}),
+      ).rejects.toThrow(new Error(NO_WORKTREE));
       nothingRan();
     });
   });
@@ -457,7 +460,9 @@ describe('CleanupService', () => {
         new Error('contains modified or untracked files'),
       );
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(
         new Error('Falha ao limpar: contains modified or untracked files'),
       );
       expect(deleteBranch).not.toHaveBeenCalled();
@@ -469,17 +474,17 @@ describe('CleanupService', () => {
     it('Should not double the prefix of a message that has it', async () => {
       deleteBranch.mockRejectedValue(new Error('Falha ao limpar: x'));
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('Falha ao limpar: x'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('Falha ao limpar: x'));
     });
 
     it('Should stringify a non-Error rejection', async () => {
       deleteRemoteBranch.mockRejectedValue('offline');
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('Falha ao limpar: offline'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('Falha ao limpar: offline'));
       expect(removeFiles).not.toHaveBeenCalled();
     });
 
@@ -492,21 +497,25 @@ describe('CleanupService', () => {
     ])('Should reject when %s fails', async (_name, step) => {
       step.mockRejectedValue(new Error('boom'));
 
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow(
-        new Error('Falha ao limpar: boom'),
-      );
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow(new Error('Falha ao limpar: boom'));
       expect(remove).not.toHaveBeenCalled();
     });
 
     it('Should skip the steps already done when cleaning again', async () => {
       removeWorktree.mockRejectedValueOnce(new Error('dirty'));
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow();
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow();
       deleteBranch.mockRejectedValueOnce(new Error('offline'));
       listWorktrees.mockResolvedValue([{path: '/r/talon'}]);
-      await expect(service.clean(WT, {confirmed: false})).rejects.toThrow();
+      await expect(
+        service.clean(current, WT, {confirmed: false}),
+      ).rejects.toThrow();
       branchExists.mockResolvedValue(false);
 
-      await service.clean(WT, {confirmed: false});
+      await service.clean(current, WT, {confirmed: false});
 
       expect(removeWorktree).toHaveBeenCalledTimes(1);
       expect(deleteBranch).toHaveBeenCalledTimes(1);

@@ -96,7 +96,7 @@ export const createPullRequest = async (
       head: record.branch,
     });
     // The list shows the PR at once, so the button does not come back.
-    await queue.refreshPullRequests().catch(() => undefined);
+    await queue.refreshRepo(record.repoPath);
     return number;
   } catch (error) {
     throw new Error(prefixed('gh pr create falhou: ', error));

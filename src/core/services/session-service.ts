@@ -53,23 +53,13 @@ const bySessionOrder = (a: Session, b: Session): number =>
 
 @Injectable()
 export class SessionService {
-  private workspace: Workspace | null = null;
-
   constructor(
     private readonly launcher: SessionLauncher,
     private readonly ids: IdGenerator,
   ) {}
 
-  setWorkspace(workspace: Workspace | null): void {
-    this.workspace = workspace;
-  }
-
-  currentWorkspace(): Workspace | null {
-    return this.workspace;
-  }
-
-  // Every tmux session that belongs to a worktree of the open workspace.
-  async mapped(): Promise<MappedSessions> {
+  // Every tmux session that belongs to a worktree of the workspace.
+  async mapped(workspace: Workspace | null): Promise<MappedSessions> {
     let listed: MultiplexerSession[];
     try {
       listed = await this.launcher.list();
@@ -78,7 +68,7 @@ export class SessionService {
         ? {tmux: 'missing', message: TMUX_MISSING, items: []}
         : {tmux: 'error', message: errorMessage(error), items: []};
     }
-    const worktrees = this.workspace?.worktrees ?? [];
+    const worktrees = workspace?.worktrees ?? [];
     const items = listed.flatMap(session => {
       const worktree = findWorktree(worktrees, session);
       return worktree ? [{session, worktreeId: worktree.id}] : [];
@@ -86,8 +76,8 @@ export class SessionService {
     return {tmux: 'ok', message: null, items};
   }
 
-  async snapshot(): Promise<SessionsSnapshot> {
-    const {tmux, message, items} = await this.mapped();
+  async snapshot(workspace: Workspace | null): Promise<SessionsSnapshot> {
+    const {tmux, message, items} = await this.mapped(workspace);
     const sessions = items.map(({session, worktreeId}): Session => ({
       name: session.name,
       worktreeId,
@@ -99,9 +89,12 @@ export class SessionService {
     return {tmux, message, sessions: sessions.sort(bySessionOrder)};
   }
 
-  async start(worktreeId: string): Promise<string> {
-    if (!this.workspace) throw new Error('Nenhuma pasta aberta');
-    const worktree = this.workspace.worktrees.find(w => w.id === worktreeId);
+  async start(
+    workspace: Workspace | null,
+    worktreeId: string,
+  ): Promise<string> {
+    if (!workspace) throw new Error('Nenhuma pasta aberta');
+    const worktree = workspace.worktrees.find(w => w.id === worktreeId);
     if (!worktree) throw new Error('Worktree não encontrado');
     return this.launch(worktree.id, worktree.path);
   }

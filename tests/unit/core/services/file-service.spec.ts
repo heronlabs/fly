@@ -8,7 +8,6 @@ import {
   NOT_A_FILE,
   OUTSIDE_WORKTREE,
 } from '../../../../src/core/services/file-service';
-import {SessionService} from '../../../../src/core/services/session-service';
 
 const worktree: Worktree = {
   id: 'a/feat',
@@ -35,7 +34,7 @@ const enoent = (path: string) =>
   });
 
 describe('FileService', () => {
-  const currentWorkspace = vi.fn();
+  let current: Workspace | null;
   const readDir = vi.fn();
   const realPath = vi.fn();
   const exists = vi.fn();
@@ -75,17 +74,13 @@ describe('FileService', () => {
     deleteRemoteBranch: vi.fn(),
     ensureIgnored: vi.fn(),
   };
-  const service = new FileService(
-    {currentWorkspace} as unknown as SessionService,
-    files,
-    vcs,
-  );
+  const service = new FileService(files, vcs);
   // realPath answers `real` for `path` and the path itself for anything else.
   const linking = (path: string, real: string) =>
     realPath.mockImplementation(async (p: string) => (p === path ? real : p));
 
   beforeEach(() => {
-    currentWorkspace.mockReturnValue(workspace);
+    current = workspace;
     realPath.mockImplementation(async (p: string) => p);
     exists.mockResolvedValue(true);
     stat.mockResolvedValue(fileStat());
@@ -106,20 +101,20 @@ describe('FileService', () => {
 
   describe('worktree lookup', () => {
     it('Should throw for an unknown worktree id and touch nothing', async () => {
-      await expect(service.list('nope', '')).rejects.toThrow(
+      await expect(service.list(current, 'nope', '')).rejects.toThrow(
         new Error('Worktree não encontrado'),
       );
-      await expect(service.read('nope', 'a.ts')).rejects.toThrow(
+      await expect(service.read(current, 'nope', 'a.ts')).rejects.toThrow(
         'Worktree não encontrado',
       );
       await expect(
-        service.write('nope', 'a.ts', 'x', 'lf', null),
+        service.write(current, 'nope', 'a.ts', 'x', 'lf', null),
       ).rejects.toThrow('Worktree não encontrado');
-      await expect(service.poll('nope', ['a.ts'])).rejects.toThrow(
+      await expect(service.poll(current, 'nope', ['a.ts'])).rejects.toThrow(
         'Worktree não encontrado',
       );
       await expect(
-        service.search('nope', {
+        service.search(current, 'nope', {
           text: '',
           caseSensitive: false,
           wholeWord: false,
@@ -133,9 +128,9 @@ describe('FileService', () => {
     });
 
     it('Should throw when no workspace is open', async () => {
-      currentWorkspace.mockReturnValue(null);
+      current = null;
 
-      await expect(service.read('a/feat', 'a.ts')).rejects.toThrow(
+      await expect(service.read(current, 'a/feat', 'a.ts')).rejects.toThrow(
         'Worktree não encontrado',
       );
     });
@@ -152,7 +147,7 @@ describe('FileService', () => {
         {name: 'link', isDirectory: false, isFile: false},
       ]);
 
-      expect(await service.list('a/feat', '')).toEqual([
+      expect(await service.list(current, 'a/feat', '')).toEqual([
         {name: 'src', kind: 'dir'},
         {name: 'A.md', kind: 'file'},
         {name: 'b.ts', kind: 'file'},
@@ -164,7 +159,7 @@ describe('FileService', () => {
     it('Should list a sub directory', async () => {
       readDir.mockResolvedValue([file('z.ts'), dir('.worktrees'), dir('lib')]);
 
-      expect(await service.list('a/feat', 'src/app')).toEqual([
+      expect(await service.list(current, 'a/feat', 'src/app')).toEqual([
         {name: 'lib', kind: 'dir'},
         {name: 'z.ts', kind: 'file'},
       ]);
@@ -177,7 +172,7 @@ describe('FileService', () => {
       readText.mockResolvedValue('a\nb\n');
       stat.mockResolvedValue(fileStat({mtimeMs: 123}));
 
-      expect(await service.read('a/feat', 'src/a.ts')).toEqual({
+      expect(await service.read(current, 'a/feat', 'src/a.ts')).toEqual({
         kind: 'text',
         path: 'src/a.ts',
         text: 'a\nb\n',
@@ -191,7 +186,7 @@ describe('FileService', () => {
     it('Should normalise CRLF to LF and report the crlf EOL', async () => {
       readText.mockResolvedValue('a\r\nb\r\n');
 
-      expect(await service.read('a/feat', 'w.bat')).toEqual({
+      expect(await service.read(current, 'a/feat', 'w.bat')).toEqual({
         kind: 'text',
         path: 'w.bat',
         text: 'a\nb\n',
@@ -203,7 +198,7 @@ describe('FileService', () => {
     it('Should read a file of exactly the size cap as text', async () => {
       stat.mockResolvedValue(fileStat({size: MAX_FILE_BYTES}));
 
-      expect(await service.read('a/feat', 'big.txt')).toMatchObject({
+      expect(await service.read(current, 'a/feat', 'big.txt')).toMatchObject({
         kind: 'text',
         text: 'abc',
       });
@@ -212,7 +207,7 @@ describe('FileService', () => {
     it('Should report a file over the size cap as large without reading it', async () => {
       stat.mockResolvedValue(fileStat({size: MAX_FILE_BYTES + 1}));
 
-      expect(await service.read('a/feat', 'big.txt')).toEqual({
+      expect(await service.read(current, 'a/feat', 'big.txt')).toEqual({
         kind: 'large',
         path: 'big.txt',
         bytes: MAX_FILE_BYTES + 1,
@@ -223,7 +218,7 @@ describe('FileService', () => {
     it('Should report a file with a NUL as binary', async () => {
       readText.mockResolvedValue('PNG\0data');
 
-      expect(await service.read('a/feat', 'logo.png')).toEqual({
+      expect(await service.read(current, 'a/feat', 'logo.png')).toEqual({
         kind: 'binary',
         path: 'logo.png',
       });
@@ -232,7 +227,7 @@ describe('FileService', () => {
     it('Should reject a directory without reading it', async () => {
       stat.mockResolvedValue(fileStat({isFile: false, isDirectory: true}));
 
-      await expect(service.read('a/feat', 'src')).rejects.toThrow(
+      await expect(service.read(current, 'a/feat', 'src')).rejects.toThrow(
         new Error('Não é um arquivo'),
       );
       expect(readText).not.toHaveBeenCalled();
@@ -241,7 +236,9 @@ describe('FileService', () => {
     it('Should reject when the file is deleted between stat and read', async () => {
       readText.mockRejectedValue(enoent('/r/a/feat/gone.ts'));
 
-      await expect(service.read('a/feat', 'gone.ts')).rejects.toThrow(/ENOENT/);
+      await expect(service.read(current, 'a/feat', 'gone.ts')).rejects.toThrow(
+        /ENOENT/,
+      );
     });
   });
 
@@ -252,7 +249,14 @@ describe('FileService', () => {
         .mockResolvedValueOnce(fileStat({mtimeMs: 200}));
 
       expect(
-        await service.write('a/feat', 'src/a.ts', 'x\ny\n', 'crlf', 100),
+        await service.write(
+          current,
+          'a/feat',
+          'src/a.ts',
+          'x\ny\n',
+          'crlf',
+          100,
+        ),
       ).toEqual({mtimeMs: 200});
       expect(writeText).toHaveBeenCalledExactlyOnceWith(
         '/r/a/feat/src/a.ts',
@@ -267,7 +271,7 @@ describe('FileService', () => {
     });
 
     it('Should write LF text unchanged', async () => {
-      await service.write('a/feat', 'a.ts', 'x\ny\n', 'lf', 100);
+      await service.write(current, 'a/feat', 'a.ts', 'x\ny\n', 'lf', 100);
 
       expect(writeText).toHaveBeenCalledExactlyOnceWith(
         '/r/a/feat/a.ts',
@@ -279,7 +283,7 @@ describe('FileService', () => {
       stat.mockResolvedValue(fileStat({mtimeMs: 150}));
 
       await expect(
-        service.write('a/feat', 'a.ts', 'x', 'lf', 100),
+        service.write(current, 'a/feat', 'a.ts', 'x', 'lf', 100),
       ).rejects.toThrow(
         new Error('Arquivo mudou no disco; recarregue antes de salvar'),
       );
@@ -289,7 +293,9 @@ describe('FileService', () => {
     it('Should skip the guard when no mtime is expected', async () => {
       stat.mockResolvedValue(fileStat({mtimeMs: 150}));
 
-      expect(await service.write('a/feat', 'a.ts', 'x', 'lf', null)).toEqual({
+      expect(
+        await service.write(current, 'a/feat', 'a.ts', 'x', 'lf', null),
+      ).toEqual({
         mtimeMs: 150,
       });
       expect(writeText).toHaveBeenCalledExactlyOnceWith('/r/a/feat/a.ts', 'x');
@@ -301,7 +307,14 @@ describe('FileService', () => {
       stat.mockResolvedValue(fileStat({mtimeMs: 150}));
 
       expect(
-        await service.write('a/feat', 'src/new.ts', 'x\ny\n', 'crlf', 100),
+        await service.write(
+          current,
+          'a/feat',
+          'src/new.ts',
+          'x\ny\n',
+          'crlf',
+          100,
+        ),
       ).toEqual({mtimeMs: 150});
       expect(exists).toHaveBeenCalledExactlyOnceWith('/r/a/feat/src/new.ts');
       expect(realPath.mock.calls).toEqual([['/r/a/feat'], ['/r/a/feat/src']]);
@@ -323,7 +336,7 @@ describe('FileService', () => {
       );
 
       await expect(
-        service.write('a/feat', 'src/new.ts', 'x', 'lf', null),
+        service.write(current, 'a/feat', 'src/new.ts', 'x', 'lf', null),
       ).rejects.toThrow(
         new Error('Arquivo mudou no disco; recarregue antes de salvar'),
       );
@@ -339,7 +352,7 @@ describe('FileService', () => {
       createText.mockRejectedValue(denied);
 
       await expect(
-        service.write('a/feat', 'src/new.ts', 'x', 'lf', null),
+        service.write(current, 'a/feat', 'src/new.ts', 'x', 'lf', null),
       ).rejects.toBe(denied);
       expect(writeText).not.toHaveBeenCalled();
     });
@@ -349,7 +362,7 @@ describe('FileService', () => {
       linking('/r/a/feat/out', '/elsewhere/out');
 
       await expect(
-        service.write('a/feat', 'out/new.ts', 'x', 'lf', null),
+        service.write(current, 'a/feat', 'out/new.ts', 'x', 'lf', null),
       ).rejects.toThrow(new Error('Caminho fora do worktree'));
       expect(createText).not.toHaveBeenCalled();
       expect(writeText).not.toHaveBeenCalled();
@@ -365,7 +378,7 @@ describe('FileService', () => {
       });
 
       expect(
-        await service.poll('a/feat', ['src/a.ts', 'gone.ts', '../x']),
+        await service.poll(current, 'a/feat', ['src/a.ts', 'gone.ts', '../x']),
       ).toEqual({
         flags: {'src/a.ts': 'M', 'new.ts': 'A'},
         mtimes: {
@@ -381,7 +394,7 @@ describe('FileService', () => {
     it('Should return empty flags and the git error, still with the mtimes', async () => {
       status.mockRejectedValue(new Error('git falhou: boom'));
 
-      expect(await service.poll('a/feat', ['a.ts'])).toEqual({
+      expect(await service.poll(current, 'a/feat', ['a.ts'])).toEqual({
         flags: {},
         mtimes: {'a.ts': 100},
         error: 'git falhou: boom',
@@ -391,7 +404,7 @@ describe('FileService', () => {
     it('Should give a null mtime for an open path that resolves outside the worktree', async () => {
       linking('/r/a/feat/link.ts', '/elsewhere/x');
 
-      expect(await service.poll('a/feat', ['link.ts'])).toEqual({
+      expect(await service.poll(current, 'a/feat', ['link.ts'])).toEqual({
         flags: {},
         mtimes: {'link.ts': null},
         error: null,
@@ -413,7 +426,7 @@ describe('FileService', () => {
         {path: 'src/a.ts', line: 3, text: 'const Foo = 1;'},
       ]);
 
-      expect(await service.search('a/feat', query)).toEqual({
+      expect(await service.search(current, 'a/feat', query)).toEqual({
         files: [
           {
             path: 'src/a.ts',
@@ -440,7 +453,7 @@ describe('FileService', () => {
     it('Should highlight with the query options', async () => {
       grep.mockResolvedValue([{path: 'a.ts', line: 1, text: 'Foo foo'}]);
 
-      const result = await service.search('a/feat', {
+      const result = await service.search(current, 'a/feat', {
         ...query,
         caseSensitive: true,
       });
@@ -449,7 +462,9 @@ describe('FileService', () => {
     });
 
     it('Should return an empty result for an empty query without git', async () => {
-      expect(await service.search('a/feat', {...query, text: ''})).toEqual({
+      expect(
+        await service.search(current, 'a/feat', {...query, text: ''}),
+      ).toEqual({
         files: [],
         total: 0,
         truncated: false,
@@ -460,7 +475,7 @@ describe('FileService', () => {
     it('Should propagate a git failure', async () => {
       grep.mockRejectedValue(new Error('git falhou: bad regex'));
 
-      await expect(service.search('a/feat', query)).rejects.toThrow(
+      await expect(service.search(current, 'a/feat', query)).rejects.toThrow(
         'git falhou: bad regex',
       );
     });
@@ -468,14 +483,14 @@ describe('FileService', () => {
 
   describe('containment', () => {
     it('Should refuse an unsafe relative path and touch nothing', async () => {
-      await expect(service.read('a/feat', '../x')).rejects.toThrow(
+      await expect(service.read(current, 'a/feat', '../x')).rejects.toThrow(
         new Error('Caminho inválido'),
       );
-      await expect(service.list('a/feat', '/etc')).rejects.toThrow(
+      await expect(service.list(current, 'a/feat', '/etc')).rejects.toThrow(
         'Caminho inválido',
       );
       await expect(
-        service.write('a/feat', 'a/../../x', 'x', 'lf', null),
+        service.write(current, 'a/feat', 'a/../../x', 'x', 'lf', null),
       ).rejects.toThrow('Caminho inválido');
       expect(realPath).not.toHaveBeenCalled();
       expect(stat).not.toHaveBeenCalled();
@@ -485,7 +500,7 @@ describe('FileService', () => {
     it('Should refuse to read a symlinked file that points outside', async () => {
       linking('/r/a/feat/link.ts', '/elsewhere/x');
 
-      await expect(service.read('a/feat', 'link.ts')).rejects.toThrow(
+      await expect(service.read(current, 'a/feat', 'link.ts')).rejects.toThrow(
         new Error('Caminho fora do worktree'),
       );
       expect(stat).not.toHaveBeenCalled();
@@ -495,7 +510,7 @@ describe('FileService', () => {
     it('Should refuse to list a symlinked directory that points outside', async () => {
       linking('/r/a/feat/linked', '/elsewhere/x');
 
-      await expect(service.list('a/feat', 'linked')).rejects.toThrow(
+      await expect(service.list(current, 'a/feat', 'linked')).rejects.toThrow(
         'Caminho fora do worktree',
       );
       expect(readDir).not.toHaveBeenCalled();
@@ -505,7 +520,7 @@ describe('FileService', () => {
       linking('/r/a/feat/link.ts', '/elsewhere/x');
 
       await expect(
-        service.write('a/feat', 'link.ts', 'x', 'lf', null),
+        service.write(current, 'a/feat', 'link.ts', 'x', 'lf', null),
       ).rejects.toThrow('Caminho fora do worktree');
       expect(realPath).toHaveBeenLastCalledWith('/r/a/feat/link.ts');
       expect(writeText).not.toHaveBeenCalled();
@@ -514,7 +529,7 @@ describe('FileService', () => {
     it('Should refuse a sibling directory that shares the worktree name as a prefix', async () => {
       linking('/r/a/feat/x', '/r/a/feat-other/x');
 
-      await expect(service.read('a/feat', 'x')).rejects.toThrow(
+      await expect(service.read(current, 'a/feat', 'x')).rejects.toThrow(
         'Caminho fora do worktree',
       );
     });
@@ -522,7 +537,7 @@ describe('FileService', () => {
     it('Should compare real paths when the worktree itself is behind a symlink', async () => {
       realPath.mockImplementation(async (p: string) => `/private${p}`);
 
-      expect(await service.read('a/feat', 'a.ts')).toMatchObject({
+      expect(await service.read(current, 'a/feat', 'a.ts')).toMatchObject({
         kind: 'text',
       });
       expect(stat).toHaveBeenCalledExactlyOnceWith('/r/a/feat/a.ts');

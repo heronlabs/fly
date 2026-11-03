@@ -146,9 +146,8 @@ const enoent = () =>
   Object.assign(new Error('spawn gh ENOENT'), {code: 'ENOENT'});
 
 describe('QueueService', () => {
-  const currentWorkspace = vi.fn();
   const mapped = vi.fn();
-  const sessions = {currentWorkspace, mapped} as unknown as SessionService;
+  const sessions = {mapped} as unknown as SessionService;
   const forSession = vi.fn();
   const forDirectory = vi.fn();
   const transcripts = {forSession, forDirectory} as unknown as TranscriptSource;
@@ -171,7 +170,6 @@ describe('QueueService', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    currentWorkspace.mockReturnValue(workspace);
     sessionsAre([]);
     list.mockResolvedValue([]);
     forSession.mockResolvedValue(null);
@@ -181,24 +179,53 @@ describe('QueueService', () => {
   });
 
   describe('refreshPullRequests', () => {
-    it('Should do nothing without a workspace', async () => {
-      currentWorkspace.mockReturnValue(null);
-      await service.refreshPullRequests();
+    it('Should list nothing without an open workspace', async () => {
+      await service.refreshPullRequests([]);
       expect(list).not.toHaveBeenCalled();
     });
 
-    it('Should list only repos with a branch worktree, then report ok', async () => {
-      await service.refreshPullRequests();
+    it('Should list a repo two workspaces share once', async () => {
+      const nested: Workspace = {
+        root: '/r/talon',
+        repos: [{...workspace.repos[0]!, id: '.'}],
+        worktrees: workspace.worktrees
+          .filter(w => w.repoId === 'talon')
+          .map(w => ({...w, repoId: '.'})),
+      };
+      await service.refreshPullRequests([workspace, nested]);
       expect(list.mock.calls).toEqual([['/r/talon'], ['/r/nest']]);
-      const snap = await service.snapshot(now);
+    });
+
+    it("Should keep another workspace's repos and drop those none holds", async () => {
+      pullRequestsAre({
+        '/r/talon': [pr({branch: 'feat', number: 4})],
+        '/r/nest': [pr({branch: 'x', number: 7})],
+      });
+      await service.refreshPullRequests([workspace]);
+      list.mockRejectedValue(new Error('offline'));
+      await service.refreshPullRequests([withoutTalon, workspace]);
+      let snap = await service.snapshot(workspace, now);
+      expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest?.number).toBe(
+        4,
+      );
+      await service.refreshPullRequests([withoutTalon]);
+      snap = await service.snapshot(workspace, now);
+      expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest).toBeNull();
+      expect(queueOf(snap, 'nest/.worktrees/x')?.pullRequest?.number).toBe(7);
+    });
+
+    it('Should list only repos with a branch worktree, then report ok', async () => {
+      await service.refreshPullRequests([workspace]);
+      expect(list.mock.calls).toEqual([['/r/talon'], ['/r/nest']]);
+      const snap = await service.snapshot(workspace, now);
       expect(snap.github).toBe('ok');
       expect(snap.message).toBeNull();
     });
 
     it('Should report gh missing on ENOENT, even after another failure', async () => {
       pullRequestsAre({'/r/talon': new Error('boom'), '/r/nest': enoent()});
-      await service.refreshPullRequests();
-      const snap = await service.snapshot(now);
+      await service.refreshPullRequests([workspace]);
+      const snap = await service.snapshot(workspace, now);
       expect(snap.github).toBe('missing');
       expect(snap.message).toBe(
         'gh não encontrado — instale com: brew install gh',
@@ -208,8 +235,8 @@ describe('QueueService', () => {
 
     it('Should report a logged-out gh as an error with its message', async () => {
       pullRequestsAre({'/r/nest': new Error(GH_AUTH_MESSAGE)});
-      await service.refreshPullRequests();
-      const snap = await service.snapshot(now);
+      await service.refreshPullRequests([workspace]);
+      const snap = await service.snapshot(workspace, now);
       expect(snap.github).toBe('error');
       expect(snap.message).toBe('gh não autenticado — rode: gh auth login');
     });
@@ -219,8 +246,8 @@ describe('QueueService', () => {
         '/r/talon': new Error('first'),
         '/r/nest': new Error('second'),
       });
-      await service.refreshPullRequests();
-      expect((await service.snapshot(now)).message).toBe('first');
+      await service.refreshPullRequests([workspace]);
+      expect((await service.snapshot(workspace, now)).message).toBe('first');
     });
 
     it("Should keep a failed repo's previous list and replace a listed one", async () => {
@@ -228,10 +255,10 @@ describe('QueueService', () => {
         '/r/talon': [pr({branch: 'feat', number: 4})],
         '/r/nest': [pr({branch: 'x', number: 7})],
       });
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       pullRequestsAre({'/r/talon': new Error('boom'), '/r/nest': []});
-      await service.refreshPullRequests();
-      const snap = await service.snapshot(now);
+      await service.refreshPullRequests([workspace]);
+      const snap = await service.snapshot(workspace, now);
       expect(snap.github).toBe('error');
       expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest?.number).toBe(
         4,
@@ -241,22 +268,55 @@ describe('QueueService', () => {
 
     it('Should recover to ok once every repo lists again', async () => {
       pullRequestsAre({'/r/talon': enoent()});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       pullRequestsAre({});
-      await service.refreshPullRequests();
-      const snap = await service.snapshot(now);
+      await service.refreshPullRequests([workspace]);
+      const snap = await service.snapshot(workspace, now);
       expect([snap.github, snap.message]).toEqual(['ok', null]);
     });
 
     it('Should drop the PRs of a repo removed from the workspace', async () => {
       pullRequestsAre({'/r/talon': [pr({branch: 'feat', number: 4})]});
-      await service.refreshPullRequests();
-      currentWorkspace.mockReturnValue(withoutTalon);
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
+      await service.refreshPullRequests([withoutTalon]);
       expect(list).toHaveBeenLastCalledWith('/r/nest');
-      currentWorkspace.mockReturnValue(workspace);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest).toBeNull();
+    });
+  });
+
+  describe('refreshRepo', () => {
+    it('Should relist one repo and leave the others', async () => {
+      pullRequestsAre({
+        '/r/talon': [pr({number: 4})],
+        '/r/nest': [pr({branch: 'x', number: 7})],
+      });
+      await service.refreshPullRequests([workspace]);
+      list.mockClear();
+      pullRequestsAre({'/r/talon': [pr({number: 5})]});
+
+      await service.refreshRepo('/r/talon');
+
+      expect(list.mock.calls).toEqual([['/r/talon']]);
+      const snap = await service.snapshot(workspace, now);
+      expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest?.number).toBe(
+        5,
+      );
+      expect(queueOf(snap, 'nest/.worktrees/x')?.pullRequest?.number).toBe(7);
+    });
+
+    it('Should resolve and keep the last list when gh fails', async () => {
+      pullRequestsAre({'/r/talon': [pr({number: 4})]});
+      await service.refreshPullRequests([workspace]);
+      list.mockRejectedValue(new Error('offline'));
+
+      await service.refreshRepo('/r/talon');
+
+      const snap = await service.snapshot(workspace, now);
+      expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest?.number).toBe(
+        4,
+      );
+      expect(snap.github).toBe('ok');
     });
   });
 
@@ -264,49 +324,52 @@ describe('QueueService', () => {
     const feat = 'talon/.worktrees/feat';
 
     it('Should reject an unknown worktree', async () => {
-      await expect(service.mergePullRequest('nope')).rejects.toThrow(
+      await expect(service.mergePullRequest(workspace, 'nope')).rejects.toThrow(
         'Worktree não encontrado',
       );
       expect(merge).not.toHaveBeenCalled();
     });
 
     it('Should reject a worktree whose repo is not in the workspace', async () => {
-      currentWorkspace.mockReturnValue({
+      const noTalon = {
         ...workspace,
         repos: workspace.repos.filter(r => r.id !== 'talon'),
-      });
-      await expect(service.mergePullRequest(feat)).rejects.toThrow(
+      };
+      await expect(service.mergePullRequest(noTalon, feat)).rejects.toThrow(
         'Worktree não encontrado',
       );
     });
 
     it("Should merge in the worktree's own repo", async () => {
       pullRequestsAre({'/r/nest': [pr({branch: 'x', number: 3})]});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       merge.mockResolvedValue(undefined);
 
-      await service.mergePullRequest('nest/.worktrees/x');
+      await service.mergePullRequest(workspace, 'nest/.worktrees/x');
 
       expect(merge).toHaveBeenCalledWith('/r/nest', 3);
     });
 
     it('Should reject without a workspace', async () => {
-      currentWorkspace.mockReturnValue(null);
-      await expect(service.mergePullRequest(feat)).rejects.toThrow(
+      await expect(service.mergePullRequest(null, feat)).rejects.toThrow(
         'Worktree não encontrado',
       );
     });
 
     it('Should reject a worktree without a PR', async () => {
-      await service.refreshPullRequests();
-      await expect(service.mergePullRequest(feat)).rejects.toThrow(NO_OPEN_PR);
+      await service.refreshPullRequests([workspace]);
+      await expect(service.mergePullRequest(workspace, feat)).rejects.toThrow(
+        NO_OPEN_PR,
+      );
       expect(NO_OPEN_PR).toBe('Sem PR aberto para fazer merge');
     });
 
     it('Should reject a worktree whose only PR is merged', async () => {
       pullRequestsAre({'/r/talon': [pr({state: 'merged'})]});
-      await service.refreshPullRequests();
-      await expect(service.mergePullRequest(feat)).rejects.toThrow(NO_OPEN_PR);
+      await service.refreshPullRequests([workspace]);
+      await expect(service.mergePullRequest(workspace, feat)).rejects.toThrow(
+        NO_OPEN_PR,
+      );
       expect(merge).not.toHaveBeenCalled();
     });
 
@@ -314,11 +377,11 @@ describe('QueueService', () => {
       pullRequestsAre({
         '/r/talon': [pr({number: 4, state: 'merged'}), pr({number: 9})],
       });
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       list.mockClear();
       merge.mockResolvedValue(undefined);
 
-      await service.mergePullRequest(feat);
+      await service.mergePullRequest(workspace, feat);
 
       expect(merge).toHaveBeenCalledWith('/r/talon', 9);
       expect(list).toHaveBeenCalledWith('/r/talon');
@@ -327,13 +390,46 @@ describe('QueueService', () => {
       );
     });
 
+    it('Should relist only the merged repo and show its new list', async () => {
+      pullRequestsAre({
+        '/r/talon': [pr({number: 9})],
+        '/r/nest': [pr({branch: 'x', number: 3})],
+      });
+      await service.refreshPullRequests([workspace]);
+      list.mockClear();
+      pullRequestsAre({'/r/talon': [pr({number: 9, state: 'merged'})]});
+      merge.mockResolvedValue(undefined);
+
+      await service.mergePullRequest(workspace, feat);
+
+      expect(list.mock.calls).toEqual([['/r/talon']]);
+      const snap = await service.snapshot(workspace, now);
+      expect(queueOf(snap, feat)?.pullRequest?.state).toBe('merged');
+      expect(queueOf(snap, 'nest/.worktrees/x')?.pullRequest?.number).toBe(3);
+    });
+
+    it('Should resolve and keep the last list when the relist fails', async () => {
+      pullRequestsAre({'/r/talon': [pr({number: 9})]});
+      await service.refreshPullRequests([workspace]);
+      list.mockRejectedValue(new Error('offline'));
+      merge.mockResolvedValue(undefined);
+
+      await service.mergePullRequest(workspace, feat);
+
+      const snap = await service.snapshot(workspace, now);
+      expect(queueOf(snap, feat)?.pullRequest?.number).toBe(9);
+      expect(snap.github).toBe('ok');
+    });
+
     it('Should propagate a gateway rejection without refreshing', async () => {
       pullRequestsAre({'/r/talon': [pr()]});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       list.mockClear();
       merge.mockRejectedValue(new Error('conflito'));
 
-      await expect(service.mergePullRequest(feat)).rejects.toThrow('conflito');
+      await expect(service.mergePullRequest(workspace, feat)).rejects.toThrow(
+        'conflito',
+      );
       expect(list).not.toHaveBeenCalled();
     });
   });
@@ -341,9 +437,8 @@ describe('QueueService', () => {
   describe('snapshot', () => {
     it('Should return no worktrees without a workspace, keeping the gh status', async () => {
       pullRequestsAre({'/r/talon': enoent()});
-      await service.refreshPullRequests();
-      currentWorkspace.mockReturnValue(null);
-      expect(await service.snapshot(now)).toEqual({
+      await service.refreshPullRequests([workspace]);
+      expect(await service.snapshot(null, now)).toEqual({
         github: 'missing',
         message: GH_MISSING,
         worktrees: [],
@@ -352,7 +447,7 @@ describe('QueueService', () => {
     });
 
     it('Should list every worktree in workspace order, idle without activity', async () => {
-      expect(await service.snapshot(now)).toEqual({
+      expect(await service.snapshot(workspace, now)).toEqual({
         github: 'ok',
         message: null,
         worktrees: workspace.worktrees.map(w => ({
@@ -384,7 +479,7 @@ describe('QueueService', () => {
         }),
       ]);
       forSession.mockResolvedValue(running);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(forSession.mock.calls).toEqual([
         [{launchCwd: '/r/talon/.worktrees/feat', sessionId: 's1'}],
         [{launchCwd: '/r/talon/.worktrees/fix', sessionId: 's2'}],
@@ -399,7 +494,7 @@ describe('QueueService', () => {
         item('nest', {cwd: '/r/nest', options: {'@fly_session_id': 's3'}}),
       ]);
       forSession.mockResolvedValue(waiting);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(forSession).toHaveBeenCalledWith({
         launchCwd: '/r/nest',
         sessionId: 's3',
@@ -414,7 +509,7 @@ describe('QueueService', () => {
         fly('nest', 's2'),
       ]);
       forDirectory.mockResolvedValue(summary({asking: true}));
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(forDirectory).toHaveBeenCalledExactlyOnceWith({
         cwd: '/r/talon/.worktrees/feat',
         since: 1_700_000_000_000,
@@ -433,7 +528,7 @@ describe('QueueService', () => {
         external('talon'),
       ]);
       forSession.mockResolvedValue(waiting);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(forDirectory).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({cwd: '/r/talon'}),
       );
@@ -448,7 +543,7 @@ describe('QueueService', () => {
         external('nest/.worktrees/x'),
       ]);
       forDirectory.mockRejectedValue(new Error('EACCES'));
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
       expect(statusOf(snap, 'nest/.worktrees/x')).toBe('unknown');
       expect(forDirectory).toHaveBeenCalledTimes(1);
@@ -464,7 +559,7 @@ describe('QueueService', () => {
           cwd === '/r/talon/.worktrees/feat' ? 'ambiguous' : null,
         ),
       );
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
       expect(statusOf(snap, 'talon/.worktrees/fix')).toBe('idle');
     });
@@ -472,7 +567,7 @@ describe('QueueService', () => {
     it('Should keep a session in the main worktree there, whatever its transcript entered', async () => {
       sessionsAre([fly('talon', 's1')]);
       forSession.mockResolvedValue(running);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon')).toBe('engineer');
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('idle');
     });
@@ -481,7 +576,7 @@ describe('QueueService', () => {
       sessionsAre([fly('talon/.worktrees/feat', 's1'), external('nest')]);
       forSession.mockRejectedValue(new Error('EACCES'));
       forDirectory.mockRejectedValue(new Error('EACCES'));
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
       expect(statusOf(snap, 'nest')).toBe('unknown');
     });
@@ -489,7 +584,7 @@ describe('QueueService', () => {
     it('Should read a started session without a transcript yet as waiting', async () => {
       sessionsAre([fly('talon/.worktrees/feat', 's1')]);
       forSession.mockResolvedValue(null);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('waiting');
     });
 
@@ -504,21 +599,21 @@ describe('QueueService', () => {
         }),
       ]);
       forSession.mockResolvedValue(null);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
     });
 
     it('Should read a started session with phase none as waiting', async () => {
       sessionsAre([fly('talon/.worktrees/feat', 's1')]);
       forSession.mockResolvedValue(summary({phase: 'none'}));
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('waiting');
     });
 
     it('Should read a task session without a transcript yet as unknown', async () => {
       sessionsAre([task('talon/.worktrees/feat', 's1')]);
       forSession.mockResolvedValue(null);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
     });
 
@@ -541,10 +636,10 @@ describe('QueueService', () => {
           pr({branch: 'x', number: 7, state: 'closed'}),
         ],
       });
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       sessionsAre([fly('talon', 's1')]);
       forSession.mockResolvedValue(running);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(queueOf(snap, 'talon/.worktrees/feat')).toEqual({
         worktreeId: 'talon/.worktrees/feat',
         status: 'ready',
@@ -568,8 +663,8 @@ describe('QueueService', () => {
         '/r/talon': [],
         '/r/nest': [pr({branch: 'feat', number: 8})],
       });
-      await service.refreshPullRequests();
-      const snap = await service.snapshot(now);
+      await service.refreshPullRequests([workspace]);
+      const snap = await service.snapshot(workspace, now);
       expect(queueOf(snap, 'talon/.worktrees/feat')?.pullRequest).toBeNull();
     });
 
@@ -580,8 +675,8 @@ describe('QueueService', () => {
         items: [],
       });
       pullRequestsAre({'/r/talon': [pr({branch: 'feat', checks: 'failing'})]});
-      await service.refreshPullRequests();
-      const snap = await service.snapshot(now);
+      await service.refreshPullRequests([workspace]);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('failed');
       expect(statusOf(snap, 'talon/.worktrees/fix')).toBe('idle');
       expect(forSession).not.toHaveBeenCalled();
@@ -598,7 +693,7 @@ describe('QueueService', () => {
       forSession.mockResolvedValue(
         summary({phase: 'mid-turn', lastEventAt: now - 11 * 60_000}),
       );
-      const snap = await service.snapshot();
+      const snap = await service.snapshot(workspace);
       expect(forDirectory).toHaveBeenCalledWith(expect.objectContaining({now}));
       expect(statusOf(snap, 'talon/.worktrees/feat')).toBe('unknown');
     });
@@ -612,17 +707,20 @@ describe('QueueService', () => {
           pr({branch: 'feat', number: 4}),
         ],
       });
-      await service.refreshPullRequests();
-      expect(service.pullRequestFor('talon/.worktrees/feat')?.number).toBe(4);
-      expect(service.pullRequestFor('talon/.worktrees/fix')).toBeNull();
+      await service.refreshPullRequests([workspace]);
+      expect(
+        service.pullRequestFor(workspace, 'talon/.worktrees/feat')?.number,
+      ).toBe(4);
+      expect(
+        service.pullRequestFor(workspace, 'talon/.worktrees/fix'),
+      ).toBeNull();
     });
 
     it('Should return null for an unknown worktree or without a workspace', async () => {
       pullRequestsAre({'/r/talon': [pr({branch: 'feat', number: 4})]});
-      await service.refreshPullRequests();
-      expect(service.pullRequestFor('nope')).toBeNull();
-      currentWorkspace.mockReturnValue(null);
-      expect(service.pullRequestFor('talon/.worktrees/feat')).toBeNull();
+      await service.refreshPullRequests([workspace]);
+      expect(service.pullRequestFor(workspace, 'nope')).toBeNull();
+      expect(service.pullRequestFor(null, 'talon/.worktrees/feat')).toBeNull();
     });
   });
 
@@ -631,7 +729,7 @@ describe('QueueService', () => {
 
     it('Should show a stopped task as waiting even with failing checks', async () => {
       pullRequestsAre({'/r/talon': [pr({branch: 'feat', checks: 'failing'})]});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       const stop = {kind: 'open' as const, message: 'Nada para abrir'};
       taskList.mockResolvedValue([
         record(feat, {
@@ -642,7 +740,7 @@ describe('QueueService', () => {
           prNumber: 1,
         }),
       ]);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, feat)).toBe('waiting');
       expect(queueOf(snap, feat)?.task).toEqual({
         phase: 'stopped',
@@ -657,22 +755,22 @@ describe('QueueService', () => {
 
     it('Should show an opening task as engineer beside an open PR', async () => {
       pullRequestsAre({'/r/talon': [pr({branch: 'feat'})]});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       taskList.mockResolvedValue([record(feat, {phase: 'opening'})]);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, feat)).toBe('engineer');
       expect(queueOf(snap, feat)?.task?.phase).toBe('opening');
     });
 
     it('Should ignore a record whose path or branch differs', async () => {
       pullRequestsAre({'/r/talon': [pr({branch: 'feat', checks: 'failing'})]});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       taskList.mockResolvedValue([
         record(feat, {branch: 'old', phase: 'stopped'}),
         // Same branch name, another path.
         record('talon/.worktrees/gone', {phase: 'stopped'}),
       ]);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, feat)).toBe('failed');
       expect(queueOf(snap, feat)?.task).toBeNull();
     });
@@ -705,7 +803,7 @@ describe('QueueService', () => {
         ],
         '/r/nest': [pr({branch: 'x', number: 7, state: 'closed'})],
       });
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       sessionsAre([
         fly(feat, 's1'),
         fly(fix, 's2'),
@@ -714,7 +812,7 @@ describe('QueueService', () => {
         fly('nest/.worktrees/x', 's5'),
       ]);
       forSession.mockResolvedValue(waiting);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(canOpen(snap, feat)).toBe(true);
       expect(canOpen(snap, 'nest/.worktrees/x')).toBe(true);
       expect(canOpen(snap, fix)).toBe(false);
@@ -725,16 +823,16 @@ describe('QueueService', () => {
     it('Should allow a promptless fly session without a transcript once started', async () => {
       sessionsAre([fly(feat, 'p')]);
       forSession.mockResolvedValue(null);
-      expect(canOpen(await service.snapshot(now), feat)).toBe(true);
+      expect(canOpen(await service.snapshot(workspace, now), feat)).toBe(true);
     });
 
     it('Should allow again once CI shows the PR in the list', async () => {
       pullRequestsAre({'/r/talon': [pr({branch: 'feat', state: 'merged'})]});
-      await service.refreshPullRequests();
+      await service.refreshPullRequests([workspace]);
       sessionsAre([flyAt(feat, 's1', 1)]);
       forSession.mockResolvedValue(waiting);
       taskList.mockResolvedValue([record(feat, {phase: 'ci'})]);
-      expect(canOpen(await service.snapshot(now), feat)).toBe(true);
+      expect(canOpen(await service.snapshot(workspace, now), feat)).toBe(true);
     });
 
     it('Should not allow a session still starting up or started with a task', async () => {
@@ -745,9 +843,9 @@ describe('QueueService', () => {
           options: {'@fly_session_id': 'p', '@fly_worktree': `/r/${feat}`},
         }),
       ]);
-      expect(canOpen(await service.snapshot(now), feat)).toBe(false);
+      expect(canOpen(await service.snapshot(workspace, now), feat)).toBe(false);
       sessionsAre([task(feat, 'p')]);
-      expect(canOpen(await service.snapshot(now), feat)).toBe(false);
+      expect(canOpen(await service.snapshot(workspace, now), feat)).toBe(false);
     });
 
     it.each<[string, Partial<TaskRecord>, boolean]>([
@@ -763,13 +861,15 @@ describe('QueueService', () => {
       sessionsAre([flyAt(feat, 's1', 1)]);
       forSession.mockResolvedValue(waiting);
       taskList.mockResolvedValue([record(feat, over)]);
-      expect(canOpen(await service.snapshot(now), feat)).toBe(expected);
+      expect(canOpen(await service.snapshot(workspace, now), feat)).toBe(
+        expected,
+      );
     });
 
     it('Should refuse a worktree whose only waiting session is external', async () => {
       sessionsAre([external(feat)]);
       forDirectory.mockResolvedValue(waiting);
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(statusOf(snap, feat)).toBe('waiting');
       expect(canOpen(snap, feat)).toBe(false);
     });
@@ -787,7 +887,7 @@ describe('QueueService', () => {
         old2: running,
         new2: waiting,
       });
-      const snap = await service.snapshot(now);
+      const snap = await service.snapshot(workspace, now);
       expect(canOpen(snap, feat)).toBe(false);
       expect(canOpen(snap, fix)).toBe(true);
     });

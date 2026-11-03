@@ -16,7 +16,7 @@ const notice = (version: string) => ({
   url: `https://github.com/heronlabs/fly/releases/tag/v${version}`,
 });
 
-const listeners = new Map<string, (...args: unknown[]) => unknown>();
+const listeners = new Map<string, (...args: any[]) => unknown>();
 const host: IpcHost = {
   handle: (channel, listener) => void listeners.set(channel, listener),
   on: vi.fn(),

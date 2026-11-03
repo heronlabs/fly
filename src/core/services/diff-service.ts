@@ -4,7 +4,7 @@ import {DiffScope, WorktreeDiff} from '../domain/diff';
 import {Workspace, Worktree} from '../domain/workspace';
 import {DiffRequest, VcsGateway} from '../interfaces/vcs-gateway';
 import {capDiff} from './diff-rules';
-import {errorMessage, SessionService} from './session-service';
+import {errorMessage} from './session-service';
 
 // What a branch diff is measured against: the repo's main worktree.
 export const baseOf = (
@@ -20,13 +20,13 @@ export const baseOf = (
 
 @Injectable()
 export class DiffService {
-  constructor(
-    private readonly sessions: SessionService,
-    private readonly vcs: VcsGateway,
-  ) {}
+  constructor(private readonly vcs: VcsGateway) {}
 
-  async read(worktreeId: string, scope: DiffScope): Promise<WorktreeDiff> {
-    const workspace = this.sessions.currentWorkspace();
+  async read(
+    workspace: Workspace | null,
+    worktreeId: string,
+    scope: DiffScope,
+  ): Promise<WorktreeDiff> {
     const worktree = workspace?.worktrees.find(w => w.id === worktreeId);
     if (!workspace || !worktree) throw new Error('Worktree não encontrado');
     let base = baseOf(workspace, worktree);
