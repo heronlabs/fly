@@ -1,3 +1,9 @@
+## v0.12.0 (2026-11-03)
+
+### Features
+
+* feat(ipc): open several windows, one per folder (#34) (274c82bb3da39aca6340a2e3b719ee8cb4d30fea)
+
 ## v0.11.0 (2026-11-03)
 
 ### Features
