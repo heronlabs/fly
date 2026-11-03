@@ -128,7 +128,8 @@ fly lands in `/opt/fly` and in the applications menu, and the package links
 the `fly` command into `/usr/bin`. The deb is not signed; it is as trustworthy
 as the Release you downloaded it from. On first open the same wizard checks the
 tools, showing the `sudo apt install` line for a missing one, and confirms
-`/usr/bin/fly`. Its menu ("fly" > "Configurar fly…") shows on Alt.
+`/usr/bin/fly`. Its menu ("fly" > "Nova janela", "Configurar fly…") shows on
+Alt.
 
 On Linux, Ctrl replaces ⌘ in fly's shortcuts (Ctrl+N, Ctrl+Shift+F, Ctrl+S,
 Ctrl+Enter), except inside a terminal tab, where Ctrl keys go to the session
@@ -207,7 +208,7 @@ own data folder, and each `fly` hands folders to its own instance. A second `fly
 hands the folder to the running app: the window that already shows the folder's
 root comes to the front, else a new window opens it, the way a folder picked on
 the welcome screen opens, remembered among the recent folders. "Nova janela"
-(⌘⇧N) opens an empty window; only the first window reopens the last folder used,
+(⌘⇧N; on Linux in the "fly" menu, with no shortcut) opens an empty window; only the first window reopens the last folder used,
 and a reloaded window keeps its own. Each window has its own queue, sessions and
 terminals; the tasks of every open window move along together. The root it opens climbs to a recent
 folder: a folder inside one of them opens the deepest such recent folder; a

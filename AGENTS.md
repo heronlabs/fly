@@ -21,7 +21,7 @@ This session may itself run inside a fly session on the default tmux server. See
 
 | Process | Entry | Role |
 |---------|-------|------|
-| main | `src/main.ts` | Loads the login shell's `PATH` and `LANG` (Finder gives a minimal `PATH`), builds the Nest application context from `IpcModule`, calls `register()` on every handler and opens the first window (`contextIsolation: true`, `nodeIntegration: false`, `window.open` denied, navigation off the app blocked). Single instance, many windows: a second `fly <pasta>` hands its argv to the first and quits, and the folder opens in the window that shows its root, else in a new one; "Nova janela" (⌘⇧N, packaged menu) opens an empty one. |
+| main | `src/main.ts` | Loads the login shell's `PATH` and `LANG` (Finder gives a minimal `PATH`), builds the Nest application context from `IpcModule`, calls `register()` on every handler and opens the first window (`contextIsolation: true`, `nodeIntegration: false`, `window.open` denied, navigation off the app blocked). Single instance, many windows: a second `fly <pasta>` hands its argv to the first and quits, and the folder opens in the window that shows its root, else in a new one; "Nova janela" (packaged menu; ⌘⇧N on macOS, no shortcut on Linux) opens an empty one. |
 | preload | `src/preload.ts` | Maps `FlyApi` onto `ipcRenderer` and exposes it as `window.fly` through `contextBridge`. |
 | renderer | `src/application/ui` | React 19, antd, zustand (`state/fly-store.ts`), xterm.js, CodeMirror. Reaches the main process only through `window.fly`. |
 | CLI | `src/cli.ts` | The `fly` command, wired by hand (no Nest). `bin/fly` runs it on fly's own Electron with `ELECTRON_RUN_AS_NODE`, so nothing it reaches may import `electron`. |
