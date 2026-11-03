@@ -1,3 +1,9 @@
+## v0.12.1 (2026-11-03)
+
+### Miscellaneous Chores
+
+* other(core): pass the workspace to TaskService.create in the branch specs (#35) (8a7ccd1f98fcf0bd5896548001e8b09dc0f867dd)
+
 ## v0.12.0 (2026-11-03)
 
 ### Features
