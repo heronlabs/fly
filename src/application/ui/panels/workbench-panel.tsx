@@ -3,6 +3,7 @@ import {useEffect, useRef} from 'react';
 import type {SessionsSnapshot} from '../../../core/domain/session';
 import type {Worktree} from '../../../core/domain/workspace';
 import {type CodeEditorHandle, forgetEditorState} from '../editor/code-editor';
+import {isShortcut} from '../keys';
 import {FILES_POLL_MS, type OpenFile, type Reveal} from '../state/fly-store';
 import type {ResolvedTheme} from '../theme/theme';
 import {EditorPanel} from './editor-panel';
@@ -77,11 +78,12 @@ export const WorkbenchPanel = ({
     return () => clearInterval(id);
   }, [worktreeId, onPoll]);
 
-  // ⌘S works wherever the focus is; CodeMirror has no Mod-s (P12). A clean
-  // tab saves only to re-create its missing file (P8).
+  // ⌘S (Ctrl+S on Linux) works wherever the focus is but a Linux terminal;
+  // CodeMirror has no Mod-s. A clean tab saves only to re-create its missing
+  // file.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey || event.key !== 's') return;
+      if (!isShortcut(event, window.fly.platform) || event.key !== 's') return;
       event.preventDefault();
       if (!active || active.content.kind !== 'text') return;
       if (!active.dirty && active.diskState !== 'missing') return;

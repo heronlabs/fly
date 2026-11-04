@@ -19,7 +19,7 @@ task that gets its own worktree and session, open its PR with "Abrir PR", let
 fly follow CI and reviews, merge with "Fazer merge" (which also cleans up), and
 watch a queue of what is waiting for you versus what an agent is still working on.
 Built with Electron, NestJS in the main process, React in the renderer, tmux
-and xterm.js. macOS first.
+and xterm.js. Runs on macOS (Apple silicon) and Linux (x64 and arm64).
 
 ## Table of Contents
 
@@ -58,8 +58,8 @@ app; `start-s` was a shell alias that started Claude Code in a new tmux session
 3. **Task.** "Nova tarefa" fetches the repo's default branch, creates `.worktrees/<branch>` (branch typed, or named after the description when left empty, numbered `-2`, `-3`… when taken), writes the prompt and attachments to a task folder and starts Claude Code in the worktree with the prompt (optional model). "Abrir PR" then has that session commit and write the PR, and fly opens it.
 4. **Queue.** A poller tails `~/.claude/projects/<cwd>/<session>.jsonl` and asks `gh` for the pull requests of each worktree, then applies the queue rules and broadcasts a snapshot to the renderer, which shows a badge per worktree and the counts in the footer.
 5. **Diff / PR.** The right panel polls `git diff` for the selected worktree every 3 s, only while it is open and on the Diff tab. It shows the working tree and the branch diff against the main worktree's branch, and caps big diffs. The PR tab shows the title, checks and review, a `gh pr merge` button; above them, the task section offers "Abrir PR", shows the CI and review status of the task, and, when fly stops, "Rodar de novo" (reruns failed jobs after an infrastructure failure), "Retomar" and, once the PR is merged or closed, "Limpar"; the panel collapses from the top bar.
-6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded; "Recolher pastas" collapses every open folder. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; the middle button closes a tab, and a right click offers "Fechar todas" and "Fechar salvas" (a dirty tab always asks `Descartar` first). ⌘S saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note instead of the editor.
-7. **Search.** The magnifier on a worktree row, or ⇧⌘F for the selected one, swaps the explorer for a Search view of that worktree: `git grep` over its tracked and untracked text files (`.gitignore` honoured) as you type, with case, whole-word and regex toggles. Hits are grouped by file with the line number and a highlighted preview, capped at 100 per file and 2000 in all; a click opens the file in a tab with the match selected. Each worktree keeps its last search.
+6. **Explorer and editor.** The explorer column opens for the selected worktree with a lazy tree (`.git`, `node_modules` and `.worktrees` hidden), files changed per `git status` flagged and directories with changes expanded; "Recolher pastas" collapses every open folder. Files open in tabs beside `Sessão` in a CodeMirror editor with VSCode-like colours; the middle button closes a tab, and a right click offers "Fechar todas" and "Fechar salvas" (a dirty tab always asks `Descartar` first). ⌘S (Ctrl+S on Linux) saves, refused if the file changed on disk since it was read. A 3 s poll reloads clean tabs and prompts `Recarregar`/`Manter` on dirty ones; big or binary files show a note instead of the editor.
+7. **Search.** The magnifier on a worktree row, or ⇧⌘F (Ctrl+Shift+F on Linux) for the selected one, swaps the explorer for a Search view of that worktree: `git grep` over its tracked and untracked text files (`.gitignore` honoured) as you type, with case, whole-word and regex toggles. Hits are grouped by file with the line number and a highlighted preview, capped at 100 per file and 2000 in all; a click opens the file in a tab with the match selected. Each worktree keeps its last search.
 
 ## Prerequisites
 
@@ -70,11 +70,19 @@ app; `start-s` was a shell alias that started Claude Code in a new tmux session
 | `tmux` | Persistent sessions hosting Claude Code (`>= 3.2`, `brew install tmux`) |
 | `claude` | Claude Code CLI, run inside each session |
 
+fly needs `gh` 2.23 or newer, and the setup wizard checks it. On Linux,
+`sudo apt install git gh tmux` installs the first three on Ubuntu 24.04+ and
+Debian 12+; Ubuntu 22.04's `gh` is too old, so install it from
+[GitHub's apt repository](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)
+there.
+
 fly uses the default tmux server, so `fly ls` and `fly resume <nome>` (or
 `tmux ls` and `tmux attach -t <name>`) from any terminal reach the same
 sessions.
 
 ## Install
+
+### macOS
 
 Download `fly-<versão>-arm64.dmg` from the
 [latest Release](https://github.com/heronlabs/fly/releases/latest), drag fly to
@@ -106,6 +114,31 @@ installed (offering `brew install` where it can), puts the `fly` command in
 `/usr/local/bin` (macOS asks for the administrator password) and offers to move
 the dmg to the Lixeira. "Configurar fly…" in the app menu reopens it.
 
+### Linux
+
+Download `fly-<versão>-amd64.deb` (x64) or `fly-<versão>-arm64.deb` from the
+[latest Release](https://github.com/heronlabs/fly/releases/latest) and install
+it with apt, which also pulls `git` and `tmux`:
+
+```sh
+sudo apt install ./fly-<versão>-amd64.deb
+```
+
+fly lands in `/opt/fly` and in the applications menu, and the package links
+the `fly` command into `/usr/bin`. The deb is not signed; it is as trustworthy
+as the Release you downloaded it from. On first open the same wizard checks the
+tools, showing the `sudo apt install` line for a missing one, and confirms
+`/usr/bin/fly`. Its menu ("fly" > "Nova janela", "Configurar fly…") shows on
+Alt.
+
+On Linux, Ctrl replaces ⌘ in fly's shortcuts (Ctrl+N, Ctrl+Shift+F, Ctrl+S,
+Ctrl+Enter), except inside a terminal tab, where Ctrl keys go to the session
+(Ctrl+C interrupts `claude`). In a terminal tab, Ctrl+Shift+C copies and
+Ctrl+Shift+V pastes; a pasted image becomes a file path, as on macOS.
+
+`sudo apt remove fly` removes the app and the command and keeps your data in
+`~/.config/fly`.
+
 ### Updating
 
 When a newer Release exists, the footer shows `fly vX disponível · Baixar`. fly
@@ -115,6 +148,10 @@ drag its app over the old one in Aplicativos. macOS quarantines each new
 download, so the checks and the unblock step above apply again after updating.
 Up to 0.9.0 fly was signed ad hoc, so the first version signed with the
 certificate asks for its permissions once more.
+
+On Linux, close fly, download the new deb and install it the same way
+(`sudo apt install ./fly-<versão>-<arch>.deb`); installing over a running fly
+replaces its files under it. tmux sessions survive either way.
 
 ## Development
 
@@ -133,10 +170,12 @@ pnpm cli:install
 fly ~/Workfolder
 ```
 
-`~/.local/bin` usually precedes `/usr/local/bin` on `PATH`, so the `fly` from
-`pnpm cli:install` wins over an installed one. Dev builds keep their data in
-`~/Library/Application Support/fly-dev`, apart from the installed app's
-`~/Library/Application Support/fly`, so recent folders are not shared.
+`~/.local/bin` usually precedes `/usr/local/bin` and `/usr/bin` on `PATH`, so
+the `fly` from `pnpm cli:install` wins over an installed one. Dev builds keep
+their data in `~/Library/Application Support/fly-dev` (`~/.config/fly-dev` on
+Linux), apart from the installed app's `~/Library/Application Support/fly`
+(`~/.config/fly`), so recent folders are not shared. On Linux, `pnpm install`
+compiles node-pty, which needs `build-essential` and `python3`.
 
 Pick a workspace folder on the welcome screen. Each repo under it appears in
 the left panel with its worktrees; select one and press "Iniciar sessão" to get
@@ -169,7 +208,7 @@ own data folder, and each `fly` hands folders to its own instance. A second `fly
 hands the folder to the running app: the window that already shows the folder's
 root comes to the front, else a new window opens it, the way a folder picked on
 the welcome screen opens, remembered among the recent folders. "Nova janela"
-(⌘⇧N) opens an empty window; only the first window reopens the last folder used,
+(⌘⇧N; on Linux in the "fly" menu, with no shortcut) opens an empty window; only the first window reopens the last folder used,
 and a reloaded window keeps its own. Each window has its own queue, sessions and
 terminals; the tasks of every open window move along together. The root it opens climbs to a recent
 folder: a folder inside one of them opens the deepest such recent folder; a

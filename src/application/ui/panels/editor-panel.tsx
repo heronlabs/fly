@@ -2,6 +2,7 @@ import type {CSSProperties, RefObject} from 'react';
 
 import {CodeEditor, type CodeEditorHandle} from '../editor/code-editor';
 import {fileKind} from '../editor/file-kinds';
+import {shortcutLabel} from '../keys';
 import type {OpenFile} from '../state/fly-store';
 import type {ResolvedTheme} from '../theme/theme';
 
@@ -107,14 +108,16 @@ export const EditorPanel = ({
             </span>
             <button
               type="button"
-              aria-keyshortcuts="Meta+S"
+              aria-keyshortcuts={
+                window.fly.platform === 'mac' ? 'Meta+S' : 'Control+S'
+              }
               disabled={!saveable || saving}
               onClick={save}
               style={buttonStyle}
             >
               Salvar{' '}
               <span aria-hidden="true" style={{color: 'var(--faint)'}}>
-                ⌘S
+                {shortcutLabel('S', window.fly.platform)}
               </span>
             </button>
           </>

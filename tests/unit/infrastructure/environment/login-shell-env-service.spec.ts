@@ -1,5 +1,6 @@
 import {CommandRunner} from '../../../../src/core/interfaces/command-runner';
 import {
+  defaultShell,
   LoginShellEnvService,
   mergePath,
 } from '../../../../src/infrastructure/environment/login-shell-env-service';
@@ -106,5 +107,15 @@ describe('mergePath', () => {
     expect(mergePath('/bin::/usr/bin', ':/opt/bin:')).toBe(
       '/opt/bin:/bin:/usr/bin',
     );
+  });
+});
+
+describe('defaultShell', () => {
+  it('Should be zsh on mac', () => {
+    expect(defaultShell('mac')).toBe('/bin/zsh');
+  });
+
+  it('Should be bash on Linux', () => {
+    expect(defaultShell('linux')).toBe('/bin/bash');
   });
 });

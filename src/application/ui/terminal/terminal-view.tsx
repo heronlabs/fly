@@ -117,6 +117,21 @@ export const TerminalView = ({
         xterm.paste(paths.map(shellEscape).join(' '));
       }
     };
+    const pasteText = (text: string) => {
+      if (!disposed) {
+        xterm.paste(text);
+      }
+    };
+    // A pasted image becomes a file the session can read; its path is typed.
+    const pasteImage = (image: Blob) => {
+      image
+        .arrayBuffer()
+        .then(bytes => attachments.saveImage(new Uint8Array(bytes)))
+        .then(
+          path => pasteText(shellEscape(path)),
+          () => undefined,
+        );
+    };
     // Capture phase: an image-only paste never reaches xterm's own handler,
     // which would send an empty paste; any paste with text stays with xterm.
     const onPaste = (event: ClipboardEvent) => {
@@ -132,18 +147,50 @@ export const TerminalView = ({
       }
       event.preventDefault();
       event.stopPropagation();
-      image
-        .arrayBuffer()
-        .then(bytes => attachments.saveImage(new Uint8Array(bytes)))
-        .then(
-          path => {
-            if (!disposed) {
-              xterm.paste(shellEscape(path));
-            }
-          },
-          () => undefined,
-        );
+      pasteImage(image);
     };
+    // Ctrl+Shift+V: text first, like a paste event; else a PNG image.
+    const pasteClipboard = async () => {
+      const items = await navigator.clipboard.read();
+      const text = items.find(item => item.types.includes('text/plain'));
+      if (text) {
+        pasteText(await (await text.getType('text/plain')).text());
+        return;
+      }
+      const image = items.find(item => item.types.includes('image/png'));
+      if (image) {
+        pasteImage(await image.getType('image/png'));
+      }
+    };
+    // Linux terminals copy and paste with Ctrl+Shift+C/V, so Ctrl+C still
+    // reaches claude. Both are swallowed on every event type, or xterm would
+    // send ^C or ^V; the browser's own Ctrl+Shift+V paste is prevented too.
+    if (window.fly.platform === 'linux') {
+      xterm.attachCustomKeyEventHandler(event => {
+        const key = event.key.toLowerCase();
+        if (
+          !event.ctrlKey ||
+          !event.shiftKey ||
+          event.altKey ||
+          event.metaKey ||
+          (key !== 'c' && key !== 'v')
+        ) {
+          return true;
+        }
+        event.preventDefault();
+        if (event.type === 'keydown') {
+          if (key === 'c') {
+            const selection = xterm.getSelection();
+            if (selection !== '') {
+              navigator.clipboard.writeText(selection).catch(() => undefined);
+            }
+          } else {
+            pasteClipboard().catch(() => undefined);
+          }
+        }
+        return false;
+      });
+    }
     element.addEventListener('dragover', onDragOver);
     element.addEventListener('drop', onDrop);
     element.addEventListener('paste', onPaste, true);

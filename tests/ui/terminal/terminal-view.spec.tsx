@@ -6,6 +6,7 @@ import {TerminalView} from '../../../src/application/ui/terminal/terminal-view';
 const h = vi.hoisted(() => ({
   terms: [] as FakeTerm[],
   fitSize: {cols: 100, rows: 30},
+  selection: '',
 }));
 
 interface FakeTerm {
@@ -18,6 +19,8 @@ interface FakeTerm {
   dispose: ReturnType<typeof vi.fn>;
   textarea: HTMLTextAreaElement;
   addons: Array<{open?: LinkHandler}>;
+  attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
+  keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
   emitData(data: string): void;
 }
 
@@ -36,6 +39,13 @@ vi.mock('@xterm/xterm', () => ({
     dispose = vi.fn();
     addons: unknown[] = [];
     listener: ((d: string) => void) | undefined;
+    keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
+    attachCustomKeyEventHandler = vi.fn(
+      (handler: (event: KeyboardEvent) => boolean) => {
+        this.keyHandler = handler;
+      },
+    );
+    getSelection = () => h.selection;
     constructor(options: Record<string, unknown>) {
       this.options = options;
       h.terms.push(this as unknown as FakeTerm);
@@ -113,6 +123,7 @@ const clickOscLink = (uri: string) =>
 beforeEach(() => {
   h.terms.length = 0;
   h.fitSize = {cols: 100, rows: 30};
+  h.selection = '';
   vi.mocked(terminal().attach).mockResolvedValue('t1');
   vi.mocked(terminal().detach).mockResolvedValue(undefined);
   vi.mocked(terminal().onData).mockImplementation(l => {
@@ -533,5 +544,182 @@ describe('TerminalView', () => {
       'http://localhost:5173/',
       'https://github.com/o/r/pull/1',
     ]);
+  });
+
+  describe('keys on Linux', () => {
+    const writeText = vi.fn();
+    const read = vi.fn();
+    const press = (init: KeyboardEventInit, type = 'keydown') => {
+      const event = new KeyboardEvent(type, {cancelable: true, ...init});
+      return {handled: h.terms[0]!.keyHandler!(event), event};
+    };
+    const item = (type: string, blob: Blob) => ({
+      types: [type],
+      getType: vi.fn(async () => blob),
+    });
+
+    beforeEach(() => {
+      window.fly.platform = 'linux';
+      writeText.mockReset().mockResolvedValue(undefined);
+      read.mockReset();
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {writeText, read},
+        configurable: true,
+      });
+    });
+
+    it('Should copy the selection on Ctrl+Shift+C without sending it to the pty', async () => {
+      h.selection = 'git status';
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      const {handled, event} = press({key: 'C', ctrlKey: true, shiftKey: true});
+
+      expect(handled).toBe(false);
+      expect(event.defaultPrevented).toBe(true);
+      expect(writeText).toHaveBeenCalledExactlyOnceWith('git status');
+      expect(terminal().write).not.toHaveBeenCalled();
+    });
+
+    it('Should swallow Ctrl+Shift+C with nothing selected', async () => {
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      expect(press({key: 'C', ctrlKey: true, shiftKey: true}).handled).toBe(
+        false,
+      );
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('Should act on keydown only, and still swallow the keyup', async () => {
+      h.selection = 'x';
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      expect(
+        press({key: 'C', ctrlKey: true, shiftKey: true}, 'keyup').handled,
+      ).toBe(false);
+      expect(
+        press({key: 'V', ctrlKey: true, shiftKey: true}, 'keyup').handled,
+      ).toBe(false);
+      expect(writeText).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('Should paste clipboard text on Ctrl+Shift+V', async () => {
+      read.mockResolvedValue([
+        item('text/plain', new Blob(['echo hi'], {type: 'text/plain'})),
+      ]);
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      const {handled, event} = press({key: 'V', ctrlKey: true, shiftKey: true});
+
+      expect(handled).toBe(false);
+      expect(event.defaultPrevented).toBe(true);
+      await vi.waitFor(() =>
+        expect(h.terms[0]?.paste).toHaveBeenCalledWith('echo hi'),
+      );
+      expect(attachments().saveImage).not.toHaveBeenCalled();
+    });
+
+    it('Should save a clipboard image on Ctrl+Shift+V and paste its escaped path', async () => {
+      vi.mocked(attachments().saveImage).mockResolvedValue(
+        '/tmp/my dir/image.png',
+      );
+      read.mockResolvedValue([item('image/png', png())]);
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      press({key: 'V', ctrlKey: true, shiftKey: true});
+
+      await vi.waitFor(() =>
+        expect(h.terms[0]?.paste).toHaveBeenCalledWith(
+          '/tmp/my\\ dir/image.png',
+        ),
+      );
+      expect(attachments().saveImage).toHaveBeenCalledWith(
+        new Uint8Array([137, 80, 78, 71]),
+      );
+    });
+
+    it('Should prefer the text when the clipboard has text and an image', async () => {
+      read.mockResolvedValue([
+        item('image/png', png()),
+        item('text/plain', new Blob(['ls'], {type: 'text/plain'})),
+      ]);
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      press({key: 'V', ctrlKey: true, shiftKey: true});
+
+      await vi.waitFor(() =>
+        expect(h.terms[0]?.paste).toHaveBeenCalledWith('ls'),
+      );
+      expect(attachments().saveImage).not.toHaveBeenCalled();
+    });
+
+    it('Should paste nothing from an empty, unreadable or other clipboard', async () => {
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      read.mockResolvedValueOnce([]);
+      press({key: 'V', ctrlKey: true, shiftKey: true});
+      read.mockResolvedValueOnce([item('image/tiff', new Blob([]))]);
+      press({key: 'V', ctrlKey: true, shiftKey: true});
+      read.mockRejectedValueOnce(new Error('denied'));
+      press({key: 'V', ctrlKey: true, shiftKey: true});
+      await flush();
+
+      expect(read).toHaveBeenCalledTimes(3);
+      expect(h.terms[0]?.paste).not.toHaveBeenCalled();
+      expect(attachments().saveImage).not.toHaveBeenCalled();
+    });
+
+    it('Should not paste clipboard text read after unmount', async () => {
+      let resolve!: (items: unknown[]) => void;
+      read.mockReturnValue(new Promise(r => (resolve = r)));
+      const {unmount} = render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      press({key: 'V', ctrlKey: true, shiftKey: true});
+      unmount();
+      resolve([item('text/plain', new Blob(['ls'], {type: 'text/plain'}))]);
+      await flush();
+
+      expect(h.terms[0]?.paste).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['Ctrl+C', {key: 'c', ctrlKey: true}],
+      ['Ctrl+V', {key: 'v', ctrlKey: true}],
+      ['Ctrl+Shift+X', {key: 'X', ctrlKey: true, shiftKey: true}],
+      [
+        'Ctrl+Alt+Shift+C',
+        {key: 'C', ctrlKey: true, altKey: true, shiftKey: true},
+      ],
+      ['Shift+C', {key: 'C', shiftKey: true}],
+      [
+        'Super+Shift+C',
+        {key: 'C', metaKey: true, ctrlKey: true, shiftKey: true},
+      ],
+    ])('Should leave %s to xterm', async (_name, init) => {
+      h.selection = 'x';
+      render(<TerminalView sessionName="s1" theme="dark" />);
+      await flush();
+
+      const {handled, event} = press(init);
+
+      expect(handled).toBe(true);
+      expect(event.defaultPrevented).toBe(false);
+      expect(writeText).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    });
+  });
+
+  it('Should leave every key to xterm on mac', async () => {
+    render(<TerminalView sessionName="s1" theme="dark" />);
+    await flush();
+    expect(h.terms[0]?.attachCustomKeyEventHandler).not.toHaveBeenCalled();
   });
 });

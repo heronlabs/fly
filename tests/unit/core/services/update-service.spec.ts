@@ -6,7 +6,7 @@ describe('UpdateService', () => {
   const latest = vi.fn();
   const service = new UpdateService(
     {latest} as unknown as ReleaseSource,
-    {version: '0.3.0', bundlePath: null} as AppRuntime,
+    {version: '0.3.0', bundlePath: null, platform: 'mac'} as AppRuntime,
   );
   const release = (version: string) => ({
     version,

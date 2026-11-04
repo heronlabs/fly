@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 
 import type {FileFlag} from '../../core/domain/files';
+import {isShortcut} from './keys';
 import {DiffPrPanel} from './panels/diff-pr-panel';
 import {ExplorerPanel} from './panels/explorer-panel';
 import {FooterBar} from './panels/footer-bar';
@@ -134,7 +135,11 @@ export const AppShell = () => {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey && event.key === 'n' && canCreateTask) {
+      if (
+        isShortcut(event, window.fly.platform) &&
+        event.key === 'n' &&
+        canCreateTask
+      ) {
         event.preventDefault();
         openTask();
       }
@@ -143,11 +148,12 @@ export const AppShell = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [canCreateTask]);
 
-  // ⇧⌘F searches the selected worktree wherever the focus is; CodeMirror
-  // binds Mod-f only, and Shift-Mod-f does not fall back to it.
+  // ⇧⌘F (Ctrl+Shift+F on Linux) searches the selected worktree wherever the
+  // focus is; CodeMirror binds Mod-f only, and Shift-Mod-f does not fall back
+  // to it.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey || !event.shiftKey) return;
+      if (!isShortcut(event, window.fly.platform) || !event.shiftKey) return;
       if (event.key.toLowerCase() !== 'f') return;
       const id = useFlyStore.getState().selectedWorktreeId;
       if (!id) return;

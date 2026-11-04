@@ -117,7 +117,7 @@ describe('fly store', () => {
     const order: string[] = [];
     const info = {
       packaged: true,
-      inApplications: true,
+      inInstallDir: true,
       bundlePath: '/Applications/fly.app',
       open: true,
     };
@@ -200,7 +200,7 @@ describe('fly store', () => {
 
   const openInfo = {
     packaged: true,
-    inApplications: true,
+    inInstallDir: true,
     bundlePath: '/Applications/fly.app',
     open: true,
   };
@@ -246,7 +246,7 @@ describe('fly store', () => {
     useFlyStore.setState({
       setup: {
         packaged: true,
-        inApplications: true,
+        inInstallDir: true,
         bundlePath: null,
         open: true,
       },

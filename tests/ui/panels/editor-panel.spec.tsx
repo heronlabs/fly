@@ -116,6 +116,17 @@ describe('EditorPanel', () => {
     expect(props.editorRef.current?.getText()).toBe('live text');
   });
 
+  it('Should label Salvar with Ctrl+S on Linux', () => {
+    window.fly.platform = 'linux';
+    setup();
+    expect(screen.getByText('Ctrl+S')).toBeVisible();
+    expect(screen.queryByText('⌘S')).toBeNull();
+    expect(screen.getByRole('button', {name: 'Salvar'})).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+S',
+    );
+  });
+
   it('Should disable Salvar and say Salvo when clean', () => {
     setup();
     expect(screen.getByRole('button', {name: 'Salvar'})).toBeDisabled();

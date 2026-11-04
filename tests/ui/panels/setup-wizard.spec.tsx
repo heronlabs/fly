@@ -6,7 +6,7 @@ import type {SetupInfo} from '../../../src/core/domain/setup';
 
 const info = (patch: Partial<SetupInfo> = {}): SetupInfo => ({
   packaged: true,
-  inApplications: true,
+  inInstallDir: true,
   bundlePath: '/Applications/fly.app',
   open: true,
   ...patch,
@@ -33,7 +33,7 @@ describe('SetupWizard', () => {
   it('shows only the move screen outside Aplicativos', () => {
     render(
       <SetupWizard
-        info={info({inApplications: false, bundlePath: '/Volumes/fly/fly.app'})}
+        info={info({inInstallDir: false, bundlePath: '/Volumes/fly/fly.app'})}
         onDone={vi.fn()}
       />,
     );
@@ -46,6 +46,47 @@ describe('SetupWizard', () => {
     expect(screen.queryByText(/Passo/)).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
     expect(window.fly.setup.doctor).not.toHaveBeenCalled();
+  });
+
+  it('keeps a drag spacer for the traffic lights on mac', () => {
+    render(<SetupWizard info={info({inInstallDir: false})} onDone={vi.fn()} />);
+    expect(screen.getByRole('main').firstElementChild).toHaveStyle({
+      height: '38px',
+    });
+  });
+
+  it('asks for the .deb on Linux outside the install dir, with no drag spacer', () => {
+    window.fly.platform = 'linux';
+    render(
+      <SetupWizard
+        info={info({inInstallDir: false, bundlePath: '/home/user/fly'})}
+        onDone={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Instale o pacote .deb do fly e abra pelo menu de aplicativos.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText('O fly está rodando de /home/user/fly.'),
+    ).toBeVisible();
+    expect(screen.queryByText(/Arraste/)).toBeNull();
+    expect(screen.getByRole('main').firstElementChild).not.toHaveStyle({
+      height: '38px',
+    });
+  });
+
+  it('has no drag spacer on Linux inside the install dir', async () => {
+    window.fly.platform = 'linux';
+    render(
+      <SetupWizard info={info({bundlePath: '/opt/fly'})} onDone={vi.fn()} />,
+    );
+    expect(screen.getByText('Passo 1 de 3')).toBeVisible();
+    expect(screen.getByRole('main').firstElementChild).not.toHaveStyle({
+      height: '38px',
+    });
+    await screen.findByRole('button', {name: 'Continuar'});
   });
 
   it('walks the three steps and completes at step 3', async () => {

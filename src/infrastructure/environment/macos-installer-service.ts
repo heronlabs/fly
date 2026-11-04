@@ -3,16 +3,18 @@ import {join} from 'node:path';
 import {Inject, Injectable} from '@nestjs/common';
 
 import {
-  COMMAND_LINK,
   type CommandState,
+  INSTALL_LAYOUTS,
   type InstallerImage,
 } from '../../core/domain/setup';
 import {AppInstaller} from '../../core/interfaces/app-installer';
 import {CommandRunner} from '../../core/interfaces/command-runner';
 import {FileStore} from '../../core/interfaces/file-store';
+import {linkState} from './command-link';
 import {parseHdiutilInfo} from './hdiutil-info-parser';
 import {TRASH_ITEM, type TrashItem} from './tokens';
 
+const COMMAND_LINK = INSTALL_LAYOUTS.mac.commandLink;
 const PROBE_TIMEOUT_MS = 15_000;
 const DETACH_TIMEOUT_MS = 30_000;
 const INSTALL_TIMEOUT_MS = 120_000;
@@ -31,17 +33,8 @@ export class MacosInstallerService extends AppInstaller {
     super();
   }
 
-  async commandState(launcher: string): Promise<CommandState> {
-    if (!(await this.files.exists(COMMAND_LINK))) return 'missing';
-    try {
-      const [link, target] = await Promise.all([
-        this.files.realPath(COMMAND_LINK),
-        this.files.realPath(launcher),
-      ]);
-      return link === target ? 'installed' : 'other';
-    } catch {
-      return 'other';
-    }
+  commandState(launcher: string): Promise<CommandState> {
+    return linkState(this.files, COMMAND_LINK, launcher);
   }
 
   async installCommand(launcher: string): Promise<void> {

@@ -1,8 +1,10 @@
 import {contextBridge, ipcRenderer, webUtils} from 'electron';
 
 import {channels, type FlyApi} from './core/domain/fly-api';
+import {platformOf} from './core/domain/platform';
 
 const api: FlyApi = {
+  platform: platformOf(process.platform),
   workspace: {
     pickFolder: () => ipcRenderer.invoke(channels.workspacePickFolder),
     open: root => ipcRenderer.invoke(channels.workspaceOpen, root),

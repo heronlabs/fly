@@ -22,3 +22,30 @@ mac:
   category: public.app-category.developer-tools
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  target: deb
+  executableName: fly
+  category: Development
+  maintainer: Heron Labs <org@heronlabs.com.br>
+  extraResources:
+    - from: build/icon.png
+      to: icon.png
+deb:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  afterInstall: build/linux/after-install.tpl
+  afterRemove: build/linux/after-remove.tpl
+  # electron-builder's defaults, plus what Electron loads at start that they
+  # miss (tests/unit/build/deb-scripts.spec.ts).
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - libgbm1
+    - 'libasound2t64 | libasound2'
+  recommends: [git, tmux]

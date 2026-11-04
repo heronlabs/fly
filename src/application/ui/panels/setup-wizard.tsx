@@ -1,5 +1,6 @@
 import {type CSSProperties, type ReactNode, useState} from 'react';
 
+import type {Platform} from '../../../core/domain/platform';
 import type {SetupInfo} from '../../../core/domain/setup';
 import {errorMessage} from '../state/fly-store';
 import {
@@ -23,7 +24,10 @@ const Card = ({children}: {children: ReactNode}) => (
       background: 'var(--page)',
     }}
   >
-    <div style={{height: 38, WebkitAppRegion: 'drag'} as CSSProperties} />
+    {/* Room for the macOS traffic lights; Linux keeps its native frame. */}
+    {window.fly.platform === 'mac' && (
+      <div style={{height: 38, WebkitAppRegion: 'drag'} as CSSProperties} />
+    )}
     <div
       style={{
         flex: 1,
@@ -51,6 +55,11 @@ const Card = ({children}: {children: ReactNode}) => (
   </main>
 );
 
+const INSTALL_HINT: Record<Platform, string> = {
+  mac: 'Arraste o fly para Aplicativos e abra de lá.',
+  linux: 'Instale o pacote .deb do fly e abra pelo menu de aplicativos.',
+};
+
 const StepLabel = ({step}: {step: number}) => (
   <div
     style={{
@@ -69,11 +78,11 @@ export const SetupWizard = ({info, onDone}: Props) => {
   const [commandResult, setCommandResult] = useState<StepResult>('done');
   const [completeError, setCompleteError] = useState<string | null>(null);
 
-  if (!info.inApplications) {
+  if (!info.inInstallDir) {
     return (
       <Card>
         <h2 style={{margin: 0, fontSize: 15, color: 'var(--strong)'}}>
-          Arraste o fly para Aplicativos e abra de lá.
+          {INSTALL_HINT[window.fly.platform]}
         </h2>
         <p style={{margin: 0, color: 'var(--text2)'}}>
           O fly está rodando de {info.bundlePath}.

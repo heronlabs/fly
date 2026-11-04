@@ -8,6 +8,7 @@ import {
 
 import type {NewTaskInput} from '../../../core/domain/task';
 import type {Repo} from '../../../core/domain/workspace';
+import {isShortcut} from '../keys';
 
 // Mirrors MODELS in core/domain/task: the UI layer may not import it at runtime.
 const MODEL_OPTIONS = ['opus', 'sonnet', 'haiku'];
@@ -108,7 +109,10 @@ const DialogBody = ({
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       onCancel();
-    } else if (event.key === 'Enter' && event.metaKey) {
+    } else if (
+      event.key === 'Enter' &&
+      isShortcut(event, window.fly.platform)
+    ) {
       submit();
     }
   };

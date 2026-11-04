@@ -176,6 +176,32 @@ describe('DependenciesStep', () => {
     );
   });
 
+  it('shows the apt command on Linux with no brew button', async () => {
+    window.fly.platform = 'linux';
+    vi.mocked(window.fly.setup.doctor).mockResolvedValue({
+      brew: false,
+      tools: [
+        ok('git'),
+        ok('gh'),
+        {
+          id: 'tmux',
+          ok: false,
+          version: null,
+          problem: 'não encontrado',
+          fix: {kind: 'copy', command: 'sudo apt install tmux'},
+        },
+        ok('claude'),
+      ],
+    });
+    render(<DependenciesStep onNext={vi.fn()} />);
+    expect(await screen.findByText('sudo apt install tmux')).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Copiar'})).toBeVisible();
+    expect(
+      screen.queryByRole('button', {name: 'Instalar com brew'}),
+    ).toBeNull();
+    expect(screen.queryByText('Homebrew não encontrado')).toBeNull();
+  });
+
   it('shows a doctor rejection without the IPC prefix', async () => {
     vi.mocked(window.fly.setup.doctor).mockRejectedValue(
       new Error("Error invoking remote method 'setup:doctor': Error: boom"),
@@ -242,6 +268,32 @@ describe('CommandStep', () => {
     expect(
       await screen.findByText(
         '/usr/local/bin/fly aponta para outro lugar; será substituído.',
+      ),
+    ).toBeVisible();
+  });
+
+  it('explains the package link on Linux', async () => {
+    window.fly.platform = 'linux';
+    vi.mocked(window.fly.setup.commandState).mockResolvedValue('missing');
+    render(<CommandStep onNext={vi.fn()} />);
+    expect(await screen.findByText('/usr/bin/fly → /opt/fly')).toBeVisible();
+    expect(
+      screen.getByText(
+        'O pacote .deb já cria esse link; o Linux pede sua senha só para refazê-lo.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/Applications/)).toBeNull();
+    expect(screen.queryByText(/zshrc/)).toBeNull();
+    expect(screen.queryByText(/será substituído/)).toBeNull();
+  });
+
+  it('warns on Linux that another target will be replaced', async () => {
+    window.fly.platform = 'linux';
+    vi.mocked(window.fly.setup.commandState).mockResolvedValue('other');
+    render(<CommandStep onNext={vi.fn()} />);
+    expect(
+      await screen.findByText(
+        '/usr/bin/fly aponta para outro lugar; será substituído.',
       ),
     ).toBeVisible();
   });

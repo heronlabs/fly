@@ -1,5 +1,5 @@
 import {homedir} from 'node:os';
-import {join, resolve} from 'node:path';
+import {join} from 'node:path';
 
 import {Module} from '@nestjs/common';
 import {
@@ -11,6 +11,7 @@ import {
   webContents,
 } from 'electron';
 
+import {platformOf} from '../../core/domain/platform';
 import {AppInstaller} from '../../core/interfaces/app-installer';
 import {AppRuntime} from '../../core/interfaces/app-runtime';
 import {CommandRunner} from '../../core/interfaces/command-runner';
@@ -36,6 +37,7 @@ import {LifecycleService} from '../../core/services/lifecycle-service';
 import {QueueService} from '../../core/services/queue-service';
 import {SessionService} from '../../core/services/session-service';
 import {SettingsService} from '../../core/services/settings-service';
+import {bundleRoot} from '../../core/services/setup-rules';
 import {SetupService} from '../../core/services/setup-service';
 import {TaskService} from '../../core/services/task-service';
 import {TerminalService} from '../../core/services/terminal-service';
@@ -46,6 +48,7 @@ import {CLAUDE_PROJECTS_DIR} from '../../infrastructure/claude/tokens';
 import {CryptoIdGeneratorService} from '../../infrastructure/environment/crypto-id-generator-service';
 import {JsonConfigStoreService} from '../../infrastructure/environment/json-config-store-service';
 import {JsonTaskStoreService} from '../../infrastructure/environment/json-task-store-service';
+import {LinuxInstallerService} from '../../infrastructure/environment/linux-installer-service';
 import {MacosInstallerService} from '../../infrastructure/environment/macos-installer-service';
 import {
   TRASH_ITEM,
@@ -92,6 +95,8 @@ import {
 } from './ipc-types';
 import {WindowWorkspacesService} from './window-workspaces-service';
 
+const platform = platformOf(process.platform);
+
 @Module({
   providers: [
     {provide: CommandRunner, useClass: ExecCommandRunnerService},
@@ -108,14 +113,19 @@ import {WindowWorkspacesService} from './window-workspaces-service';
     {provide: TerminalSpawner, useClass: NodePtyTerminalService},
     {provide: TMUX_SOCKET, useValue: null},
     {provide: Toolchain, useClass: ToolchainCliService},
-    {provide: AppInstaller, useClass: MacosInstallerService},
+    {
+      provide: AppInstaller,
+      useClass:
+        platform === 'mac' ? MacosInstallerService : LinuxInstallerService,
+    },
     {
       provide: AppRuntime,
       useFactory: (): AppRuntime => ({
         bundlePath: app.isPackaged
-          ? resolve(process.execPath, '../../..')
+          ? bundleRoot(process.execPath, platform)
           : null,
         version: app.getVersion(),
+        platform,
       }),
     },
     {provide: TRASH_ITEM, useValue: (path: string) => shell.trashItem(path)},

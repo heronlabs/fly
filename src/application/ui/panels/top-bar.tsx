@@ -55,7 +55,8 @@ export const TopBar = ({
       alignItems: 'center',
       gap: 12,
       height: 44,
-      padding: '0 14px 0 104px',
+      // The macOS traffic lights sit inset over the bar's left end.
+      padding: window.fly.platform === 'mac' ? '0 14px 0 104px' : '0 14px',
       borderBottom: '1px solid var(--border)',
       background: 'var(--drawer)',
     }}

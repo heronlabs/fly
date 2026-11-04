@@ -32,37 +32,20 @@ describe('MacosInstallerService', () => {
   });
 
   describe('commandState', () => {
-    it('Should be missing when the link is absent', async () => {
+    it('Should look for the link at /usr/local/bin/fly', async () => {
       exists.mockResolvedValue(false);
 
       expect(await service.commandState('/A/fly')).toBe('missing');
       expect(exists).toHaveBeenCalledWith('/usr/local/bin/fly');
-      expect(realPath).not.toHaveBeenCalled();
     });
 
-    it('Should be installed when both resolve to the same file', async () => {
+    it('Should compare /usr/local/bin/fly with the launcher', async () => {
       exists.mockResolvedValue(true);
       realPath.mockResolvedValue('/A/fly');
 
       expect(await service.commandState('/A/fly')).toBe('installed');
       expect(realPath).toHaveBeenCalledWith('/usr/local/bin/fly');
       expect(realPath).toHaveBeenCalledWith('/A/fly');
-    });
-
-    it('Should be other when they resolve differently', async () => {
-      exists.mockResolvedValue(true);
-      realPath.mockImplementation(async (p: string) =>
-        p === '/A/fly' ? '/A/fly' : '/B/fly',
-      );
-
-      expect(await service.commandState('/A/fly')).toBe('other');
-    });
-
-    it('Should be other when a real path cannot be resolved', async () => {
-      exists.mockResolvedValue(true);
-      realPath.mockRejectedValue(new Error('ENOENT'));
-
-      expect(await service.commandState('/A/fly')).toBe('other');
     });
   });
 

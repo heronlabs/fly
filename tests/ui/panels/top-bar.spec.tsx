@@ -48,4 +48,28 @@ describe('TopBar', () => {
       .click(screen.getByRole('button', {name: new RegExp(label)}));
     expect(onToggleDiffPanel).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['mac', '0px 14px 0px 104px'],
+    ['linux', '0px 14px'],
+  ] as const)(
+    'Should pad the bar for the %s window frame',
+    (platform, padding) => {
+      window.fly.platform = platform;
+      render(
+        <TopBar
+          root={null}
+          selected={null}
+          theme="dark"
+          diffPanel="open"
+          onToggleDiffPanel={vi.fn()}
+          onToggleTheme={vi.fn()}
+          onOpenFolder={vi.fn()}
+          canCreateTask={false}
+          onNewTask={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('banner')).toHaveStyle({padding});
+    },
+  );
 });

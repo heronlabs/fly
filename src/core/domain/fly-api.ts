@@ -7,6 +7,7 @@ import type {
   WriteResult,
 } from './files';
 import type {LaunchRequest} from './launch';
+import type {Platform} from './platform';
 import type {QueueSnapshot} from './queue';
 import type {SearchQuery, SearchResult} from './search';
 import type {SessionsSnapshot} from './session';
@@ -74,6 +75,8 @@ export const channels = {
 export type Channel = (typeof channels)[keyof typeof channels];
 
 export type FlyApi = {
+  // Read once at preload; the renderer picks shortcuts and copy by it.
+  platform: Platform;
   workspace: {
     pickFolder(): Promise<string | null>;
     open(root: string): Promise<Workspace>;

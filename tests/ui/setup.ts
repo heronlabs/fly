@@ -4,6 +4,7 @@ import type {FlyApi} from '../../src/core/domain/fly-api';
 
 // mockReset runs before each test, so tests set their own implementations.
 const fly: FlyApi = {
+  platform: 'mac',
   workspace: {
     pickFolder: vi.fn(),
     open: vi.fn(),
@@ -49,7 +50,7 @@ const fly: FlyApi = {
   setup: {
     info: vi.fn(async () => ({
       packaged: false,
-      inApplications: false,
+      inInstallDir: false,
       bundlePath: null,
       open: false,
     })),
@@ -65,6 +66,11 @@ const fly: FlyApi = {
 };
 
 Object.defineProperty(window, 'fly', {value: fly, configurable: true});
+
+// Specs switch to Linux per test; every test starts on mac.
+beforeEach(() => {
+  fly.platform = 'mac';
+});
 
 // CodeMirror measures text through Range rects and scrolls the selection into
 // view; jsdom implements neither, so it gets empty rects and a no-op scroll.
