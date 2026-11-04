@@ -1,3 +1,9 @@
+## v0.13.0 (2026-11-04)
+
+### Features
+
+* feat(linux): Linux app, deb for x64 and arm64 (#36) (f7caf0313ad05dd6a428117c1f0efc83328eadc1)
+
 ## v0.12.1 (2026-11-03)
 
 ### Miscellaneous Chores
